@@ -135,7 +135,7 @@ export function PersonalSettingsForm({ initialData }: PersonalSettingsFormProps)
             <Label className="text-xs font-bold text-slate-500 uppercase">Default Calendar System</Label>
             <Select 
               value={formData.calendarType} 
-              onValueChange={(value) => setFormData({ ...formData, calendarType: value })}
+              onValueChange={(value) => setFormData({ ...formData, calendarType: value || "GREGORIAN" })}
             >
               <SelectTrigger className="h-12 bg-slate-50/50 border-slate-200 rounded-xl">
                 <SelectValue placeholder="Select calendar" />
