@@ -48,6 +48,7 @@ export function UserActions({ user, currency = "ETB" }: { user: any, currency?: 
     email: user.email,
     role: user.role,
     phoneNumber: user.phoneNumber || "",
+    password: "",
   });
 
 
@@ -58,6 +59,7 @@ export function UserActions({ user, currency = "ETB" }: { user: any, currency?: 
     setIsLoading(false);
     if (result.success) {
       toast.success("User profile updated.");
+      setEditData(prev => ({ ...prev, password: "" })); // Clear password field
       setIsEditing(false);
     } else {
       toast.error(result.error || "Failed to update.");
@@ -152,6 +154,17 @@ export function UserActions({ user, currency = "ETB" }: { user: any, currency?: 
                 <Input 
                   value={editData.phoneNumber}
                   onChange={(e) => setEditData({ ...editData, phoneNumber: e.target.value })}
+                  className="rounded-lg border-slate-200 bg-white h-10 text-sm font-medium"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-[10px] font-semibold uppercase text-slate-400">New Password (Leave blank to keep current)</Label>
+                <Input 
+                  type="password"
+                  placeholder="••••••••"
+                  value={editData.password}
+                  onChange={(e) => setEditData({ ...editData, password: e.target.value })}
                   className="rounded-lg border-slate-200 bg-white h-10 text-sm font-medium"
                 />
               </div>

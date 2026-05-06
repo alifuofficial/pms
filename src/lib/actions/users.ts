@@ -53,17 +53,26 @@ export async function updateUser(id: string, data: {
   email: string;
   role: "ADMIN" | "MANAGER" | "ACCOUNTANT" | "TENANT";
   phoneNumber?: string;
+  password?: string;
 }) {
   const session = await auth();
   if (!session?.user || session.user.role !== "ADMIN") return { success: false, error: "Unauthorized" };
 
   try {
+    const updateData: any = {
+      name: data.name,
+      email: data.email,
+      role: data.role,
+      phoneNumber: data.phoneNumber ? normalizePhoneNumber(data.phoneNumber) : undefined,
+    };
+
+    if (data.password && data.password.trim() !== "") {
+      updateData.passwordHash = await hash(data.password, 10);
+    }
+
     await prisma.user.update({
       where: { id },
-      data: {
-        ...data,
-        phoneNumber: data.phoneNumber ? normalizePhoneNumber(data.phoneNumber) : undefined,
-      },
+      data: updateData,
     });
     revalidatePath("/admin/users");
     return { success: true };
