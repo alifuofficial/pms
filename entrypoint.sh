@@ -5,6 +5,10 @@ if [ -z "$DATABASE_URL" ]; then
   export DATABASE_URL="file:/app/data/prod.db"
 fi
 
+echo "Verifying database permissions..."
+ls -ld /app/data
+touch /app/data/test.tmp && rm /app/data/test.tmp || echo "Warning: Data directory is NOT writable"
+
 echo "Running database synchronization..."
 npx prisma db push --url "$DATABASE_URL" --accept-data-loss --force-reset
 
