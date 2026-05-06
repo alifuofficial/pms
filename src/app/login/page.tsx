@@ -19,6 +19,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
+import { ForgotPasswordDialog } from "@/components/shared/forgot-password-dialog";
 
 const loginSchema = z.object({
   email: z.string().email("Please enter a valid work email address"),
@@ -156,7 +157,7 @@ export default function LoginPage() {
                   <FormItem className="space-y-1.5">
                     <div className="flex justify-between items-center">
                       <FormLabel className="text-slate-700 font-semibold">Password</FormLabel>
-                      <button type="button" className="text-xs font-bold text-blue-600 hover:text-blue-700 transition">Forgot password?</button>
+                      <ForgotPasswordDialog />
                     </div>
                     <FormControl>
                       <div className="relative group">

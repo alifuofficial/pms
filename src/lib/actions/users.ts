@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 import { auth } from "@/auth";
 import { hash } from "bcryptjs";
+import { sendSMS } from "@/lib/sms";
 
 function normalizePhoneNumber(phone: string): string {
   if (!phone) return phone;
@@ -70,10 +71,15 @@ export async function updateUser(id: string, data: {
       updateData.passwordHash = await hash(data.password, 10);
     }
 
-    await prisma.user.update({
+    const user = await prisma.user.update({
       where: { id },
       data: updateData,
     });
+
+    if (data.password && data.password.trim() !== "" && user.phoneNumber) {
+      await sendSMS(user.phoneNumber, "Your Soreti PMS password has been changed by an administrator. If you did not authorize this, please contact IT Support immediately.");
+    }
+
     revalidatePath("/admin/users");
     return { success: true };
   } catch (error) {
