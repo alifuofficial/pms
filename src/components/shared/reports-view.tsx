@@ -61,7 +61,7 @@ export function ReportsView({ metrics, currency, calendarType, startDate, endDat
           <p className="text-sm text-slate-500 font-medium">Aggregated metrics and performance tracking.</p>
         </div>
         <div className="flex items-center gap-3">
-          <Select value={currentPeriod} onValueChange={handlePeriodChange}>
+          <Select value={currentPeriod} onValueChange={(value) => handlePeriodChange(value || "30days")}>
             <SelectTrigger className="w-[180px] h-9 bg-white border-slate-200 text-sm">
               <CalendarIcon className="w-4 h-4 mr-2 text-slate-400" />
               <SelectValue placeholder="Select period" />
