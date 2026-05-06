@@ -34,7 +34,7 @@ export async function requestOtp(identifier: string) {
 
     await prisma.otp.create({
       data: {
-        identifier: email,
+        identifier: identifier,
         code: otp,
         expiresAt,
       },
