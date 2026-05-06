@@ -1,0 +1,194 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  phoneNumber   String?
+  passwordHash  String
+  role          Role      @default(TENANT)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  calendarType  String    @default("GREGORIAN")
+
+  managedProperties    Property[] @relation("PropertyManager")
+  accountantProperties Property[] @relation("PropertyAccountant")
+  leases               Lease[]    @relation("TenantLeases")
+  payments             Payment[]  @relation("TenantPayments")
+  approvedPayments     Payment[]  @relation("AccountantApprovals")
+  auditLogs            AuditLog[]
+}
+
+enum Role {
+  ADMIN
+  ACCOUNTANT
+  MANAGER
+  TENANT
+}
+
+model Property {
+  id           String       @id @default(cuid())
+  name         String
+  address      String
+  type         PropertyType @default(RESIDENTIAL)
+  managerId    String
+  manager      User         @relation("PropertyManager", fields: [managerId], references: [id])
+  accountantId String?
+  accountant   User?        @relation("PropertyAccountant", fields: [accountantId], references: [id])
+  units        Unit[]
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+}
+
+enum PropertyType {
+  RESIDENTIAL
+  COMMERCIAL
+  BOTH
+}
+
+model Unit {
+  id         String     @id @default(cuid())
+  propertyId String
+  property   Property   @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  unitNumber String
+  floor      Int?
+  size       Float?     // m2
+  type       String     // e.g., Studio, 1BR, 2BR
+  rentAmount Float
+  status     UnitStatus @default(AVAILABLE)
+  leases     Lease[]
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+
+  @@unique([propertyId, unitNumber])
+}
+
+enum UnitStatus {
+  AVAILABLE
+  OCCUPIED
+  MAINTENANCE
+}
+
+model Lease {
+  id                 String      @id @default(cuid())
+  unitId             String
+  unit               Unit        @relation(fields: [unitId], references: [id])
+  tenantId           String
+  tenant             User        @relation("TenantLeases", fields: [tenantId], references: [id])
+  startDate          DateTime
+  endDate            DateTime
+  status             LeaseStatus @default(PENDING)
+  terms              String?
+  leaseAgreementUrl  String?
+  payments           Payment[]
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
+}
+
+enum LeaseStatus {
+  PENDING
+  ACTIVE
+  EXPIRED
+  TERMINATED
+}
+
+model Payment {
+  id           String        @id @default(cuid())
+  tenantId     String
+  tenant       User          @relation("TenantPayments", fields: [tenantId], references: [id])
+  leaseId      String
+  lease        Lease         @relation(fields: [leaseId], references: [id])
+  amount       Float
+  dueDate      DateTime
+  paidAt       DateTime?
+  status       PaymentStatus @default(PENDING)
+  type         PaymentType   @default(MONTHLY)
+  advanceUntil DateTime?
+  approvedBy   String?
+  approver     User?         @relation("AccountantApprovals", fields: [approvedBy], references: [id])
+  receiptUrl   String?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+}
+
+enum PaymentType {
+  MONTHLY
+  ADVANCE
+}
+
+enum PaymentStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  action    String
+  metadata  String?  // JSON string
+  createdAt DateTime @default(now())
+}
+
+model SystemSettings {
+  id               String   @id @default("global")
+  systemName       String   @default("NexusPMS")
+  organizationName String?
+  tinNumber        String?
+  address          String?
+  website          String?
+  phone            String?
+  logoUrl          String?
+  primaryColor     String   @default("#2563eb")
+  supportEmail     String?
+  currency         String   @default("USD")
+  calendarType     String   @default("GREGORIAN")
+  
+  // SMTP Configuration
+  smtpHost         String?
+  smtpPort         Int?
+  smtpUser         String?
+  smtpPass         String?
+  
+  // FTP Configuration
+  ftpHost          String?
+  ftpPort          Int?
+  ftpUser          String?
+  ftpPass          String?
+  ftpEnabled       Boolean  @default(false)
+  ftpBaseUrl       String?
+
+  // SMS Ethiopia Configuration
+  smsEthiopiaKey   String?
+
+  updatedAt        DateTime @updatedAt
+}
+
+model BankAccount {
+  id            String   @id @default(cuid())
+  bankName      String
+  accountName   String
+  accountNumber String
+  createdAt     DateTime @default(now())
+}
+
+model SmsTemplate {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  content     String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}

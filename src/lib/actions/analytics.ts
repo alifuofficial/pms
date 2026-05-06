@@ -1,0 +1,111 @@
+"use server";
+
+import { prisma } from "@/lib/prisma";
+import { startOfMonth, subMonths, format, endOfMonth } from "date-fns";
+
+export async function getRevenueAnalytics(months: number = 6, propertyIds?: string[]) {
+  const result = [];
+  const now = new Date();
+
+  for (let i = months - 1; i >= 0; i--) {
+    const date = subMonths(now, i);
+    const start = startOfMonth(date);
+    const end = endOfMonth(date);
+
+    const revenue = await prisma.payment.aggregate({
+      where: {
+        status: "APPROVED",
+        paidAt: {
+          gte: start,
+          lte: end,
+        },
+        ...(propertyIds && propertyIds.length > 0 ? {
+          lease: {
+            unit: {
+              propertyId: { in: propertyIds }
+            }
+          }
+        } : {})
+      },
+      _sum: { amount: true },
+    });
+
+    result.push({
+      name: format(date, "MMM"),
+      revenue: revenue._sum.amount || 0,
+    });
+  }
+
+  return result;
+}
+
+export async function getOccupancyAnalytics(months: number = 6, propertyIds?: string[]) {
+  const result = [];
+  const now = new Date();
+
+  for (let i = months - 1; i >= 0; i--) {
+    const date = subMonths(now, i);
+    
+    const unitWhere = propertyIds && propertyIds.length > 0 
+      ? { propertyId: { in: propertyIds } }
+      : {};
+
+    const totalUnits = await prisma.unit.count({
+      where: unitWhere
+    });
+    
+    const occupiedUnits = await prisma.unit.count({
+      where: {
+        ...unitWhere,
+        status: "OCCUPIED",
+      },
+    });
+
+    const occupancyRate = totalUnits > 0 ? Math.round((occupiedUnits / totalUnits) * 100) : 0;
+
+    result.push({
+      name: format(date, "MMM"),
+      occupancy: occupancyRate,
+    });
+  }
+
+  return result;
+}
+
+export async function getRecentAuditLogs(limit: number = 5) {
+  return await prisma.auditLog.findMany({
+    take: limit,
+    orderBy: { createdAt: "desc" },
+    include: { user: true },
+  });
+}
+
+export async function getTenantRevenueAnalytics(tenantId: string, months: number = 6) {
+  const result = [];
+  const now = new Date();
+
+  for (let i = months - 1; i >= 0; i--) {
+    const date = subMonths(now, i);
+    const start = startOfMonth(date);
+    const end = endOfMonth(date);
+
+    const revenue = await prisma.payment.aggregate({
+      where: {
+        tenantId,
+        status: "APPROVED",
+        paidAt: {
+          gte: start,
+          lte: end,
+        },
+      },
+      _sum: { amount: true },
+    });
+
+    result.push({
+      name: format(date, "MMM"),
+      revenue: revenue._sum.amount || 0,
+    });
+  }
+
+  return result;
+}
