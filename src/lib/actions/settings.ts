@@ -66,7 +66,7 @@ export const getSystemSettings = cache(async () => {
       where: { id: "global" },
     });
     return settings || { 
-      systemName: "NexusPMS", 
+      systemName: "Soreti Property Rental", 
       currency: "ETB", 
       calendarType: "GREGORIAN",
       primaryColor: "#2563eb",
@@ -79,7 +79,7 @@ export const getSystemSettings = cache(async () => {
     } as any;
   } catch (error) {
     return { 
-      systemName: "NexusPMS", 
+      systemName: "Soreti Property Rental", 
       currency: "ETB", 
       calendarType: "GREGORIAN",
       primaryColor: "#2563eb",

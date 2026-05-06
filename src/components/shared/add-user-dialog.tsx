@@ -121,7 +121,7 @@ export function AddUserDialog({
 
           <div className="pt-2">
             <p className="text-[10px] text-slate-400 mb-4 bg-slate-50 p-2 rounded-lg border border-slate-100 font-medium">
-              Note: New users will receive a default temporary password: <span className="font-bold text-slate-900">NexusPMS123!</span>
+              Note: New users will receive a default temporary password: <span className="font-bold text-slate-900">Soreti123!</span>
             </p>
             <Button 
               type="submit" 

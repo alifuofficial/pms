@@ -87,7 +87,7 @@ export function SidebarNav({ role, user }: { role: string; user: any }) {
           </div>
           {!isCollapsed && (
             <span className="font-semibold text-lg tracking-tight text-slate-900 group-hover:text-blue-600 transition-colors">
-              NexusPMS
+              Soreti PMS
             </span>
           )}
         </Link>

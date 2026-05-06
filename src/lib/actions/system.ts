@@ -47,7 +47,7 @@ export async function factoryResetSystem() {
       await tx.systemSettings.upsert({
         where: { id: "global" },
         update: {
-          systemName: "NexusPMS",
+          systemName: "Soreti Property Rental",
           organizationName: null,
           tinNumber: null,
           address: null,
@@ -70,7 +70,7 @@ export async function factoryResetSystem() {
         },
         create: {
           id: "global",
-          systemName: "NexusPMS",
+          systemName: "Soreti Property Rental",
           currency: "ETB",
           primaryColor: "#2563eb",
           calendarType: "GREGORIAN"

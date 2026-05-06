@@ -8,10 +8,10 @@ export default async function SettingsPage() {
   ]);
 
   const defaultSettings = {
-    systemName: "NexusPMS",
-    organizationName: "Nexus Portfolio Management",
+    systemName: "Soreti Property Rental",
+    organizationName: "Soreti International Trading",
     logoUrl: "",
-    supportEmail: "support@nexuspms.com",
+    supportEmail: "support@soreti.com",
     currency: "USD",
   };
 

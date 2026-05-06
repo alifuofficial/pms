@@ -28,7 +28,7 @@ export async function createUser(data: {
   if (!session?.user || session.user.role !== "ADMIN") return { success: false, error: "Unauthorized" };
 
   try {
-    const tempPassword = await hash("NexusPMS123!", 10);
+    const tempPassword = await hash("Soreti123!", 10);
     
     await prisma.user.create({
       data: {
@@ -114,7 +114,7 @@ export async function registerTenant(data: {
   }
 
   try {
-    const tempPassword = await hash("NexusPMS123!", 10);
+    const tempPassword = await hash("Soreti123!", 10);
     
     const result = await prisma.$transaction(async (tx) => {
       // 1. Create User

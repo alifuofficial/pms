@@ -78,14 +78,14 @@ export default function LoginPage() {
             <div className="w-10 h-10 rounded-xl bg-white/10 backdrop-blur-sm flex items-center justify-center border border-white/20 shadow-lg">
               <Building2 size={20} className="text-white" />
             </div>
-            <span className="text-xl font-bold tracking-tight">NexusPMS</span>
+            <span className="text-xl font-bold tracking-tight">Soreti PMS</span>
           </div>
           
           <h1 className="text-4xl xl:text-5xl font-bold leading-tight mb-6">
             Centralized<br />Property Operations
           </h1>
           <p className="text-blue-100 text-lg max-w-md leading-relaxed">
-            Secure, role-based workspace for managing portfolios, tenants, leases, and financial approvals. Internal access only.
+            Institutional property management for Soreti International Trading. Secure portal for assets, tenants, and financial operations.
           </p>
         </div>
 
@@ -106,8 +106,9 @@ export default function LoginPage() {
           </div>
         </div>
 
-        <div className="relative z-10 text-[10px] text-blue-300/60 mt-8 uppercase tracking-widest font-medium">
-          © 2026 NexusPMS Internal Systems • v2.4.1
+        <div className="relative z-10 text-[10px] text-blue-300/60 mt-8 flex flex-col gap-1 uppercase tracking-widest font-medium">
+          <div>[Soreti International Trading] • v0.1</div>
+          <div className="text-[9px] lowercase opacity-50">Developed by <a href="https://t.me/dmalifu" target="_blank" className="hover:text-white underline">@dmalifu</a> [AlifXperience]</div>
         </div>
       </div>
 
@@ -119,7 +120,7 @@ export default function LoginPage() {
               <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center shadow-lg">
                 <Building2 size={18} className="text-white" />
               </div>
-              <span className="text-lg font-bold text-slate-900 tracking-tight">NexusPMS</span>
+              <span className="text-lg font-bold text-slate-900 tracking-tight">Soreti PMS</span>
             </div>
             <h2 className="text-3xl font-extrabold text-slate-900 tracking-tight">Welcome back</h2>
             <p className="text-slate-500 font-medium">Enter your credentials to access your dashboard.</p>
@@ -206,12 +207,6 @@ export default function LoginPage() {
             </form>
           </Form>
 
-          <div className="pt-4 grid grid-cols-2 gap-2">
-            <Button variant="outline" size="sm" className="text-[10px] uppercase font-bold tracking-wider" onClick={() => { form.setValue("email", "admin@pms.com"); form.setValue("password", "password123"); }}>Admin</Button>
-            <Button variant="outline" size="sm" className="text-[10px] uppercase font-bold tracking-wider" onClick={() => { form.setValue("email", "manager@pms.com"); form.setValue("password", "password123"); }}>Manager</Button>
-            <Button variant="outline" size="sm" className="text-[10px] uppercase font-bold tracking-wider" onClick={() => { form.setValue("email", "accountant@pms.com"); form.setValue("password", "password123"); }}>Accountant</Button>
-            <Button variant="outline" size="sm" className="text-[10px] uppercase font-bold tracking-wider" onClick={() => { form.setValue("email", "tenant@pms.com"); form.setValue("password", "password123"); }}>Tenant</Button>
-          </div>
 
           <div className="text-center pt-4">
             <p className="text-xs text-slate-500 font-medium">

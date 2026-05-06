@@ -11,8 +11,8 @@ const jakarta = Plus_Jakarta_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "NexusPMS | Secure Property Management",
-  description: "Secure, role-based internal Property Management System",
+  title: "Soreti Property Rental | Secure Management",
+  description: "Secure, role-based internal Property Management System for Soreti International Trading",
 };
 
 export default function RootLayout({
