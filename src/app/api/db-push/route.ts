@@ -17,7 +17,7 @@ export async function GET() {
 
     // Try to run prisma db push
     const output = execSync(
-      `npx prisma db push --url "${databaseUrl}" --accept-data-loss --schema "${schemaPath}"`,
+      `npx prisma db push --url "${databaseUrl}" --accept-data-loss --force-reset --schema "${schemaPath}"`,
       { 
         encoding: "utf-8",
         env: { ...process.env, DATABASE_URL: databaseUrl }

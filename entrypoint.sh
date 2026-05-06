@@ -6,7 +6,7 @@ if [ -z "$DATABASE_URL" ]; then
 fi
 
 echo "Running database synchronization..."
-npx prisma db push --url "$DATABASE_URL" --accept-data-loss
+npx prisma db push --url "$DATABASE_URL" --accept-data-loss --force-reset
 
 echo "Seeding initial data..."
 node prisma/seed.js
