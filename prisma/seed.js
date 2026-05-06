@@ -1,11 +1,10 @@
 const { PrismaClient } = require("@prisma/client");
-const bcrypt = require("bcryptjs");
 
 const prisma = new PrismaClient();
 
 async function main() {
   const roles = ["ADMIN", "ACCOUNTANT", "MANAGER", "TENANT"];
-  const password = await bcrypt.hash("Soreti123!", 10);
+  const passwordHash = "$2b$10$a3.FY.YBlSI85Ms9ZalA1O3EyBmSojB0M3Nwz1Kq6QfyzG0MqMuzC"; // Pre-calculated hash for 'Soreti123!'
 
   // 1. Seed Users
   for (const role of roles) {
@@ -13,12 +12,12 @@ async function main() {
     const user = await prisma.user.upsert({
       where: { email },
       update: {
-        passwordHash: password,
+        passwordHash: passwordHash,
       },
       create: {
         email,
         name: `Soreti ${role.charAt(0) + role.slice(1).toLowerCase()} Demo`,
-        passwordHash: password,
+        passwordHash: passwordHash,
         role: role,
       },
     });
