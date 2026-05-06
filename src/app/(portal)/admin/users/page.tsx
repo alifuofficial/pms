@@ -53,10 +53,10 @@ export default async function UsersPage() {
                 <td className="py-3 px-6">
                   <div className="flex items-center gap-3">
                     <div className="w-9 h-9 rounded-lg bg-slate-100 text-slate-500 flex items-center justify-center font-semibold text-xs border border-slate-200 uppercase">
-                      {user.name.split(" ").map(n => n[0]).join("").slice(0, 2)}
+                      {(user.name || "U").split(" ").map(n => n[0]).join("").slice(0, 2)}
                     </div>
                     <div>
-                      <p className="text-sm font-semibold text-slate-900">{user.name}</p>
+                      <p className="text-sm font-semibold text-slate-900">{user.name || "Unnamed User"}</p>
                       <p className="text-[11px] text-slate-400 font-medium flex items-center gap-1">
                         <Mail size={10} /> {user.email}
                       </p>

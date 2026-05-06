@@ -178,7 +178,7 @@ export default async function AccountantDashboard() {
                             <div className="w-8 h-8 rounded-lg bg-slate-50 flex items-center justify-center font-bold text-slate-400 text-[10px] border border-slate-100 uppercase">
                               {p.tenant.name?.[0] || "T"}
                             </div>
-                            <p className="text-sm font-semibold text-slate-900">{p.tenant.name}</p>
+                            <p className="text-sm font-semibold text-slate-900">{p.tenant.name || "Unnamed Tenant"}</p>
                           </div>
                         </td>
                         <td className="py-4 px-5">
@@ -246,7 +246,7 @@ export default async function AccountantDashboard() {
                     <div className="min-w-0">
                       <p className="text-xs font-bold text-slate-900 truncate">{item.action}</p>
                       <p className="text-[10px] text-slate-400 font-medium truncate">
-                        By {item.user.name}
+                        By {item.user.name || "System"}
                       </p>
                       <p className="text-[9px] text-blue-600 font-bold mt-1 uppercase tracking-tighter">
                         {formatDistanceToNow(new Date(item.createdAt), { addSuffix: true })}

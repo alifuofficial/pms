@@ -87,7 +87,7 @@ export default async function ManagerTenantsPage() {
                         {tenant.name?.[0] || "T"}
                       </div>
                       <div>
-                        <p className="text-sm font-semibold text-slate-900">{tenant.name}</p>
+                        <p className="text-sm font-semibold text-slate-900">{tenant.name || "Unnamed Tenant"}</p>
                         <p className="text-[11px] text-slate-400 font-medium flex items-center gap-1">
                           <Mail size={10} /> {tenant.email}
                         </p>
