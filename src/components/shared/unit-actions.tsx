@@ -26,12 +26,18 @@ import {
   DropdownMenuTrigger 
 } from "@/components/ui/dropdown-menu";
 import { updateUnit, deleteUnit } from "@/lib/actions/properties";
+import { generateUnitQrSlug } from "@/lib/actions/qr";
 import { toast } from "sonner";
+import { QrCode, ExternalLink, Download, Copy, Check } from "lucide-react";
+import QRCode from "react-qr-code";
 
 export function UnitActions({ unit }: { unit: any }) {
   const [isEditing, setIsEditing] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isQrOpen, setIsQrOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [qrSlug, setQrSlug] = useState(unit.qrSlug || "");
+  const [isCopied, setIsCopied] = useState(false);
   
   const [editData, setEditData] = useState({
     unitNumber: unit.unitNumber,
@@ -86,6 +92,12 @@ export function UnitActions({ unit }: { unit: any }) {
             className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-slate-700 rounded-lg cursor-pointer hover:bg-slate-50"
           >
             <Edit size={12} /> Edit Unit
+          </DropdownMenuItem>
+          <DropdownMenuItem 
+            onClick={() => setIsQrOpen(true)}
+            className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-blue-600 rounded-lg cursor-pointer hover:bg-blue-50"
+          >
+            <QrCode size={12} /> Unit Gateway
           </DropdownMenuItem>
           <DropdownMenuItem 
             onClick={() => setIsDeleting(true)}
@@ -186,6 +198,100 @@ export function UnitActions({ unit }: { unit: any }) {
               </Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* QR Gateway Dialog */}
+      <Dialog open={isQrOpen} onOpenChange={setIsQrOpen}>
+        <DialogContent className="sm:max-w-[400px] bg-white rounded-[2.5rem] p-0 overflow-hidden border-none shadow-2xl">
+           <DialogHeader className="p-8 pb-4 bg-slate-50 border-b border-slate-100">
+              <div className="flex items-center gap-3">
+                 <div className="w-10 h-10 bg-blue-600 text-white rounded-2xl flex items-center justify-center shadow-lg shadow-blue-600/20">
+                    <QrCode size={20} />
+                 </div>
+                 <div>
+                    <DialogTitle className="text-lg font-black text-slate-900 tracking-tight">Unit Gateway</DialogTitle>
+                    <DialogDescription className="text-xs font-bold text-slate-500 uppercase tracking-widest">Digital Status Node for Unit {unit.unitNumber}</DialogDescription>
+                 </div>
+              </div>
+           </DialogHeader>
+
+           <div className="p-8 space-y-8">
+              {!qrSlug ? (
+                <div className="text-center py-8 space-y-4">
+                   <div className="w-16 h-16 bg-slate-100 rounded-[2rem] flex items-center justify-center mx-auto text-slate-300">
+                      <QrCode size={32} />
+                   </div>
+                   <div className="space-y-1">
+                      <h3 className="text-sm font-black text-slate-900 uppercase">Not Generated</h3>
+                      <p className="text-[10px] text-slate-500 font-medium px-6">This unit does not have a public gateway slug yet. Generate one to enable QR access.</p>
+                   </div>
+                   <Button 
+                    disabled={isLoading}
+                    onClick={async () => {
+                      setIsLoading(true);
+                      const res = await generateUnitQrSlug(unit.id);
+                      setIsLoading(false);
+                      if (res.success && res.slug) {
+                        setQrSlug(res.slug);
+                        toast.success("Gateway slug generated.");
+                      }
+                    }}
+                    className="bg-slate-900 hover:bg-slate-800 text-white rounded-xl px-8 h-12 font-black text-xs uppercase tracking-widest transition-all"
+                   >
+                    {isLoading ? <Loader2 className="animate-spin" /> : "Initialize Gateway"}
+                   </Button>
+                </div>
+              ) : (
+                <div className="space-y-8 animate-in fade-in zoom-in duration-500">
+                   <div className="bg-slate-50 p-6 rounded-[2.5rem] flex items-center justify-center border-2 border-dashed border-slate-200 shadow-inner">
+                      <QRCode 
+                        value={`${window.location.origin}/u/${qrSlug}`} 
+                        size={180}
+                        level="H"
+                        className="rounded-xl overflow-hidden"
+                      />
+                   </div>
+
+                   <div className="space-y-4">
+                      <div className="flex items-center gap-2 px-2">
+                         <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Public Access Node</p>
+                         <div className="h-px bg-slate-100 flex-1 ml-2" />
+                      </div>
+
+                      <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/60 flex items-center justify-between">
+                         <p className="text-[10px] font-black text-slate-900 truncate mr-4 tracking-tight">
+                            {window.location.origin}/u/{qrSlug}
+                         </p>
+                         <div className="flex items-center gap-2">
+                            <Button 
+                              variant="ghost" 
+                              size="icon" 
+                              className="h-8 w-8 rounded-lg hover:bg-white"
+                              onClick={() => {
+                                navigator.clipboard.writeText(`${window.location.origin}/u/${qrSlug}`);
+                                setIsCopied(true);
+                                setTimeout(() => setIsCopied(false), 2000);
+                                toast.success("Link copied to clipboard.");
+                              }}
+                            >
+                              {isCopied ? <Check size={14} className="text-emerald-500" /> : <Copy size={14} />}
+                            </Button>
+                            <a href={`${window.location.origin}/u/${qrSlug}`} target="_blank">
+                              <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg hover:bg-white text-blue-600">
+                                <ExternalLink size={14} />
+                              </Button>
+                            </a>
+                         </div>
+                      </div>
+                   </div>
+
+                   <Button className="w-full h-14 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl font-black text-sm uppercase tracking-widest shadow-xl shadow-slate-900/10 transition-all">
+                      <Download size={18} className="mr-2" /> Print Gateway Badge
+                   </Button>
+                </div>
+              )}
+           </div>
         </DialogContent>
       </Dialog>
 
