@@ -40,7 +40,7 @@ export async function requestOtp(identifier: string) {
       },
     });
 
-    const smsResult = await sendSMS(user.phoneNumber, `Your Soreti PMS verification code is: ${otp}. Valid for 10 minutes.`);
+    const smsResult = await sendSMS(targetPhone, `Your Soreti PMS verification code is: ${otp}. Valid for 10 minutes.`);
     
     if (smsResult.success) {
       return { success: true };
