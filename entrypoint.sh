@@ -8,5 +8,8 @@ fi
 echo "Running database synchronization..."
 npx prisma db push --accept-data-loss
 
+echo "Seeding initial data..."
+node prisma/seed.js
+
 echo "Starting application..."
 node server.js
