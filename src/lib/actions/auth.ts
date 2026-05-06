@@ -4,18 +4,28 @@ import { prisma } from "@/lib/prisma";
 import { sendSMS } from "@/lib/sms";
 import { hash } from "bcryptjs";
 
-export async function requestOtp(email: string) {
+export async function requestOtp(identifier: string) {
   try {
-    const user = await prisma.user.findUnique({
-      where: { email },
-      select: { phoneNumber: true, id: true }
+    // Try email first
+    let user = await prisma.user.findUnique({
+      where: { email: identifier },
+      select: { phoneNumber: true, id: true, email: true }
     });
 
+    // If not found by email, try by phone number
     if (!user) {
-      return { success: false, error: "No account found with this email." };
+      user = await prisma.user.findFirst({
+        where: { phoneNumber: identifier },
+        select: { phoneNumber: true, id: true, email: true }
+      });
     }
 
-    if (!user.phoneNumber) {
+    if (!user) {
+      return { success: false, error: "No account found with this email or phone number." };
+    }
+
+    const targetPhone = user.phoneNumber;
+    if (!targetPhone) {
       return { success: false, error: "Your account does not have a registered phone number. Contact IT Support." };
     }
 
@@ -43,11 +53,11 @@ export async function requestOtp(email: string) {
   }
 }
 
-export async function verifyOtpAndResetPassword(data: { email: string, code: string, password: string }) {
+export async function verifyOtpAndResetPassword(data: { identifier: string, code: string, password: string }) {
   try {
     const otpRecord = await prisma.otp.findFirst({
       where: {
-        identifier: data.email,
+        identifier: data.identifier,
         code: data.code,
         expiresAt: { gt: new Date() },
       },
@@ -58,12 +68,28 @@ export async function verifyOtpAndResetPassword(data: { email: string, code: str
       return { success: false, error: "Invalid or expired verification code." };
     }
 
+    // Find user by identifier (email or phone) to get the correct account
+    let user = await prisma.user.findUnique({
+      where: { email: data.identifier },
+      select: { id: true, phoneNumber: true }
+    });
+
+    if (!user) {
+      user = await prisma.user.findFirst({
+        where: { phoneNumber: data.identifier },
+        select: { id: true, phoneNumber: true }
+      });
+    }
+
+    if (!user) {
+      return { success: false, error: "User not found." };
+    }
+
     const passwordHash = await hash(data.password, 10);
 
-    const user = await prisma.user.update({
-      where: { email: data.email },
+    await prisma.user.update({
+      where: { id: user.id },
       data: { passwordHash },
-      select: { phoneNumber: true }
     });
 
     if (user.phoneNumber) {
@@ -72,7 +98,7 @@ export async function verifyOtpAndResetPassword(data: { email: string, code: str
 
     // Delete the OTP after use
     await prisma.otp.deleteMany({
-      where: { identifier: data.email },
+      where: { identifier: data.identifier },
     });
 
     return { success: true };

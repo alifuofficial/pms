@@ -21,7 +21,7 @@ export function ForgotPasswordDialog() {
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [isLoading, setIsLoading] = useState(false);
   
-  const [email, setEmail] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [code, setCode] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -29,7 +29,7 @@ export function ForgotPasswordDialog() {
   const handleRequestOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    const result = await requestOtp(email);
+    const result = await requestOtp(identifier);
     setIsLoading(false);
     if (result.success) {
       toast.success("Verification code sent to your phone.");
@@ -51,7 +51,7 @@ export function ForgotPasswordDialog() {
     }
 
     setIsLoading(true);
-    const result = await verifyOtpAndResetPassword({ email, code, password });
+    const result = await verifyOtpAndResetPassword({ identifier, code, password });
     setIsLoading(false);
     if (result.success) {
       toast.success("Password reset successful. You can now log in.");
@@ -64,7 +64,7 @@ export function ForgotPasswordDialog() {
   };
 
   const resetForm = () => {
-    setEmail("");
+    setIdentifier("");
     setCode("");
     setPassword("");
     setConfirmPassword("");
@@ -95,15 +95,15 @@ export function ForgotPasswordDialog() {
           {step === 1 && (
             <form onSubmit={handleRequestOtp} className="space-y-4 animate-in slide-in-from-right-4 duration-300">
               <div className="space-y-1.5">
-                <Label className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">Work Email Address</Label>
+                <Label className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">Email or Phone Number</Label>
                 <div className="relative group">
                   <Mail className="absolute left-3 top-3 h-4 w-4 text-slate-400 group-focus-within:text-blue-500 transition-colors" />
                   <Input 
                     required
-                    type="email"
-                    placeholder="name@company.com"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    type="text"
+                    placeholder="email@company.com or 09..."
+                    value={identifier}
+                    onChange={(e) => setIdentifier(e.target.value)}
                     className="pl-10 h-11 rounded-xl border-slate-200 bg-white"
                   />
                 </div>
@@ -132,7 +132,7 @@ export function ForgotPasswordDialog() {
               <Button onClick={() => setStep(3)} type="button" className="w-full h-11 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl shadow-lg shadow-slate-100 transition-all">
                 Verify Code <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
-              <button onClick={() => setStep(1)} type="button" className="w-full text-xs font-bold text-slate-400 hover:text-slate-600 uppercase tracking-widest pt-2 transition-colors">Back to Email</button>
+              <button onClick={() => setStep(1)} type="button" className="w-full text-xs font-bold text-slate-400 hover:text-slate-600 uppercase tracking-widest pt-2 transition-colors">Back to Identifier</button>
             </form>
           )}
 
