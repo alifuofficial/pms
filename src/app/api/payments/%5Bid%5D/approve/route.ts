@@ -4,8 +4,9 @@ import { NextResponse } from "next/server";
 
 export async function POST(
   req: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params;
   const session = await auth();
   if (!session || session.user.role !== "ACCOUNTANT") {
     return new NextResponse("Unauthorized", { status: 403 });
@@ -14,7 +15,7 @@ export async function POST(
   try {
     const payment = await prisma.$transaction(async (tx) => {
       const p = await tx.payment.update({
-        where: { id: params.id },
+        where: { id },
         data: {
           status: "APPROVED",
           approvedBy: session.user.id,
