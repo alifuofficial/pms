@@ -9,22 +9,40 @@ const prisma = new PrismaClient({ adapter });
 
 async function main() {
   const roles = ["ADMIN", "ACCOUNTANT", "MANAGER", "TENANT"];
-  const password = await bcrypt.hash("password123", 10);
+  const password = await bcrypt.hash("Soreti123!", 10);
 
+  // 1. Seed Users
   for (const role of roles) {
-    const email = `${role.toLowerCase()}@pms.com`;
+    const email = `${role.toLowerCase()}@soreti.com`;
     const user = await prisma.user.upsert({
       where: { email },
-      update: {},
+      update: {
+        passwordHash: password,
+      },
       create: {
         email,
-        name: `${role.charAt(0) + role.slice(1).toLowerCase()} User`,
+        name: `Soreti ${role.charAt(0) + role.slice(1).toLowerCase()} Demo`,
         passwordHash: password,
         role: role,
       },
     });
-    console.log(`Created user: ${user.email} with role ${user.role}`);
+    console.log(`Created/Updated user: ${user.email} with role ${user.role}`);
   }
+
+  // 2. Seed System Settings
+  await prisma.systemSettings.upsert({
+    where: { id: "global" },
+    update: {},
+    create: {
+      id: "global",
+      systemName: "Soreti Property Rental",
+      organizationName: "Soreti International Trading",
+      currency: "ETB",
+      calendarType: "GREGORIAN",
+      primaryColor: "#2563eb",
+    },
+  });
+  console.log("System settings seeded.");
 }
 
 main()
