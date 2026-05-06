@@ -6,6 +6,8 @@ if [ -z "$DATABASE_URL" ]; then
 fi
 
 echo "Verifying database permissions..."
+chown -R root:root /app/data
+chmod -R 777 /app/data
 ls -ld /app/data
 touch /app/data/test.tmp && rm /app/data/test.tmp || echo "Warning: Data directory is NOT writable"
 

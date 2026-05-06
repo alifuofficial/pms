@@ -36,7 +36,6 @@ COPY entrypoint.sh ./entrypoint.sh
 
 USER root
 RUN chmod +x ./entrypoint.sh
-USER nextjs
 
 EXPOSE 3000
 
