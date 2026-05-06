@@ -56,7 +56,7 @@ export function AddUserDialog({
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger 
         render={
-          trigger || (
+          (trigger as React.ReactElement) || (
             <Button className="h-9 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold px-4 shadow-none">
               <UserPlus className="mr-2 h-4 w-4" /> New Account
             </Button>

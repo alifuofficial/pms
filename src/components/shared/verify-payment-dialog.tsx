@@ -65,9 +65,8 @@ export function VerifyPaymentDialog({ payment, currency }: VerifyPaymentDialogPr
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger 
-        nativeButton={true}
         render={
-          payment.status === "APPROVED" ? (
+          (payment.status === "APPROVED" ? (
             <Button variant="ghost" size="sm" className="h-8 text-[10px] font-black uppercase tracking-widest text-emerald-600 bg-emerald-50 hover:bg-emerald-100 rounded-lg px-3">
               <CheckCircle2 size={12} className="mr-1.5" /> Verified
             </Button>
@@ -79,7 +78,7 @@ export function VerifyPaymentDialog({ payment, currency }: VerifyPaymentDialogPr
             <Button variant="ghost" size="sm" className="h-8 text-[10px] font-black uppercase tracking-widest text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg px-3">
               Verify <ArrowUpRight size={12} className="ml-1.5" />
             </Button>
-          )
+          )) as React.ReactElement
         } 
       />
       <DialogContent className="sm:max-w-[550px] max-h-[90vh] overflow-y-auto bg-white rounded-2xl p-0 border-none shadow-2xl custom-scrollbar">

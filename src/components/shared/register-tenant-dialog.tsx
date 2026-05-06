@@ -249,7 +249,6 @@ export function RegisterTenantDialog({ currency = "ETB" }: { currency?: string }
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger 
-        nativeButton
         render={
           <Button className="h-9 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-[11px] font-bold px-4 shadow-none uppercase tracking-wider">
             <UserPlus className="mr-2 h-3.5 w-3.5" /> Register Tenant

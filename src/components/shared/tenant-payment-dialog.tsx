@@ -63,7 +63,6 @@ export function TenantPaymentDialog({ payment, currency }: TenantPaymentDialogPr
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger 
-        nativeButton={true}
         render={
           <Button variant="ghost" size="sm" className={cn(
             "h-8 text-[10px] font-black uppercase tracking-widest rounded-lg px-3",

@@ -26,8 +26,7 @@ export function FilePreview({ url, filename, trigger }: FilePreviewProps) {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger 
-        nativeButton={!trigger}
-        render={trigger || (
+        render={(trigger as React.ReactElement) || (
           <Button variant="ghost" size="icon-sm" className="h-8 w-8 text-slate-400 hover:text-slate-900 hover:bg-slate-100">
             <Eye size={14} />
           </Button>

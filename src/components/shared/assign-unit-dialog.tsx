@@ -238,8 +238,7 @@ export function AssignUnitDialog({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger 
-        nativeButton={!!trigger}
-        render={trigger || <div className="hidden" />} 
+        render={(trigger as React.ReactElement) || <div className="hidden" />} 
       />
 
 
