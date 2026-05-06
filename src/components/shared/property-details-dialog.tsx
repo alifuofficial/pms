@@ -19,9 +19,7 @@ export function PropertyDetailsDialog({ property, currency = "USD" }: { property
 
   return (
     <Dialog>
-      <DialogTrigger asChild>
-        <Button variant="ghost" size="sm" className="h-8 text-xs font-semibold text-slate-500 hover:bg-slate-50">View</Button>
-      </DialogTrigger>
+      <DialogTrigger render={<Button variant="ghost" size="sm" className="h-8 text-xs font-semibold text-slate-500 hover:bg-slate-50">View</Button>} />
       <DialogContent className="sm:max-w-[600px] bg-white rounded-2xl p-0 overflow-hidden border-none shadow-2xl">
         <DialogHeader className="p-6 pb-4 bg-slate-50 border-b border-slate-100">
           <div className="flex items-start justify-between">

@@ -88,13 +88,11 @@ export function AddUnitDialog({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        {trigger || (
-          <Button variant="ghost" size="sm" className="h-8 text-xs font-semibold text-blue-600 hover:bg-blue-50">
-            <Plus size={14} className="mr-1" /> Add Unit
-          </Button>
-        )}
-      </DialogTrigger>
+      <DialogTrigger render={(trigger as React.ReactElement) || (
+        <Button variant="ghost" size="sm" className="h-8 text-xs font-semibold text-blue-600 hover:bg-blue-50">
+          <Plus size={14} className="mr-1" /> Add Unit
+        </Button>
+      )} />
       <DialogContent className="sm:max-w-[400px] bg-white rounded-2xl p-0 overflow-hidden border-none shadow-2xl">
         <DialogHeader className="p-6 pb-4 bg-slate-50 border-b border-slate-100">
           <DialogTitle className="text-lg font-semibold text-slate-900">Add Unit</DialogTitle>
