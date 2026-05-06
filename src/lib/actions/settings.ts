@@ -69,15 +69,27 @@ export const getSystemSettings = cache(async () => {
       systemName: "NexusPMS", 
       currency: "ETB", 
       calendarType: "GREGORIAN",
-      primaryColor: "#2563eb"
-    };
+      primaryColor: "#2563eb",
+      logoUrl: null,
+      organizationName: null,
+      address: null,
+      phone: null,
+      supportEmail: null,
+      tinNumber: null,
+    } as any;
   } catch (error) {
     return { 
       systemName: "NexusPMS", 
       currency: "ETB", 
       calendarType: "GREGORIAN",
-      primaryColor: "#2563eb"
-    };
+      primaryColor: "#2563eb",
+      logoUrl: null,
+      organizationName: null,
+      address: null,
+      phone: null,
+      supportEmail: null,
+      tinNumber: null,
+    } as any;
   }
 });
 
