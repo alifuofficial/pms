@@ -1,0 +1,12 @@
+#!/bin/sh
+
+# Set default DATABASE_URL if not provided (pointing to persistent volume)
+if [ -z "$DATABASE_URL" ]; then
+  export DATABASE_URL="file:/app/data/prod.db"
+fi
+
+echo "Running database synchronization..."
+npx prisma db push --accept-data-loss
+
+echo "Starting application..."
+node server.js

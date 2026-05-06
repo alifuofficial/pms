@@ -1,0 +1,12 @@
+node_modules
+.next
+.git
+.env
+.env.local
+*.db
+*.db-journal
+public/uploads/*
+README.md
+Dockerfile
+.dockerignore
+captain-definition
