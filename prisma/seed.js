@@ -92,7 +92,11 @@ async function main() {
   for (const t of templates) {
     await prisma.smsTemplate.upsert({
       where: { slug: t.slug },
-      update: {},
+      update: {
+        content: t.content,
+        name: t.name,
+        description: t.description
+      },
       create: t
     });
   }

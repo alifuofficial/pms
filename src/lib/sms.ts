@@ -32,6 +32,10 @@ export async function sendSMS(msisdn: string, textOrTemplate: string, variables?
             finalMessage = finalMessage.replace(new RegExp(`{{${key}}}`, "g"), value);
           });
         }
+      } else {
+        // If it's a slug but no template found, don't send the literal slug
+        console.error(`SMS Template not found: ${textOrTemplate}`);
+        return { success: false, error: "System configuration error: SMS template missing." };
       }
     }
 
