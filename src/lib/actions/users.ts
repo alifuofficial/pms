@@ -5,19 +5,7 @@ import { revalidatePath } from "next/cache";
 import { auth } from "@/auth";
 import { hash } from "bcryptjs";
 import { sendSMS } from "@/lib/sms";
-
-function normalizePhoneNumber(phone: string): string {
-  if (!phone) return phone;
-  let normalized = phone.replace(/\s+/g, ""); // Remove spaces
-  
-  if (normalized.startsWith("+251")) {
-    normalized = normalized.substring(1); // Remove +
-  } else if (normalized.startsWith("09") || normalized.startsWith("07")) {
-    normalized = "251" + normalized.substring(1); // Replace leading 0 with 251
-  }
-  
-  return normalized;
-}
+import { normalizePhoneNumber } from "@/lib/phone";
 
 export async function createUser(data: {
   name: string;

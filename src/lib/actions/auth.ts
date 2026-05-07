@@ -3,9 +3,12 @@
 import { prisma } from "@/lib/prisma";
 import { sendSMS } from "@/lib/sms";
 import { hash } from "bcryptjs";
+import { normalizePhoneNumber } from "@/lib/phone";
 
 export async function requestOtp(identifier: string) {
   try {
+    const normalizedIdentifier = normalizePhoneNumber(identifier);
+    
     // Try email first
     let user = await prisma.user.findUnique({
       where: { email: identifier },
@@ -15,7 +18,7 @@ export async function requestOtp(identifier: string) {
     // If not found by email, try by phone number
     if (!user) {
       user = await prisma.user.findFirst({
-        where: { phoneNumber: identifier },
+        where: { phoneNumber: normalizedIdentifier },
         select: { phoneNumber: true, id: true, email: true }
       });
     }
@@ -68,6 +71,8 @@ export async function verifyOtpAndResetPassword(data: { identifier: string, code
       return { success: false, error: "Invalid or expired verification code." };
     }
 
+    const normalizedIdentifier = normalizePhoneNumber(data.identifier);
+
     // Find user by identifier (email or phone) to get the correct account
     let user = await prisma.user.findUnique({
       where: { email: data.identifier },
@@ -76,7 +81,7 @@ export async function verifyOtpAndResetPassword(data: { identifier: string, code
 
     if (!user) {
       user = await prisma.user.findFirst({
-        where: { phoneNumber: data.identifier },
+        where: { phoneNumber: normalizedIdentifier },
         select: { id: true, phoneNumber: true }
       });
     }
