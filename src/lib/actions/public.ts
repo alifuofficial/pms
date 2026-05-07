@@ -11,7 +11,10 @@ export async function reportPublicPayment(formData: FormData) {
     const transactionId = formData.get("transactionId") as string;
     const screenshot = formData.get("screenshot") as File;
 
+    console.log("[REPORT_PAYMENT_SUBMITTED]", { unitId, senderName, transactionId, fileSize: screenshot?.size });
+
     if (!unitId || !senderName || !transactionId) {
+      console.error("[REPORT_PAYMENT_ERROR] Missing required fields");
       return { success: false, error: "Missing required fields." };
     }
 

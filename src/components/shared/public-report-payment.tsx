@@ -163,6 +163,7 @@ export function PublicReportPayment({ unitId, unitNumber, status }: PublicReport
         </div>
 
         <Button 
+          type="submit"
           disabled={loading}
           className="w-full h-14 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-black text-xs uppercase tracking-[0.2em] shadow-xl shadow-slate-900/10"
         >
