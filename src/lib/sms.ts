@@ -48,8 +48,16 @@ export async function sendSMS(msisdn: string, textOrTemplate: string, variables?
     });
 
     const data = await response.json();
+    console.log("[SMS_ETHIOPIA_RESPONSE]", data);
 
-    if (response.ok && data.status === "success") {
+    const isSuccessful = response.ok && (
+      data.status?.toLowerCase() === "success" || 
+      data.status?.toLowerCase() === "accepted" ||
+      data.code === 200 ||
+      data.id
+    );
+
+    if (isSuccessful) {
       return { success: true, message: data.message };
     } else {
       console.error("SMS Ethiopia Error:", data);
