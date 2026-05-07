@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { 
   BarChart, 
   Bar, 
@@ -19,6 +20,12 @@ interface ChartData {
 }
 
 export function RevenueChart({ data = [] }: { data?: ChartData[] }) {
+  const [isMounted, setIsMounted] = useState(false);
+  
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
   if (data.length === 0) {
     return (
       <div className="h-[300px] w-full flex items-center justify-center bg-slate-50/50 rounded-lg border border-dashed border-slate-200">
@@ -27,9 +34,11 @@ export function RevenueChart({ data = [] }: { data?: ChartData[] }) {
     );
   }
 
+  if (!isMounted) return <div className="h-[300px] w-full" />;
+
   return (
     <div className="h-[300px] w-full">
-      <ResponsiveContainer width="100%" height="100%">
+      <ResponsiveContainer width="100%" height="100%" minHeight={0} minWidth={0}>
         <AreaChart data={data}>
           <defs>
             <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
@@ -76,6 +85,12 @@ export function RevenueChart({ data = [] }: { data?: ChartData[] }) {
 }
 
 export function OccupancyChart({ data = [] }: { data?: ChartData[] }) {
+  const [isMounted, setIsMounted] = useState(false);
+  
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
   if (data.length === 0) {
     return (
       <div className="h-[300px] w-full flex items-center justify-center bg-slate-50/50 rounded-lg border border-dashed border-slate-200">
@@ -84,9 +99,11 @@ export function OccupancyChart({ data = [] }: { data?: ChartData[] }) {
     );
   }
 
+  if (!isMounted) return <div className="h-[300px] w-full" />;
+
   return (
     <div className="h-[300px] w-full">
-      <ResponsiveContainer width="100%" height="100%">
+      <ResponsiveContainer width="100%" height="100%" minHeight={0} minWidth={0}>
         <BarChart data={data}>
           <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
           <XAxis 

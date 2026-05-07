@@ -3,8 +3,8 @@
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 
-function generateSlug(length = 8) {
-  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+function generateSlug(length = 10) {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // Removed ambiguous characters O, 0, I, 1
   let result = "";
   for (let i = 0; i < length; i++) {
     result += chars.charAt(Math.floor(Math.random() * chars.length));
@@ -16,18 +16,36 @@ export async function generateUnitQrSlug(unitId: string) {
   try {
     // Check if it already has one
     const unit = await prisma.unit.findUnique({ where: { id: unitId } });
-    if (unit?.qrSlug) return { success: true, slug: unit.qrSlug };
+    if (!unit) return { success: false, error: "Unit not found." };
+    if (unit.qrSlug) return { success: true, slug: unit.qrSlug };
 
-    const slug = generateSlug();
-    await prisma.unit.update({
-      where: { id: unitId },
-      data: { qrSlug: slug },
-    });
-    revalidatePath("/admin/units");
+    let slug = "";
+    let attempts = 0;
+    while (attempts < 5) {
+      slug = generateSlug();
+      try {
+        await prisma.unit.update({
+          where: { id: unitId },
+          data: { qrSlug: slug },
+        });
+        break;
+      } catch (e: any) {
+        if (e.code === 'P2002') { // Unique constraint failed
+          attempts++;
+          continue;
+        }
+        throw e;
+      }
+    }
+
+    if (attempts === 5) return { success: false, error: "Failed to generate unique slug." };
+
+    revalidatePath("/admin/units", "page");
+    revalidatePath("/(portal)/admin/units", "page");
     return { success: true, slug };
-  } catch (error) {
-    console.error("QR Generation Error:", error);
-    return { success: false, error: "Failed to generate QR slug." };
+  } catch (error: any) {
+    console.error("Generate QR Slug Error:", error);
+    return { success: false, error: error.message || "Failed to generate gateway slug." };
   }
 }
 
@@ -38,11 +56,14 @@ export async function getPublicUnitStatus(slug: string) {
       include: {
         property: true,
         leases: {
-          where: { status: "ACTIVE" },
+          orderBy: { createdAt: "desc" },
           include: {
+            tenant: {
+              select: { name: true }
+            },
             payments: {
               orderBy: { dueDate: "desc" },
-              take: 1
+              take: 5
             }
           }
         }
@@ -51,8 +72,12 @@ export async function getPublicUnitStatus(slug: string) {
 
     if (!unit) return { success: false, error: "Unit not found." };
 
-    const activeLease = unit.leases[0];
-    const latestPayment = activeLease?.payments[0];
+    // Prefer ACTIVE lease, otherwise take the latest one
+    const activeLease = unit.leases.find(l => l.status === "ACTIVE") || unit.leases[0];
+    
+    const payments = activeLease?.payments || [];
+    const latestApprovedPayment = payments.find(p => p.status === "APPROVED");
+    const nextDuePayment = payments.find(p => p.status === "PENDING");
 
     const settings = await prisma.systemSettings.findUnique({ where: { id: "global" } });
     const bankAccounts = await prisma.bankAccount.findMany();
@@ -65,18 +90,38 @@ export async function getPublicUnitStatus(slug: string) {
         property: unit.property.name,
         size: unit.size,
         type: unit.type,
-        rentAmount: unit.rentAmount
+        rentAmount: unit.rentAmount,
+        status: unit.status
       },
       lease: activeLease ? {
         id: activeLease.id,
+        status: activeLease.status,
+        tenantName: activeLease.tenant.name,
         endDate: activeLease.endDate,
-        latestPayment: latestPayment ? {
-          id: latestPayment.id,
-          amount: latestPayment.amount,
-          dueDate: latestPayment.dueDate,
-          status: latestPayment.status,
-          paidAt: latestPayment.paidAt
-        } : null
+        latestApprovedPayment: latestApprovedPayment ? {
+          id: latestApprovedPayment.id,
+          amount: latestApprovedPayment.amount,
+          dueDate: latestApprovedPayment.dueDate,
+          status: latestApprovedPayment.status,
+          paidAt: latestApprovedPayment.paidAt
+        } : null,
+        nextDuePayment: nextDuePayment ? {
+          id: nextDuePayment.id,
+          amount: nextDuePayment.amount,
+          dueDate: nextDuePayment.dueDate,
+          status: nextDuePayment.status,
+          receiptUrl: nextDuePayment.receiptUrl,
+          senderName: nextDuePayment.senderName,
+          transactionId: nextDuePayment.transactionId
+        } : (latestApprovedPayment ? {
+          id: "estimated",
+          amount: unit.rentAmount,
+          dueDate: new Date(new Date(latestApprovedPayment.dueDate).setMonth(new Date(latestApprovedPayment.dueDate).getMonth() + 1)),
+          status: "ESTIMATED",
+          receiptUrl: null,
+          senderName: null,
+          transactionId: null
+        } : null)
       } : null,
       settings: {
         currency: settings?.currency || "USD",

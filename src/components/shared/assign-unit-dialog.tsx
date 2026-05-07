@@ -237,9 +237,11 @@ export function AssignUnitDialog({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger 
-        render={(trigger as React.ReactElement) || <button className="hidden" />} 
-      />
+      {trigger && (
+        <DialogTrigger 
+          render={trigger as React.ReactElement} 
+        />
+      )}
 
 
       <DialogContent className="sm:max-w-[550px] bg-white rounded-2xl p-0 overflow-hidden border-none shadow-2xl">

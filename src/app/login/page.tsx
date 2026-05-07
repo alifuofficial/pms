@@ -22,7 +22,7 @@ import { toast } from "sonner";
 import { ForgotPasswordDialog } from "@/components/shared/forgot-password-dialog";
 
 const loginSchema = z.object({
-  email: z.string().email("Please enter a valid work email address"),
+  identifier: z.string().min(3, "Please enter your email or phone number"),
   password: z.string().min(6, "Password must be at least 6 characters"),
   rememberMe: z.boolean().optional(),
 });
@@ -37,7 +37,7 @@ export default function LoginPage() {
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
     defaultValues: {
-      email: "",
+      identifier: "",
       password: "",
       rememberMe: false,
     },
@@ -47,7 +47,7 @@ export default function LoginPage() {
     setIsLoading(true);
     try {
       const result = await signIn("credentials", {
-        email: data.email,
+        identifier: data.identifier,
         password: data.password,
         redirect: false,
       });
@@ -55,9 +55,8 @@ export default function LoginPage() {
       if (result?.error) {
         toast.error("Authentication failed. Please check your credentials.");
       } else {
-        toast.success("Authentication successful. Redirecting to your workspace...");
+        toast.success("Authentication successful. Redirecting...");
         router.push("/");
-        router.refresh();
       }
     } catch (error) {
       toast.error("An unexpected error occurred. Please try again.");
@@ -131,15 +130,15 @@ export default function LoginPage() {
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
               <FormField
                 control={form.control}
-                name="email"
+                name="identifier"
                 render={({ field }) => (
                   <FormItem className="space-y-1.5">
-                    <FormLabel className="text-slate-700 font-semibold">Work Email</FormLabel>
+                    <FormLabel className="text-slate-700 font-semibold">Email or Phone</FormLabel>
                     <FormControl>
                       <div className="relative group">
                         <Mail className="absolute left-3 top-2.5 h-4 w-4 text-slate-400 group-focus-within:text-blue-500 transition-colors" />
                         <Input
-                          placeholder="name@company.com"
+                          placeholder="Email or +251..."
                           className="pl-10 h-11 bg-white border-slate-200 rounded-lg transition-all focus:ring-2 focus:ring-blue-100 focus:border-blue-500"
                           {...field}
                         />

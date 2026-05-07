@@ -2,7 +2,7 @@ import { PrismaClient } from "@prisma/client";
 import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
 
 const globalForPrisma = globalThis as unknown as {
-  pms_prisma: PrismaClient | undefined;
+  pms_prisma_v3: PrismaClient | undefined;
 };
 
 const adapter = new PrismaBetterSqlite3({
@@ -10,12 +10,12 @@ const adapter = new PrismaBetterSqlite3({
 });
 
 export const prisma =
-  globalForPrisma.pms_prisma ??
+  globalForPrisma.pms_prisma_v3 ??
   new PrismaClient({
     adapter,
     log: process.env.NODE_ENV === "development" ? ["query", "error", "warn"] : ["error"],
   });
 
-if (process.env.NODE_ENV !== "production") globalForPrisma.pms_prisma = prisma;
+if (process.env.NODE_ENV !== "production") globalForPrisma.pms_prisma_v3 = prisma;
 
 // Force reload client - clean reload

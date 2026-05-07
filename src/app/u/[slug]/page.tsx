@@ -1,4 +1,5 @@
 import { getPublicUnitStatus } from "@/lib/actions/qr";
+import { PublicReportPayment } from "@/components/shared/public-report-payment";
 import { 
   Building2, 
   Clock, 
@@ -8,11 +9,14 @@ import {
   CreditCard,
   Banknote,
   ArrowRight,
-  ChevronRight
+  ChevronRight,
+  ShieldCheck,
+  Loader2
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { differenceInDays } from "date-fns";
+import { formatSystemDate } from "@/lib/calendar";
+import { differenceInDays, format } from "date-fns";
 import Link from "next/link";
 
 export default async function PublicUnitPage({ params }: { params: { slug: string } }) {
@@ -43,65 +47,103 @@ export default async function PublicUnitPage({ params }: { params: { slug: strin
   // Calculate Status
   let status = "AVAILABLE"; 
   let statusColor = "text-slate-500 bg-slate-50 border-slate-100";
+  let themeColor = "bg-slate-900";
+  let accentColor = "text-slate-900";
   let statusIcon = <HelpCircle size={14} />;
-  let statusLabel = "UNOCCUPIED";
+  let statusLabel = "VACANT";
   let daysLeft: number | null = null;
 
-  if (lease) {
-    const latestPayment = lease.latestPayment;
+  if (unit.status === "OCCUPIED" || lease) {
+    statusLabel = "OCCUPIED";
+    statusColor = "text-blue-600 bg-blue-50 border-blue-100";
+    themeColor = "bg-slate-900"; 
+    accentColor = "text-slate-900";
+
+    const nextPayment = lease?.nextDuePayment;
     const now = new Date();
-    const dueDate = latestPayment ? new Date(latestPayment.dueDate) : null;
+    const dueDate = nextPayment ? new Date(nextPayment.dueDate) : null;
     
-    if (latestPayment && latestPayment.status === "APPROVED") {
+    if (nextPayment) {
+        const dLeft = dueDate ? differenceInDays(dueDate, now) : 0;
+        daysLeft = dLeft;
+
+        if (nextPayment.receiptUrl) {
+            status = "PENDING";
+            statusColor = "text-blue-600 bg-blue-50 border-blue-100";
+            themeColor = "bg-slate-900";
+            accentColor = "text-slate-900";
+            statusIcon = <Loader2 size={14} className="animate-spin" />;
+            statusLabel = "UNDER REVIEW";
+        } else if (dueDate && now > dueDate) {
+            status = "OVERDUE";
+            statusColor = "text-rose-600 bg-rose-50 border-rose-100";
+            themeColor = "bg-rose-600";
+            accentColor = "text-rose-600";
+            statusIcon = <AlertCircle size={14} />;
+            statusLabel = "OVERDUE";
+        } else if (dLeft <= 10) {
+            status = "DUE";
+            statusColor = "text-amber-600 bg-amber-50 border-amber-100";
+            themeColor = "bg-amber-500";
+            accentColor = "text-amber-500";
+            statusIcon = <Clock size={14} />;
+            statusLabel = "PAY NOW";
+        } else {
+            status = "PAID";
+            statusColor = "text-emerald-600 bg-emerald-50 border-emerald-100";
+            themeColor = "bg-emerald-600";
+            accentColor = "text-emerald-600";
+            statusIcon = <CheckCircle2 size={14} />;
+            statusLabel = "PAID";
+        }
+    } else if (lease?.latestApprovedPayment) {
         status = "PAID";
         statusColor = "text-emerald-600 bg-emerald-50 border-emerald-100";
+        themeColor = "bg-emerald-600";
+        accentColor = "text-emerald-600";
         statusIcon = <CheckCircle2 size={14} />;
-        statusLabel = "RENT PAID";
-    } else if (dueDate && now > dueDate) {
-        status = "OVERDUE";
-        statusColor = "text-rose-600 bg-rose-50 border-rose-100";
-        statusIcon = <AlertCircle size={14} />;
-        statusLabel = "OVERDUE";
-    } else {
-        status = "DUE";
-        statusColor = "text-amber-600 bg-amber-50 border-amber-100";
-        statusIcon = <Clock size={14} />;
-        statusLabel = "PAY NOW";
-    }
-
-    if (dueDate) {
-        daysLeft = differenceInDays(dueDate, now);
+        statusLabel = "PAID";
     }
   }
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-900 antialiased selection:bg-slate-900 selection:text-white">
       {/* Top Identity Section */}
-      <div className="bg-slate-900 text-white pt-12 pb-24 px-6 relative overflow-hidden">
+      <div className={cn(themeColor, "text-white pt-12 pb-24 px-6 relative overflow-hidden transition-colors duration-700")}>
         <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full blur-3xl -mr-32 -mt-32" />
-        <div className="absolute bottom-0 left-0 w-48 h-48 bg-blue-500/10 rounded-full blur-3xl -ml-24 -mb-24" />
+        <div className="absolute bottom-0 left-0 w-48 h-48 bg-white/5 rounded-full blur-3xl -ml-24 -mb-24" />
         
         <div className="max-w-md mx-auto flex items-center justify-between relative z-10">
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 bg-white/10 backdrop-blur-md rounded-2xl flex items-center justify-center border border-white/10 shadow-xl">
-              <Building2 size={24} className="text-white" />
+               <ShieldCheck size={24} className="text-white" />
             </div>
             <div>
               <h1 className="text-xl font-black tracking-tight leading-none mb-1">{unit.property}</h1>
-              <div className="flex items-center gap-1.5 opacity-50">
-                <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
-                <p className="text-[10px] font-black uppercase tracking-[0.2em]">Live Status Node</p>
+              <div className="flex items-center gap-1.5 opacity-70">
+                <p className="text-[10px] font-black uppercase tracking-[0.2em]">
+                  {lease ? lease.tenantName : "Unit Status Node"}
+                </p>
               </div>
             </div>
           </div>
           
           <div className={cn(
-            "px-3 py-1.5 rounded-xl border-2 font-black text-[10px] uppercase tracking-widest shadow-lg",
+            "px-4 py-2 rounded-2xl border-2 font-black text-[11px] uppercase tracking-widest shadow-2xl transition-all duration-500 bg-white",
             statusColor,
-            "border-current opacity-90"
+            "border-transparent"
           )}>
-            {statusLabel}
+            <div className="flex items-center gap-2">
+               {statusIcon}
+               {statusLabel}
+            </div>
           </div>
+        </div>
+
+        <div className="max-w-md mx-auto mt-8 flex items-center gap-2 opacity-20">
+           <div className="h-px bg-white flex-1" />
+           <p className="text-[8px] font-black uppercase tracking-[0.4em]">AES-256 Encrypted Session</p>
+           <div className="h-px bg-white flex-1" />
         </div>
       </div>
 
@@ -111,13 +153,18 @@ export default async function PublicUnitPage({ params }: { params: { slug: strin
           {/* Unit Hero */}
           <div className="p-10 text-center border-b border-slate-50 relative group">
             <div className="absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-slate-100 to-transparent" />
-            <div className="space-y-2">
-              <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.4em]">Unit Identity</p>
-              <h2 className="text-6xl font-black text-slate-900 tracking-tighter leading-none">{unit.unitNumber}</h2>
+            <div className="space-y-3">
+              <div className="flex items-center justify-center gap-2 mb-1">
+                 <ShieldCheck size={10} className="text-blue-500" />
+                 <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.4em]">Verified Identity</p>
+              </div>
+              <h2 className={cn("text-6xl font-black tracking-tighter leading-none font-mono transition-colors duration-500", accentColor)}>
+                {unit.unitNumber}
+              </h2>
               <div className="flex items-center justify-center gap-3 pt-2">
-                 <span className="px-3 py-1 bg-slate-100 rounded-lg text-[9px] font-black uppercase text-slate-500 tracking-widest">{unit.type}</span>
+                 <span className="px-3 py-1 bg-slate-900 text-white rounded-lg text-[9px] font-black uppercase tracking-widest">{unit.type}</span>
                  <span className="w-1 h-1 bg-slate-300 rounded-full" />
-                 <span className="px-3 py-1 bg-slate-100 rounded-lg text-[9px] font-black uppercase text-slate-500 tracking-widest">{unit.size} m²</span>
+                 <span className="px-3 py-1 bg-slate-100 rounded-lg text-[9px] font-black uppercase text-slate-500 tracking-widest font-mono">{unit.size} M²</span>
               </div>
             </div>
           </div>
@@ -131,23 +178,67 @@ export default async function PublicUnitPage({ params }: { params: { slug: strin
                       <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Monthly Rent</p>
                       <div className="flex items-baseline gap-1">
                         <span className="text-xs font-black text-slate-400">{settings.currency}</span>
-                        <p className="text-2xl font-black text-slate-900 tracking-tighter">{unit.rentAmount.toLocaleString()}</p>
+                        <p className={cn("text-2xl font-black tracking-tighter transition-colors duration-500", accentColor)}>
+                          {unit.rentAmount.toLocaleString()}
+                        </p>
                       </div>
                    </div>
                    <div className="bg-slate-50/50 p-5 rounded-[2rem] border border-slate-100/80 space-y-2">
-                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Payment Cycle</p>
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Countdown</p>
                       {daysLeft !== null ? (
                         <div className="flex items-baseline gap-1">
                           <p className={cn(
-                            "text-2xl font-black tracking-tighter",
-                            daysLeft < 0 ? "text-rose-600" : "text-slate-900"
+                            "text-2xl font-black tracking-tighter transition-colors duration-500",
+                            accentColor
                           )}>{daysLeft < 0 ? Math.abs(daysLeft) : daysLeft}</p>
-                          <span className="text-[10px] font-black text-slate-400 uppercase">{daysLeft < 0 ? "Days Past" : "Days To Go"}</span>
+                          <span className="text-[10px] font-black text-slate-400 uppercase">{daysLeft < 0 ? "Days Past" : "Days Left"}</span>
                         </div>
                       ) : (
-                        <p className="text-sm font-black text-slate-900">First Payment</p>
+                        <p className="text-sm font-black text-slate-900 uppercase">Current</p>
                       )}
                    </div>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="bg-slate-50 p-6 rounded-[2rem] border border-slate-100 space-y-4">
+                    <div className="space-y-1">
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Last Payment Month</p>
+                      {lease.latestApprovedPayment ? (
+                        <div className="space-y-0.5">
+                          <p className="text-sm font-black text-slate-900">{format(new Date(lease.latestApprovedPayment.dueDate), "MMMM yyyy")}</p>
+                          <p className="text-[10px] font-bold text-emerald-600 uppercase">{formatSystemDate(new Date(lease.latestApprovedPayment.dueDate), "ETHIOPIAN")}</p>
+                        </div>
+                      ) : (
+                        <p className="text-xs font-bold text-slate-400 uppercase">No approved payments found</p>
+                      )}
+                    </div>
+                    
+                    <div className="h-px bg-slate-200/50" />
+                    
+                    <div className="space-y-1">
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Next Payment Due</p>
+                      {lease.nextDuePayment ? (
+                        <div className="space-y-0.5">
+                          <p className="text-sm font-black text-slate-900">{format(new Date(lease.nextDuePayment.dueDate), "MMMM d, yyyy")}</p>
+                          <p className="text-[10px] font-bold text-amber-600 uppercase">
+                             {formatSystemDate(new Date(lease.nextDuePayment.dueDate), "ETHIOPIAN")}
+                          </p>
+                          {lease.nextDuePayment.status === "ESTIMATED" && (
+                            <div className="pt-2 space-y-1">
+                               <p className="text-[9px] font-bold text-emerald-600 uppercase tracking-tighter">
+                                  Thank you for this month payment. Get ready for next month!
+                               </p>
+                               <p className="text-[9px] font-bold text-emerald-600/80 uppercase tracking-tighter">
+                                  ለዚህ ወር ክፍያ እናመሰግናለን። ለሚቀጥለው ወር ይዘጋጁ!
+                               </p>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <p className="text-xs font-bold text-slate-400 uppercase">Next cycle pending</p>
+                      )}
+                    </div>
+                  </div>
                 </div>
 
                 {/* Bank Engine */}
@@ -182,54 +273,43 @@ export default async function PublicUnitPage({ params }: { params: { slug: strin
             ) : (
               <div className="p-12 text-center space-y-4 bg-slate-50 rounded-[2.5rem] border border-dashed border-slate-200">
                  <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center mx-auto text-slate-300 shadow-sm">
-                   <HelpCircle size={32} />
+                   <Building2 size={32} />
                  </div>
                  <div className="space-y-1">
-                    <p className="text-sm font-black text-slate-900 uppercase">Unit Status: Vacant</p>
-                    <p className="text-xs text-slate-400 font-medium leading-relaxed">This unit currently has no active digital lease agreement.</p>
+                    <p className="text-sm font-black text-slate-900 uppercase tracking-tighter">Unit Status: Vacant</p>
+                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Contact Manager to Rent</p>
                  </div>
               </div>
             )}
           </div>
 
           {/* Action Hub */}
-          <div className="p-10 pt-0 mt-auto">
-             <div className="bg-slate-900 rounded-[2rem] p-1 overflow-hidden shadow-2xl shadow-slate-900/20 group cursor-pointer active:scale-95 transition-transform">
-                <div className="bg-white/5 p-5 flex items-center justify-between rounded-[1.8rem]">
-                   <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 bg-emerald-500 text-white rounded-2xl flex items-center justify-center shadow-lg shadow-emerald-500/30">
-                         <CreditCard size={20} />
-                      </div>
-                      <div>
-                        <p className="text-sm font-black text-white tracking-tight uppercase">Quick Action</p>
-                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Report Payment</p>
-                      </div>
-                   </div>
-                   <ChevronRight size={20} className="text-slate-600 group-hover:text-white transition-colors" />
-                </div>
-             </div>
-          </div>
-        </div>
-
-        {/* Auditor Footer */}
-        <div className="bg-white rounded-3xl p-8 border border-slate-100 shadow-xl shadow-slate-900/5 text-center space-y-4">
-          <div className="w-10 h-10 bg-slate-50 rounded-xl flex items-center justify-center mx-auto text-slate-400">
-             <AlertCircle size={18} />
-          </div>
-          <div className="space-y-1">
-            <h3 className="text-sm font-black text-slate-900 uppercase tracking-tight">Access Restricted</h3>
-            <p className="text-[11px] text-slate-500 font-medium leading-relaxed">For security reasons, detailed payment history is restricted. Please contact the <strong>Official Accountant</strong> for comprehensive ledger statements.</p>
-          </div>
-          <div className="pt-2">
-            <div className="inline-block px-6 py-2 bg-slate-50 rounded-full text-[10px] font-black text-slate-400 uppercase tracking-widest">
-              Secured Node: {slug}
+          {lease && (
+            <div className="p-10 pt-0 mt-auto">
+               <PublicReportPayment 
+                 unitId={unit.id}
+                 unitNumber={unit.unitNumber}
+                 status={status}
+               />
             </div>
-          </div>
+          )}
         </div>
 
-        <div className="text-center opacity-20 text-[9px] font-black uppercase tracking-[0.3em] pt-8 space-y-2">
-           <p>Soreti Property Rental Operations</p>
-           <p className="text-[7px]">Unit Pulse Gateway v1.0.4</p>
+        {/* Security Meta */}
+        <div className="flex flex-col items-center justify-center gap-4 pt-4">
+           <div className="flex items-center gap-2 px-6 py-2 bg-slate-900/5 rounded-full border border-slate-200/50">
+              <ShieldCheck size={12} className="text-emerald-500" />
+              <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">End-to-End Verified Node</span>
+           </div>
+           
+           <div className="text-center opacity-30 text-[9px] font-black uppercase tracking-[0.3em] space-y-2 pb-10">
+              <p>Soreti Property Rental Operations</p>
+              <div className="flex items-center justify-center gap-2">
+                 <span>{slug}</span>
+                 <span className="w-1 h-1 bg-slate-400 rounded-full" />
+                 <span>v1.2.0-SECURE</span>
+              </div>
+           </div>
         </div>
       </div>
     </div>

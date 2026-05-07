@@ -11,12 +11,22 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     Credentials({
       async authorize(credentials) {
         const parsedCredentials = z
-          .object({ email: z.string().email(), password: z.string().min(6) })
+          .object({ identifier: z.string(), password: z.string().min(6) })
           .safeParse(credentials);
 
         if (parsedCredentials.success) {
-          const { email, password } = parsedCredentials.data;
-          const user = await prisma.user.findUnique({ where: { email } });
+          const { identifier, password } = parsedCredentials.data;
+          
+          // Try email first, then phone
+          const user = await prisma.user.findFirst({
+            where: {
+              OR: [
+                { email: identifier },
+                { phoneNumber: identifier }
+              ]
+            }
+          });
+          
           if (!user) return null;
 
           const passwordsMatch = await bcrypt.compare(password, user.passwordHash);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { 
   Dialog, 
   DialogContent, 
@@ -38,6 +38,20 @@ export function UnitActions({ unit }: { unit: any }) {
   const [isLoading, setIsLoading] = useState(false);
   const [qrSlug, setQrSlug] = useState(unit.qrSlug || "");
   const [isCopied, setIsCopied] = useState(false);
+
+  // Sync with prop updates from server revalidation
+  useEffect(() => {
+    if (unit.qrSlug) setQrSlug(unit.qrSlug);
+  }, [unit.qrSlug]);
+
+  const copyLink = () => {
+    if (typeof window !== 'undefined') {
+      navigator.clipboard.writeText(`${window.location.origin}/u/${qrSlug}`);
+      setIsCopied(true);
+      setTimeout(() => setIsCopied(false), 2000);
+      toast.success("Link copied to clipboard.");
+    }
+  };
   
   const [editData, setEditData] = useState({
     unitNumber: unit.unitNumber,
@@ -235,6 +249,8 @@ export function UnitActions({ unit }: { unit: any }) {
                       if (res.success && res.slug) {
                         setQrSlug(res.slug);
                         toast.success("Gateway slug generated.");
+                      } else {
+                        toast.error(res.error || "Failed to generate gateway slug.");
                       }
                     }}
                     className="bg-slate-900 hover:bg-slate-800 text-white rounded-xl px-8 h-12 font-black text-xs uppercase tracking-widest transition-all"
@@ -245,12 +261,14 @@ export function UnitActions({ unit }: { unit: any }) {
               ) : (
                 <div className="space-y-8 animate-in fade-in zoom-in duration-500">
                    <div className="bg-slate-50 p-6 rounded-[2.5rem] flex items-center justify-center border-2 border-dashed border-slate-200 shadow-inner">
-                      <QRCode 
-                        value={`${window.location.origin}/u/${qrSlug}`} 
-                        size={180}
-                        level="H"
-                        className="rounded-xl overflow-hidden"
-                      />
+                      {typeof window !== 'undefined' && (
+                        <QRCode 
+                          value={`${window.location.origin}/u/${qrSlug}`} 
+                          size={180}
+                          level="H"
+                          className="rounded-xl overflow-hidden"
+                        />
+                      )}
                    </div>
 
                    <div className="space-y-4">
@@ -259,34 +277,40 @@ export function UnitActions({ unit }: { unit: any }) {
                          <div className="h-px bg-slate-100 flex-1 ml-2" />
                       </div>
 
-                      <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/60 flex items-center justify-between">
-                         <p className="text-[10px] font-black text-slate-900 truncate mr-4 tracking-tight">
-                            {window.location.origin}/u/{qrSlug}
-                         </p>
-                         <div className="flex items-center gap-2">
+                      <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 space-y-2">
+                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Gateway Link</p>
+                          <p className="text-xs font-bold text-slate-900 break-all bg-white p-3 rounded-xl border border-slate-200">
+                             {typeof window !== 'undefined' ? `${window.location.origin}/u/${qrSlug}` : `.../u/${qrSlug}`}
+                          </p>
+                          <div className="flex items-center gap-2">
                             <Button 
                               variant="ghost" 
                               size="icon" 
-                              className="h-8 w-8 rounded-lg hover:bg-white"
-                              onClick={() => {
-                                navigator.clipboard.writeText(`${window.location.origin}/u/${qrSlug}`);
-                                setIsCopied(true);
-                                setTimeout(() => setIsCopied(false), 2000);
-                                toast.success("Link copied to clipboard.");
-                              }}
+                              className="h-8 w-8 rounded-lg hover:bg-white hover:shadow-sm transition-all"
+                              onClick={copyLink}
                             >
                               {isCopied ? <Check size={14} className="text-emerald-500" /> : <Copy size={14} />}
                             </Button>
-                            <a href={`${window.location.origin}/u/${qrSlug}`} target="_blank">
-                              <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg hover:bg-white text-blue-600">
+                            <a 
+                              href={typeof window !== 'undefined' ? `${window.location.origin}/u/${qrSlug}` : '#'} 
+                              target="_blank" 
+                              rel="noopener noreferrer"
+                            >
+                              <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg hover:bg-white hover:shadow-sm transition-all text-blue-500">
                                 <ExternalLink size={14} />
                               </Button>
                             </a>
-                         </div>
+                          </div>
                       </div>
                    </div>
 
-                   <Button className="w-full h-14 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl font-black text-sm uppercase tracking-widest shadow-xl shadow-slate-900/10 transition-all">
+                   <Button 
+                    onClick={() => {
+                      const url = `/admin/units/print-badge?unitNumber=${unit.unitNumber}&property=${unit.property.name}&slug=${qrSlug}`;
+                      window.open(url, '_blank');
+                    }}
+                    className="w-full h-14 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl font-black text-sm uppercase tracking-widest shadow-xl shadow-slate-900/10 transition-all"
+                   >
                       <Download size={18} className="mr-2" /> Print Gateway Badge
                    </Button>
                 </div>

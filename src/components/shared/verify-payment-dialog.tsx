@@ -20,7 +20,9 @@ import {
   Loader2,
   ShieldCheck,
   ExternalLink,
-  Download
+  Download,
+  User,
+  Hash
 } from "lucide-react";
 import { approvePayment, rejectPayment } from "@/lib/actions/payments";
 import { toast } from "sonner";
@@ -149,10 +151,24 @@ export function VerifyPaymentDialog({ payment, currency }: VerifyPaymentDialogPr
             </div>
             <div className="space-y-1.5 p-4 bg-white border border-slate-100 rounded-xl">
               <div className="flex items-center gap-2 text-slate-400">
+                <User size={14} />
+                <span className="text-[10px] font-bold uppercase tracking-wider">Sender Name</span>
+              </div>
+              <p className="text-xs font-bold text-slate-700 truncate">{payment.senderName || "System Automated"}</p>
+            </div>
+            <div className="space-y-1.5 p-4 bg-white border border-slate-100 rounded-xl">
+              <div className="flex items-center gap-2 text-slate-400">
                 <CreditCard size={14} />
                 <span className="text-[10px] font-bold uppercase tracking-wider">Method</span>
               </div>
               <p className="text-xs font-bold text-slate-700">Bank Transfer</p>
+            </div>
+            <div className="space-y-1.5 p-4 bg-white border border-slate-100 rounded-xl">
+              <div className="flex items-center gap-2 text-slate-400">
+                <FileText size={14} />
+                <span className="text-[10px] font-bold uppercase tracking-wider">Transaction ID</span>
+              </div>
+              <p className="text-xs font-bold text-slate-700 truncate">{payment.transactionId || "N/A"}</p>
             </div>
           </div>
 
