@@ -1,5 +1,5 @@
 const { PrismaClient } = require("@prisma/client");
-require('dotenv').config();
+try { require('dotenv').config(); } catch (e) {}
 
 const prisma = new PrismaClient();
 

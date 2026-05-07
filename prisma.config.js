@@ -1,4 +1,4 @@
-require('dotenv').config();
+try { require('dotenv').config(); } catch (e) {}
 // No need for defineConfig from prisma/config to avoid module resolution issues in production
 module.exports = {
   schema: "prisma/schema.prisma",
