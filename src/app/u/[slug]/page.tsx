@@ -348,7 +348,7 @@ export default async function PublicUnitPage({ params }: { params: Promise<{ slu
                  unitNumber={unit.unitNumber}
                  status={lease.latestApprovedPayment ? "PAID" : "UNPAID"}
                  nextMonth={lease.nextDuePayment ? format(new Date(lease.nextDuePayment.dueDate), "MMMM yyyy") : undefined}
-                 nextMonthAmharic={lease.nextDuePayment ? new Kenat(new Date(lease.nextDuePayment.dueDate)).format("amharic") : undefined}
+                 nextMonthAmharic={lease.nextDuePayment ? formatEthiopianMonthYear(new Date(lease.nextDuePayment.dueDate)) : undefined}
                />
             </div>
           )}
