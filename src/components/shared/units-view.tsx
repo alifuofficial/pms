@@ -10,6 +10,7 @@ import { getProperties } from "@/lib/actions/properties";
 import { getSystemSettings } from "@/lib/actions/settings";
 import { DataImportExport } from "./data-import-export";
 import { exportUnitsCsv, importUnitsCsv } from "@/lib/actions/import-export";
+import { Pagination } from "./pagination";
 
 export async function UnitsView({ 
   title = "Inventory",
@@ -38,18 +39,29 @@ export async function UnitsView({
     ];
   }
 
-  const units = await prisma.unit.findMany({
-    where,
-    include: { 
-      property: true,
-      leases: {
-        where: { status: "ACTIVE" },
-        include: { tenant: true },
-        take: 1
-      }
-    },
-    orderBy: { createdAt: "desc" },
-  });
+  const page = parseInt(searchParams?.page || "1");
+  const limit = parseInt(searchParams?.limit || "10");
+  const skip = (page - 1) * limit;
+
+  const [units, totalCount] = await Promise.all([
+    prisma.unit.findMany({
+      where,
+      include: { 
+        property: true,
+        leases: {
+          where: { status: "ACTIVE" },
+          include: { tenant: true },
+          take: 1
+        }
+      },
+      orderBy: { createdAt: "desc" },
+      skip,
+      take: limit,
+    }),
+    prisma.unit.count({ where })
+  ]);
+
+  const totalPages = Math.ceil(totalCount / limit);
 
   return (
     <div className="max-w-[1200px] mx-auto space-y-6 animate-in fade-in duration-700">
@@ -152,6 +164,7 @@ export async function UnitsView({
           </tbody>
         </table>
       </div>
+      <Pagination totalPages={totalPages} currentPage={page} />
     </div>
   );
 }
