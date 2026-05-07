@@ -53,9 +53,9 @@ export async function processLateFees() {
         const totalAmount = payment.amount + (payment.lease.unit.rentAmount * penaltyRate);
 
         await sendSMS(payment.tenant.phoneNumber, templateSlug, {
-          tenant_name: payment.tenant.name,
-          property_name: payment.lease.unit.property.name,
-          unit_number: payment.lease.unit.unitNumber,
+          tenant_name: payment.tenant.name || "Tenant",
+          property_name: payment.lease.unit.property.name || "Property",
+          unit_number: payment.lease.unit.unitNumber || "N/A",
           amount: totalAmount.toLocaleString(),
           due_date: payment.dueDate.toLocaleDateString()
         });
