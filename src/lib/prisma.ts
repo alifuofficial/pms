@@ -1,5 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
+import "dotenv/config";
 
 const globalForPrisma = globalThis as unknown as {
   pms_prisma_v3: PrismaClient | undefined;
