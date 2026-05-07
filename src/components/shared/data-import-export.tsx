@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useRef } from "react";
-import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import { Download, Upload, Loader2, FileSpreadsheet } from "lucide-react";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 import { 
   DropdownMenu, 
   DropdownMenuContent, 
@@ -94,15 +95,19 @@ export function DataImportExport({ type, onExport, onImport }: DataImportExportP
         className="hidden" 
       />
       <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="outline" size="sm" className="h-9 rounded-lg border-slate-200 text-xs font-semibold" disabled={isExporting || isImporting}>
-            {isExporting || isImporting ? (
-              <Loader2 size={14} className="mr-2 animate-spin" />
-            ) : (
-              <FileSpreadsheet size={14} className="mr-2" />
-            )}
-            Data
-          </Button>
+        <DropdownMenuTrigger 
+          disabled={isExporting || isImporting}
+          className={cn(
+            buttonVariants({ variant: "outline", size: "sm" }), 
+            "h-9 rounded-lg border-slate-200 text-xs font-semibold flex items-center"
+          )}
+        >
+          {isExporting || isImporting ? (
+            <Loader2 size={14} className="mr-2 animate-spin" />
+          ) : (
+            <FileSpreadsheet size={14} className="mr-2" />
+          )}
+          Data
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-48">
           <DropdownMenuItem onClick={handleExport} disabled={isExporting || isImporting}>

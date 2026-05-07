@@ -72,15 +72,39 @@ export async function getPublicUnitStatus(slug: string) {
 
     if (!unit) return { success: false, error: "Unit not found." };
 
+    const settings = await prisma.systemSettings.findUnique({ where: { id: "global" } });
+    const bankAccounts = await prisma.bankAccount.findMany({ orderBy: { createdAt: "desc" } });
+
     // Prefer ACTIVE lease, otherwise take the latest one
     const activeLease = unit.leases.find(l => l.status === "ACTIVE") || unit.leases[0];
     
     const payments = activeLease?.payments || [];
     const latestApprovedPayment = payments.find(p => p.status === "APPROVED");
-    const nextDuePayment = payments.find(p => p.status === "PENDING");
+    const nextDuePayment = payments.find(p => p.status === "PENDING" || p.status === "REJECTED");
+    
+    const nextPayment = nextDuePayment || (latestApprovedPayment ? {
+      id: "estimated",
+      amount: unit.rentAmount,
+      dueDate: new Date(new Date(latestApprovedPayment.dueDate).setMonth(new Date(latestApprovedPayment.dueDate).getMonth() + 1)),
+      status: "ESTIMATED"
+    } as any : null);
 
-    const settings = await prisma.systemSettings.findUnique({ where: { id: "global" } });
-    const bankAccounts = await prisma.bankAccount.findMany();
+    let penalty = 0;
+    let penaltyTier = 0;
+    if (nextPayment && settings?.lateFeeEnabled) {
+      const now = new Date();
+      const dueDate = new Date(nextPayment.dueDate);
+      const diffTime = now.getTime() - dueDate.getTime();
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+      if (diffDays > 12) {
+        penaltyTier = 2;
+        penalty = unit.rentAmount * 0.10; // 10% penalty
+      } else if (diffDays > 5) {
+        penaltyTier = 1;
+        penalty = unit.rentAmount * ((settings.lateFeePercentage || 5) / 100);
+      }
+    }
 
     return {
       success: true,
@@ -105,27 +129,18 @@ export async function getPublicUnitStatus(slug: string) {
           status: latestApprovedPayment.status,
           paidAt: latestApprovedPayment.paidAt
         } : null,
-        nextDuePayment: nextDuePayment ? {
-          id: nextDuePayment.id,
-          amount: nextDuePayment.amount,
-          dueDate: nextDuePayment.dueDate,
-          status: nextDuePayment.status,
-          receiptUrl: nextDuePayment.receiptUrl,
-          senderName: nextDuePayment.senderName,
-          transactionId: nextDuePayment.transactionId
-        } : (latestApprovedPayment ? {
-          id: "estimated",
-          amount: unit.rentAmount,
-          dueDate: new Date(new Date(latestApprovedPayment.dueDate).setMonth(new Date(latestApprovedPayment.dueDate).getMonth() + 1)),
-          status: "ESTIMATED",
-          receiptUrl: null,
-          senderName: null,
-          transactionId: null
-        } : null)
+        nextDuePayment: nextPayment ? {
+          ...nextPayment,
+          amount: nextPayment.amount, // Base amount
+          penalty: penalty,
+          totalAmount: nextPayment.amount + penalty,
+          penaltyTier
+        } : null
       } : null,
       settings: {
         currency: settings?.currency || "USD",
-        bankAccounts
+        bankAccounts,
+        lateFeeEnabled: settings?.lateFeeEnabled
       }
     };
   } catch (error) {

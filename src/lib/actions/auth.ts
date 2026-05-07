@@ -40,7 +40,7 @@ export async function requestOtp(identifier: string) {
       },
     });
 
-    const smsResult = await sendSMS(targetPhone, `Your Soreti PMS verification code is: ${otp}. Valid for 10 minutes.`);
+    const smsResult = await sendSMS(targetPhone, "otp-code", { code: otp });
     
     if (smsResult.success) {
       return { success: true };
@@ -93,7 +93,7 @@ export async function verifyOtpAndResetPassword(data: { identifier: string, code
     });
 
     if (user.phoneNumber) {
-      await sendSMS(user.phoneNumber, "Your Soreti PMS password has been successfully reset. If you did not authorize this, please contact IT Support immediately.");
+      await sendSMS(user.phoneNumber, "password-reset-success");
     }
 
     // Delete the OTP after use

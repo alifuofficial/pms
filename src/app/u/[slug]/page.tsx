@@ -174,12 +174,22 @@ export default async function PublicUnitPage({ params }: { params: { slug: strin
             {lease ? (
               <div className="space-y-8">
                 <div className="grid grid-cols-2 gap-4">
-                   <div className="bg-slate-50/50 p-5 rounded-[2rem] border border-slate-100/80 space-y-2">
-                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Monthly Rent</p>
+                   <div className={cn(
+                     "p-5 rounded-[2rem] border space-y-2",
+                     lease.nextDuePayment?.penalty && lease.nextDuePayment.penalty > 0 
+                       ? "bg-rose-50 border-rose-100" 
+                       : "bg-slate-50/50 border-slate-100/80"
+                   )}>
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                        {lease.nextDuePayment?.penalty && lease.nextDuePayment.penalty > 0 ? "Total to Pay" : "Monthly Rent"}
+                      </p>
                       <div className="flex items-baseline gap-1">
                         <span className="text-xs font-black text-slate-400">{settings.currency}</span>
-                        <p className={cn("text-2xl font-black tracking-tighter transition-colors duration-500", accentColor)}>
-                          {unit.rentAmount.toLocaleString()}
+                        <p className={cn(
+                          "text-2xl font-black tracking-tighter transition-colors duration-500",
+                          lease.nextDuePayment?.penalty && lease.nextDuePayment.penalty > 0 ? "text-rose-600" : accentColor
+                        )}>
+                          {(lease.nextDuePayment?.totalAmount || unit.rentAmount).toLocaleString()}
                         </p>
                       </div>
                    </div>
@@ -198,6 +208,35 @@ export default async function PublicUnitPage({ params }: { params: { slug: strin
                       )}
                    </div>
                 </div>
+
+                {lease.nextDuePayment?.penalty && lease.nextDuePayment.penalty > 0 && (
+                  <div className={cn(
+                    "p-5 rounded-3xl border animate-pulse",
+                    lease.nextDuePayment.penaltyTier === 2 ? "bg-rose-600 text-white border-rose-700" : "bg-amber-50 text-amber-900 border-amber-200"
+                  )}>
+                    <div className="flex items-center gap-3">
+                      <div className={cn(
+                        "p-2 rounded-xl",
+                        lease.nextDuePayment.penaltyTier === 2 ? "bg-white/20" : "bg-amber-200"
+                      )}>
+                        <AlertCircle size={20} />
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-widest opacity-80">
+                          {lease.nextDuePayment.penaltyTier === 2 ? "Final Warning" : "Late Fee Applied"}
+                        </p>
+                        <p className="text-sm font-black tracking-tight">
+                          Penalty: {settings.currency} {lease.nextDuePayment.penalty.toLocaleString()} ({lease.nextDuePayment.penaltyTier === 2 ? "10%" : "5%"})
+                        </p>
+                      </div>
+                    </div>
+                    {lease.nextDuePayment.penaltyTier === 2 && (
+                      <p className="text-[10px] font-bold mt-2 pt-2 border-t border-white/20 uppercase tracking-tighter leading-tight">
+                        Account flag: Legal action or eviction proceedings may be initiated if payment is not received immediately.
+                      </p>
+                    )}
+                  </div>
+                )}
 
                 <div className="space-y-4">
                   <div className="bg-slate-50 p-6 rounded-[2rem] border border-slate-100 space-y-4">

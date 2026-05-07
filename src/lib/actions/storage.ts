@@ -39,7 +39,11 @@ export async function uploadFile(file: File) {
     }
 
     // Local Storage
-    const uploadsDir = join(process.cwd(), "public", "uploads");
+    const isProd = process.env.NODE_ENV === "production";
+    const uploadsDir = isProd 
+      ? "/app/data/uploads" 
+      : join(process.cwd(), "public", "uploads");
+
     try {
       await mkdir(uploadsDir, { recursive: true });
     } catch (e) {}
@@ -47,7 +51,8 @@ export async function uploadFile(file: File) {
     const path = join(uploadsDir, filename);
     await writeFile(path, buffer);
     
-    return { success: true, url: `/uploads/${filename}` };
+    // Return the API route URL instead of direct public path
+    return { success: true, url: `/api/uploads/${filename}` };
   } catch (error) {
     console.error("Upload Error:", error);
     return { success: false, error: "Failed to upload file" };

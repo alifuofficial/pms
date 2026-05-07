@@ -169,6 +169,7 @@ export function SettingsForm({ initialData, initialBankAccounts = [] }: { initia
     { id: "ftp", label: "Storage (FTP)", icon: Server },
     { id: "payment", label: "Payment Methods", icon: CreditCard },
     { id: "sms", label: "SMS Ethiopia", icon: Smartphone },
+    { id: "late-fee", label: "Late Fees", icon: CreditCard },
     { id: "regional", label: "Regional", icon: Database },
     { id: "danger", label: "Danger Zone", icon: Trash2 },
   ];
@@ -629,6 +630,50 @@ export function SettingsForm({ initialData, initialBankAccounts = [] }: { initia
                             ሰኞ፣ ሚያዝያ 26፣ 2018
                           </p>
                         </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {activeTab === "late-fee" && (
+                <div className="p-6 space-y-6">
+                  <div className="space-y-1">
+                    <h2 className="text-base font-semibold text-slate-900">Late Fee Penalties</h2>
+                    <p className="text-xs text-slate-500">Configure automated financial penalties for overdue payments.</p>
+                  </div>
+                  
+                  <div className="pt-4 border-t border-slate-50 space-y-6">
+                    <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-100">
+                      <div className="space-y-0.5">
+                        <Label className="text-sm font-semibold text-slate-900">Enable Late Fees</Label>
+                        <p className="text-[10px] text-slate-500 font-medium">When enabled, penalties will be calculated on public QR pages.</p>
+                      </div>
+                      <input 
+                        type="checkbox" 
+                        checked={formData.lateFeeEnabled || false}
+                        onChange={(e) => setFormData({ ...formData, lateFeeEnabled: e.target.checked })}
+                        className="h-5 w-5 rounded border-slate-300 text-slate-900 focus:ring-slate-900"
+                      />
+                    </div>
+
+                    <div className="space-y-4">
+                      <div className="space-y-1.5">
+                        <Label className="text-[10px] font-semibold uppercase text-slate-400">Penalty Percentage (%)</Label>
+                        <div className="relative">
+                          <Input 
+                            type="number"
+                            step="0.1"
+                            value={formData.lateFeePercentage || 5}
+                            onChange={(e) => setFormData({ ...formData, lateFeePercentage: parseFloat(e.target.value) })}
+                            className="h-10 rounded-lg border-slate-200 text-sm pl-8"
+                          />
+                          <span className="absolute left-3 top-2.5 text-slate-400 text-sm font-bold">%</span>
+                        </div>
+                        <p className="text-[10px] text-slate-400 font-medium leading-relaxed">
+                          Tier 1: {formData.lateFeePercentage || 5}% applied after 5 days.<br/>
+                          Tier 2: Total 10% (additional {(10 - (formData.lateFeePercentage || 5)).toFixed(1)}%) applied after 30 days.
+                        </p>
                       </div>
                     </div>
                   </div>

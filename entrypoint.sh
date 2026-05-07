@@ -9,7 +9,7 @@ echo "--- STARTING DEPLOYMENT STEPS ---"
 echo "DATABASE_URL: $DATABASE_URL"
 
 echo "Verifying database permissions..."
-mkdir -p /app/data
+mkdir -p /app/data/uploads
 chown -R root:root /app/data
 chmod -R 777 /app/data
 

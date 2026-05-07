@@ -18,6 +18,7 @@ const SYSTEM_VARIABLES = [
   { key: "{{due_date}}", label: "Due Date" },
   { key: "{{lease_end_date}}", label: "Lease End Date" },
   { key: "{{company_name}}", label: "Company Name" },
+  { key: "{{code}}", label: "Verification Code" },
 ];
 
 export function TemplateManager({ initialTemplates }: { initialTemplates: any[] }) {
@@ -240,22 +241,43 @@ export function TemplateManager({ initialTemplates }: { initialTemplates: any[] 
           <div key={template.id} className="group relative bg-white border border-slate-200 rounded-xl p-5 hover:border-indigo-200 hover:shadow-md transition-all duration-200 flex flex-col h-full">
             <div className="flex justify-between items-start mb-3">
               <div>
-                <h3 className="font-semibold text-slate-900 text-sm leading-tight">{template.name}</h3>
+                <div className="flex items-center gap-2">
+                   <h3 className="font-semibold text-slate-900 text-sm leading-tight">{template.name}</h3>
+                   {template.slug && <span className="text-[9px] font-bold bg-slate-100 text-slate-400 px-1.5 py-0.5 rounded uppercase tracking-tighter">System</span>}
+                </div>
                 {template.description && (
-                  <p className="text-[11px] text-slate-500 mt-1 line-clamp-1">{template.description}</p>
+                   <p className="text-[11px] text-slate-500 mt-1 line-clamp-1">{template.description}</p>
                 )}
               </div>
               <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                <button 
+                  onClick={async () => {
+                    const res = await updateSmsTemplate(template.id, { enabled: !template.enabled });
+                    if (res.success) setTemplates(templates.map(t => t.id === template.id ? res.data : t));
+                  }}
+                  className={cn(
+                    "p-1.5 rounded-md transition-colors",
+                    template.enabled ? "text-emerald-600 hover:bg-emerald-50" : "text-slate-400 hover:bg-slate-50"
+                  )}
+                  title={template.enabled ? "Disable" : "Enable"}
+                >
+                  <Smartphone className="w-3.5 h-3.5" />
+                </button>
                 <button onClick={() => startEdit(template)} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-md transition-colors">
                   <Edit className="w-3.5 h-3.5" />
                 </button>
-                <button onClick={() => handleDelete(template.id)} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors">
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
+                {!template.slug && (
+                  <button onClick={() => handleDelete(template.id)} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors">
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </div>
             </div>
             
-            <div className="bg-slate-50 rounded-lg p-3 mt-auto relative overflow-hidden">
+            <div className={cn(
+              "rounded-lg p-3 mt-auto relative overflow-hidden transition-opacity duration-300",
+              template.enabled ? "bg-slate-50" : "bg-slate-50 opacity-40 grayscale"
+            )}>
               <div className="absolute top-2 right-2 text-slate-200">
                 <Smartphone className="w-8 h-8 opacity-50" />
               </div>
@@ -265,8 +287,11 @@ export function TemplateManager({ initialTemplates }: { initialTemplates: any[] 
             </div>
             
             <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-400 font-medium">
+              <div className="flex items-center gap-1.5">
+                <div className={cn("w-1.5 h-1.5 rounded-full", template.enabled ? "bg-emerald-500" : "bg-slate-300")} />
+                <span>{template.enabled ? "Active" : "Disabled"}</span>
+              </div>
               <span>{Math.ceil(template.content.length / 160)} segment(s)</span>
-              <span>Updated {new Date(template.updatedAt).toLocaleDateString()}</span>
             </div>
           </div>
         ))}

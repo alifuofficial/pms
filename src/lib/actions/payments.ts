@@ -28,19 +28,51 @@ export async function approvePayment(paymentId: string) {
     });
 
     if (payment.leaseId) {
-      const lease = await prisma.lease.findUnique({ where: { id: payment.leaseId } });
+      const lease = await prisma.lease.findUnique({ 
+        where: { id: payment.leaseId },
+        include: { 
+          unit: true,
+          tenant: true
+        }
+      });
       if (lease && lease.status === "PENDING") {
         await prisma.lease.update({
           where: { id: payment.leaseId },
           data: { status: "ACTIVE" }
         });
         
+        // Notify Lease Activation
+        if (lease.tenant.phoneNumber) {
+          const { sendSMS } = await import("@/lib/sms");
+          await sendSMS(lease.tenant.phoneNumber, "lease-activation", {
+            tenant_name: lease.tenant.name || "Tenant",
+            unit_number: lease.unit.unitNumber
+          });
+        }
+
         await prisma.auditLog.create({
           data: {
             userId: session.user.id,
             action: `Activated lease for payment ${paymentId}`,
             metadata: JSON.stringify({ leaseId: payment.leaseId })
           }
+        });
+      }
+
+      // Notify Payment Approved
+      const fullPayment = await prisma.payment.findUnique({
+        where: { id: paymentId },
+        include: { 
+          tenant: true,
+          lease: { include: { unit: true } }
+        }
+      });
+      if (fullPayment?.tenant?.phoneNumber) {
+        const { sendSMS } = await import("@/lib/sms");
+        await sendSMS(fullPayment.tenant.phoneNumber, "payment-approved", {
+          tenant_name: fullPayment.tenant.name || "Tenant",
+          unit_number: fullPayment.lease?.unit?.unitNumber || "N/A",
+          amount: fullPayment.amount.toLocaleString()
         });
       }
     }
@@ -67,7 +99,20 @@ export async function rejectPayment(paymentId: string) {
     const payment = await prisma.payment.update({
       where: { id: paymentId },
       data: { status: "REJECTED" },
+      include: {
+        tenant: true,
+        lease: { include: { unit: true } }
+      }
     });
+
+    // Notify Payment Rejected
+    if (payment.tenant.phoneNumber) {
+      const { sendSMS } = await import("@/lib/sms");
+      await sendSMS(payment.tenant.phoneNumber, "payment-rejected", {
+        tenant_name: payment.tenant.name || "Tenant",
+        unit_number: payment.lease?.unit?.unitNumber || "N/A"
+      });
+    }
 
     await prisma.auditLog.create({
       data: {

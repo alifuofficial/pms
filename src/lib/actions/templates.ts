@@ -3,7 +3,7 @@
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 
-export async function createSmsTemplate(data: { name: string; description?: string; content: string }) {
+export async function createSmsTemplate(data: { name: string; description?: string; content: string; slug?: string; enabled?: boolean }) {
   try {
     const template = await prisma.smsTemplate.create({ data });
     revalidatePath("/admin/notify");
@@ -14,7 +14,7 @@ export async function createSmsTemplate(data: { name: string; description?: stri
   }
 }
 
-export async function updateSmsTemplate(id: string, data: { name?: string; description?: string; content?: string }) {
+export async function updateSmsTemplate(id: string, data: { name?: string; description?: string; content?: string; enabled?: boolean }) {
   try {
     const template = await prisma.smsTemplate.update({
       where: { id },

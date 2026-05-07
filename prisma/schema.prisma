@@ -5,6 +5,7 @@
 
 generator client {
   provider = "prisma-client-js"
+  engineType = "library"
 }
 
 datasource db {
@@ -121,8 +122,9 @@ model Payment {
   receiptUrl   String?
   senderName    String?
   transactionId String?
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
+  lateFeeApplied Int           @default(0)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
 }
 
 enum PaymentType {
@@ -159,6 +161,10 @@ model SystemSettings {
   currency         String   @default("USD")
   calendarType     String   @default("GREGORIAN")
   
+  // Late Fee Configuration
+  lateFeeEnabled    Boolean @default(false)
+  lateFeePercentage Float   @default(5.0)
+
   // SMTP Configuration
   smtpHost         String?
   smtpPort         Int?
@@ -190,6 +196,8 @@ model BankAccount {
 model SmsTemplate {
   id          String   @id @default(cuid())
   name        String
+  slug        String?  @unique
+  enabled     Boolean  @default(true)
   description String?
   content     String
   createdAt   DateTime @default(now())
