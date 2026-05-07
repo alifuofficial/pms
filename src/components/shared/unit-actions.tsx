@@ -217,8 +217,8 @@ export function UnitActions({ unit }: { unit: any }) {
 
       {/* QR Gateway Dialog */}
       <Dialog open={isQrOpen} onOpenChange={setIsQrOpen}>
-        <DialogContent className="sm:max-w-[400px] bg-white rounded-[2.5rem] p-0 overflow-hidden border-none shadow-2xl">
-           <DialogHeader className="p-8 pb-4 bg-slate-50 border-b border-slate-100">
+        <DialogContent className="sm:max-w-[400px] bg-white rounded-[2rem] p-0 overflow-hidden border-none shadow-2xl max-h-[95vh] flex flex-col">
+           <DialogHeader className="p-6 pb-4 bg-slate-50 border-b border-slate-100 flex-shrink-0">
               <div className="flex items-center gap-3">
                  <div className="w-10 h-10 bg-blue-600 text-white rounded-2xl flex items-center justify-center shadow-lg shadow-blue-600/20">
                     <QrCode size={20} />
@@ -230,7 +230,7 @@ export function UnitActions({ unit }: { unit: any }) {
               </div>
            </DialogHeader>
 
-           <div className="p-8 space-y-8">
+           <div className="p-6 space-y-6 overflow-y-auto custom-scrollbar">
               {!qrSlug ? (
                 <div className="text-center py-8 space-y-4">
                    <div className="w-16 h-16 bg-slate-100 rounded-[2rem] flex items-center justify-center mx-auto text-slate-300">
@@ -259,12 +259,11 @@ export function UnitActions({ unit }: { unit: any }) {
                    </Button>
                 </div>
               ) : (
-                <div className="space-y-8 animate-in fade-in zoom-in duration-500">
-                   <div className="bg-slate-50 p-6 rounded-[2.5rem] flex items-center justify-center border-2 border-dashed border-slate-200 shadow-inner">
+                 <div className="space-y-6 animate-in fade-in zoom-in duration-500">
+                   <div className="bg-slate-50 p-4 rounded-[2rem] flex items-center justify-center border-2 border-dashed border-slate-200 shadow-inner">
                       {typeof window !== 'undefined' && (
-                        <QRCode 
-                          value={`${window.location.origin}/u/${qrSlug}`} 
-                          size={180}
+                        <QRCode value={`${window.location.origin}/u/${qrSlug}`} 
+                           size={160}
                           level="H"
                           className="rounded-xl overflow-hidden"
                         />
@@ -309,9 +308,9 @@ export function UnitActions({ unit }: { unit: any }) {
                       const url = `/admin/units/print-badge?unitNumber=${unit.unitNumber}&property=${unit.property.name}&slug=${qrSlug}`;
                       window.open(url, '_blank');
                     }}
-                    className="w-full h-14 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl font-black text-sm uppercase tracking-widest shadow-xl shadow-slate-900/10 transition-all"
+                    className="w-full h-12 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-black text-sm uppercase tracking-widest shadow-xl shadow-slate-900/10 transition-all flex-shrink-0"
                    >
-                      <Download size={18} className="mr-2" /> Print Gateway Badge
+                      <Download size={16} className="mr-2" /> Print Gateway Badge
                    </Button>
                 </div>
               )}
