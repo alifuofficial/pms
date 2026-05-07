@@ -13,6 +13,8 @@ import { RegisterTenantDialog } from "@/components/shared/register-tenant-dialog
 import { UserActions } from "@/components/shared/user-actions";
 import { formatSystemDate } from "@/lib/calendar";
 import { getSystemSettings } from "@/lib/actions/settings";
+import { DataImportExport } from "@/components/shared/data-import-export";
+import { exportTenantsCsv, importTenantsCsv } from "@/lib/actions/import-export";
 
 export default async function TenantsPage() {
   const settings = await getSystemSettings();
@@ -44,6 +46,11 @@ export default async function TenantsPage() {
           <Button variant="outline" size="sm" className="h-9 rounded-lg border-slate-200 text-xs font-semibold">
             <Filter size={14} className="mr-2" /> Filter
           </Button>
+          <DataImportExport 
+            type="TENANTS"
+            onExport={exportTenantsCsv}
+            onImport={importTenantsCsv}
+          />
           <RegisterTenantDialog currency={settings.currency} />
 
         </div>

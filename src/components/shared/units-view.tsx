@@ -8,6 +8,8 @@ import { AddUnitDialog } from "./add-unit-dialog";
 import { UnitsFilter } from "./units-filter";
 import { getProperties } from "@/lib/actions/properties";
 import { getSystemSettings } from "@/lib/actions/settings";
+import { DataImportExport } from "./data-import-export";
+import { exportUnitsCsv, importUnitsCsv } from "@/lib/actions/import-export";
 
 export async function UnitsView({ 
   title = "Inventory",
@@ -62,6 +64,11 @@ export async function UnitsView({
             <Input placeholder="Unit # or Property..." className="pl-9 h-9 w-64 bg-white border-slate-200 rounded-lg text-sm" />
           </div>
           <UnitsFilter properties={properties} />
+          <DataImportExport 
+            type="UNITS"
+            onExport={exportUnitsCsv}
+            onImport={importUnitsCsv}
+          />
           <AddUnitDialog 
             trigger={
               <Button className="h-9 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold px-4 shadow-none">
