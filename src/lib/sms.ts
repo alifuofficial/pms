@@ -32,6 +32,9 @@ export async function sendSMS(msisdn: string, textOrTemplate: string, variables?
             finalMessage = finalMessage.replace(new RegExp(`{{${key}}}`, "g"), value);
           });
         }
+      } else if (textOrTemplate === "otp-code" && variables?.code) {
+        // HARD FALLBACK for critical OTP system if template is missing
+        finalMessage = `Your Soreti PMS verification code is: ${variables.code}. Valid for 10 minutes.`;
       } else {
         // If it's a slug but no template found, don't send the literal slug
         console.error(`SMS Template not found: ${textOrTemplate}`);
