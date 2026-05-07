@@ -19,7 +19,7 @@ import { formatSystemDate } from "@/lib/calendar";
 import { differenceInDays, format } from "date-fns";
 import Link from "next/link";
 
-export default async function PublicUnitPage({ params }: { params: { slug: string } }) {
+export default async function PublicUnitPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   const result = await getPublicUnitStatus(slug);
 

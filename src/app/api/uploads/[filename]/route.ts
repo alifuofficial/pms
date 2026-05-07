@@ -5,8 +5,9 @@ import { existsSync } from "fs";
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { filename: string } }
+  { params }: { params: Promise<{ filename: string }> }
 ) {
+  const { filename } = await params;
   console.log(`[API] Serving file: ${filename}`);
 
   // Persistent path in production
