@@ -14,8 +14,8 @@ chown -R root:root /app/data
 chmod -R 777 /app/data
 
 echo "Running database synchronization..."
-# Use global prisma for reliability
-prisma db push --url "$DATABASE_URL" --accept-data-loss --force-reset
+# Use global prisma for reliability. Avoid --force-reset in production.
+prisma db push --url "$DATABASE_URL"
 
 echo "Verifying database file..."
 ls -lh /app/data/
