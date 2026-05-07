@@ -15,7 +15,7 @@ import {
   Calendar as CalendarIcon,
   Filter
 } from "lucide-react";
-import { formatSystemDate } from "@/lib/calendar";
+import { formatSystemDate, formatEthiopianMonthYear } from "@/lib/calendar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import Kenat from "kenat";
 
@@ -201,9 +201,8 @@ export function ReportsView({ metrics, currency, calendarType, startDate, endDat
                     <p className="text-[10px] font-bold text-slate-400 uppercase">Unit {p.lease?.unit?.unitNumber}</p>
                   </td>
                   <td className="py-4 px-6">
-                    <p className="text-xs font-bold text-slate-900">{new Kenat(new Date(p.dueDate)).getEthiopian().year}</p>
                     <p className="text-[10px] font-black text-indigo-600 uppercase">
-                      {new Kenat(new Date(p.dueDate)).format("amharic").split(" ")[1]} 
+                      {formatEthiopianMonthYear(new Date(p.dueDate))} 
                       ({new Intl.DateTimeFormat('en-US', { month: 'long' }).format(new Date(p.dueDate))})
                     </p>
                   </td>
