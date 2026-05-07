@@ -11,6 +11,9 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN npx prisma generate
+# Initialize a temporary DB so that 'next build' can prerender pages without failing
+ENV DATABASE_URL="file:./build.db"
+RUN npx prisma db push --accept-data-loss
 RUN npm run build
 
 # Stage 3: Production server
