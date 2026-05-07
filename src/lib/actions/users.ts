@@ -162,7 +162,7 @@ export async function registerTenant(data: {
           tenantId: user.id,
           leaseId: lease.id,
           amount: data.payment.amount,
-          dueDate: new Date(), // Initial payment is due now
+          dueDate: data.startDate, // Initial payment is for the start period
           type: data.payment.type,
           advanceUntil: data.payment.advanceUntil,
           receiptUrl: data.payment.receiptUrl,
@@ -231,7 +231,7 @@ export async function assignUnitToTenant(data: {
           tenantId: data.tenantId,
           leaseId: lease.id,
           amount: data.payment.amount,
-          dueDate: new Date(),
+          dueDate: data.startDate,
           type: data.payment.type,
           advanceUntil: data.payment.advanceUntil,
           receiptUrl: data.payment.receiptUrl,

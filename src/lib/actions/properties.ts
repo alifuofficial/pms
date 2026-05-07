@@ -222,3 +222,33 @@ export async function assignUserToProperties(userId: string, role: string, prope
     return { success: false, error: "Failed to assign properties" };
   }
 }
+
+export async function vacateUnit(unitId: string) {
+  const session = await auth();
+  if (!session?.user || (session.user.role !== "ADMIN" && session.user.role !== "MANAGER")) {
+    return { success: false, error: "Unauthorized" };
+  }
+
+  try {
+    await prisma.$transaction([
+      // 1. Terminate any active leases
+      prisma.lease.updateMany({
+        where: { unitId, status: "ACTIVE" },
+        data: { status: "TERMINATED" }
+      }),
+      // 2. Set unit to AVAILABLE
+      prisma.unit.update({
+        where: { id: unitId },
+        data: { status: "AVAILABLE" }
+      })
+    ]);
+
+    revalidatePath("/admin/units");
+    revalidatePath("/admin/properties");
+    revalidatePath("/manager/units");
+    return { success: true };
+  } catch (error) {
+    console.error("Vacate Unit Error:", error);
+    return { success: false, error: "Failed to vacate unit." };
+  }
+}

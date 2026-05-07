@@ -20,6 +20,17 @@ export function formatSystemDate(date: Date, calendarType: string) {
   });
 }
 
+export function formatEthiopianMonthYear(date: Date) {
+  try {
+    const etDate = new Kenat(date).getEthiopian();
+    const months = getEthiopianMonths();
+    const monthName = months.find(m => m.id === etDate.month)?.name.split(" ")[0];
+    return `${monthName} ${etDate.year}`;
+  } catch (error) {
+    return "";
+  }
+}
+
 export function getSystemToday(calendarType: string) {
   return formatSystemDate(new Date(), calendarType);
 }

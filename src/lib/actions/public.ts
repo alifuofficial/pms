@@ -64,14 +64,27 @@ export async function reportPublicPayment(formData: FormData) {
         }
       });
     } else {
-      // Create a new pending payment record if no cycle is active? 
-      // Actually, usually we expect a cycle. But let's create one if needed.
+      // Calculate next due date based on latest payment
+      const latestPayment = await prisma.payment.findFirst({
+        where: { leaseId: lease.id },
+        orderBy: { dueDate: "desc" }
+      });
+
+      let nextDue = new Date();
+      if (latestPayment) {
+        const baseDate = latestPayment.type === "ADVANCE" && latestPayment.advanceUntil 
+          ? new Date(latestPayment.advanceUntil) 
+          : new Date(latestPayment.dueDate);
+        
+        nextDue = new Date(baseDate.setMonth(baseDate.getMonth() + 1));
+      }
+
       await prisma.payment.create({
         data: {
           leaseId: lease.id,
           tenantId: lease.tenantId,
           amount: unit.rentAmount,
-          dueDate: new Date(),
+          dueDate: nextDue,
           status: "PENDING",
           type: "MONTHLY",
           senderName,

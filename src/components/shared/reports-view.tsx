@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { formatSystemDate } from "@/lib/calendar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import Kenat from "kenat";
 
 interface ReportsViewProps {
   metrics: {
@@ -178,6 +179,7 @@ export function ReportsView({ metrics, currency, calendarType, startDate, endDat
             <tr>
               <th className="py-4 px-6">Date</th>
               <th className="py-4 px-6">Tenant / Unit</th>
+              <th className="py-4 px-6">Coverage</th>
               <th className="py-4 px-6">Type</th>
               <th className="py-4 px-6">Status</th>
               <th className="py-4 px-6 text-right">Amount</th>
@@ -197,6 +199,13 @@ export function ReportsView({ metrics, currency, calendarType, startDate, endDat
                   <td className="py-4 px-6">
                     <p className="font-bold text-slate-900">{p.tenant.name}</p>
                     <p className="text-[10px] font-bold text-slate-400 uppercase">Unit {p.lease?.unit?.unitNumber}</p>
+                  </td>
+                  <td className="py-4 px-6">
+                    <p className="text-xs font-bold text-slate-900">{new Kenat(new Date(p.dueDate)).getEthiopian().year}</p>
+                    <p className="text-[10px] font-black text-indigo-600 uppercase">
+                      {new Kenat(new Date(p.dueDate)).format("amharic").split(" ")[1]} 
+                      ({new Intl.DateTimeFormat('en-US', { month: 'long' }).format(new Date(p.dueDate))})
+                    </p>
                   </td>
                   <td className="py-4 px-6">
                     <span className="text-[10px] font-bold uppercase bg-slate-100 text-slate-600 px-2 py-0.5 rounded border border-slate-200">

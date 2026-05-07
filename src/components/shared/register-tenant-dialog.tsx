@@ -51,10 +51,12 @@ export function RegisterTenantDialog({ currency = "ETB" }: { currency?: string }
   const [filteredUnits, setFilteredUnits] = useState<any[]>([]);
   
   // Form States
-  const [calendarType, setCalendarType] = useState<"GREGORIAN" | "ETHIOPIAN">("GREGORIAN");
-  const [ethStart, setEthStart] = useState({ year: 2016, month: 1, day: 1 });
-  const [ethEnd, setEthEnd] = useState({ year: 2017, month: 1, day: 1 });
-  const [ethAdvance, setEthAdvance] = useState({ year: 2016, month: 1, day: 1 });
+  const [calendarType] = useState<"GREGORIAN" | "ETHIOPIAN">("ETHIOPIAN");
+  
+  const todayEt = new Kenat(new Date()).getEthiopian();
+  const [ethStart, setEthStart] = useState({ year: todayEt.year, month: todayEt.month, day: todayEt.day });
+  const [ethEnd, setEthEnd] = useState({ year: todayEt.year + 1, month: todayEt.month, day: todayEt.day });
+  const [ethAdvance, setEthAdvance] = useState({ year: todayEt.year, month: todayEt.month, day: todayEt.day });
 
   const [formData, setFormData] = useState({
     name: "",
@@ -145,6 +147,17 @@ export function RegisterTenantDialog({ currency = "ETB" }: { currency?: string }
         return;
       }
 
+      // Validation: Minimum 1 month payment
+      const unit = availableUnits.find(u => u.id === formData.unitId);
+      const rentAmount = unit?.rentAmount || 0;
+      const paidAmount = parseFloat(formData.amount) || 0;
+
+      if (paidAmount < rentAmount) {
+        toast.error(`Minimum payment required: ${currency} ${rentAmount.toLocaleString()} (1 Month)`);
+        setIsLoading(false);
+        return;
+      }
+
       // 2. Process Dates
       let finalStartDate: Date;
       let finalEndDate: Date;
@@ -167,6 +180,20 @@ export function RegisterTenantDialog({ currency = "ETB" }: { currency?: string }
       }
 
       // 3. Register
+      if (formData.paymentType === "ADVANCE" && finalAdvanceUntil) {
+        const diffMonths = (finalAdvanceUntil.getFullYear() - finalStartDate.getFullYear()) * 12 + (finalAdvanceUntil.getMonth() - finalStartDate.getMonth());
+        if (diffMonths < 2) {
+          toast.error("Advance payment must be for at least 2 months.");
+          setIsLoading(false);
+          return;
+        }
+        if (finalAdvanceUntil > finalEndDate) {
+          toast.error("Advance payment cannot exceed lease end date.");
+          setIsLoading(false);
+          return;
+        }
+      }
+
       const result = await registerTenant({
         name: formData.name,
         email: formData.email,
@@ -389,29 +416,7 @@ export function RegisterTenantDialog({ currency = "ETB" }: { currency?: string }
               <div className="space-y-7 animate-in fade-in slide-in-from-bottom-2 duration-400">
                 <div className="space-y-4">
                   <div className="flex items-center justify-between px-1">
-                    <Label className="text-[10px] font-bold uppercase text-slate-400 tracking-widest">Lease Duration</Label>
-                    <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200">
-                      <button 
-                        type="button"
-                        onClick={() => setCalendarType("GREGORIAN")}
-                        className={cn(
-                          "px-4 py-1.5 text-[10px] font-bold rounded-lg transition-all",
-                          calendarType === "GREGORIAN" ? "bg-white text-indigo-600 shadow-sm" : "text-slate-400 hover:text-slate-600"
-                        )}
-                      >
-                        GREGORIAN
-                      </button>
-                      <button 
-                        type="button"
-                        onClick={() => setCalendarType("ETHIOPIAN")}
-                        className={cn(
-                          "px-4 py-1.5 text-[10px] font-bold rounded-lg transition-all",
-                          calendarType === "ETHIOPIAN" ? "bg-white text-emerald-600 shadow-sm" : "text-slate-400 hover:text-slate-600"
-                        )}
-                      >
-                        ETHIOPIAN
-                      </button>
-                    </div>
+                    <Label className="text-[10px] font-bold uppercase text-slate-400 tracking-widest">Lease Duration (Ethiopian Calendar)</Label>
                   </div>
                   
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
@@ -419,81 +424,61 @@ export function RegisterTenantDialog({ currency = "ETB" }: { currency?: string }
                       <Label className="text-[11px] font-bold text-slate-600 uppercase tracking-tight flex items-center gap-1.5">
                         <Calendar size={14} className="text-indigo-400" /> Start Date
                       </Label>
-                      {calendarType === "GREGORIAN" ? (
-                        <Input 
-                          required
-                          type="date"
-                          value={formData.startDate}
-                          onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
-                          className="rounded-xl border-slate-200 h-12 text-sm shadow-sm focus:ring-indigo-50"
-                        />
-                      ) : (
-                        <div className="flex gap-1.5">
-                          <select 
-                            value={ethStart.year} 
-                            onChange={e => setEthStart({...ethStart, year: parseInt(e.target.value)})}
-                            className="w-1/3 rounded-xl border border-slate-200 bg-white h-12 px-2 text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-50"
-                          >
-                            {getEthiopianYearRange().map(y => <option key={y} value={y}>{y}</option>)}
-                          </select>
-                          <select 
-                            value={ethStart.month} 
-                            onChange={e => setEthStart({...ethStart, month: parseInt(e.target.value)})}
-                            className="w-1/3 rounded-xl border border-slate-200 bg-white h-12 px-2 text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-50"
-                          >
-                            {getEthiopianMonths().map(m => <option key={m.id} value={m.id}>{m.name.split(' ')[0]}</option>)}
-                          </select>
-                          <select 
-                            value={ethStart.day} 
-                            onChange={e => setEthStart({...ethStart, day: parseInt(e.target.value)})}
-                            className="w-1/3 rounded-xl border border-slate-200 bg-white h-12 px-2 text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-50"
-                          >
-                            {Array.from({length: getDaysInEthiopianMonth(ethStart.year, ethStart.month)}).map((_, i) => (
-                              <option key={i+1} value={i+1}>{i+1}</option>
-                            ))}
-                          </select>
-                        </div>
-                      )}
+                      <div className="flex gap-1.5">
+                        <select 
+                          value={ethStart.year} 
+                          onChange={e => setEthStart({...ethStart, year: parseInt(e.target.value)})}
+                          className="w-1/3 rounded-xl border border-slate-200 bg-white h-12 px-2 text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-50"
+                        >
+                          {getEthiopianYearRange().map(y => <option key={y} value={y}>{y}</option>)}
+                        </select>
+                        <select 
+                          value={ethStart.month} 
+                          onChange={e => setEthStart({...ethStart, month: parseInt(e.target.value)})}
+                          className="w-1/3 rounded-xl border border-slate-200 bg-white h-12 px-2 text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-50"
+                        >
+                          {getEthiopianMonths().map(m => <option key={m.id} value={m.id}>{m.name.split(' ')[0]}</option>)}
+                        </select>
+                        <select 
+                          value={ethStart.day} 
+                          onChange={e => setEthStart({...ethStart, day: parseInt(e.target.value)})}
+                          className="w-1/3 rounded-xl border border-slate-200 bg-white h-12 px-2 text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-50"
+                        >
+                          {Array.from({length: getDaysInEthiopianMonth(ethStart.year, ethStart.month)}).map((_, i) => (
+                            <option key={i+1} value={i+1}>{i+1}</option>
+                          ))}
+                        </select>
+                      </div>
                     </div>
                     <div className="space-y-1.5">
                       <Label className="text-[11px] font-bold text-slate-600 uppercase tracking-tight flex items-center gap-1.5">
                         <Calendar size={14} className="text-red-400" /> End Date
                       </Label>
-                      {calendarType === "GREGORIAN" ? (
-                        <Input 
-                          required
-                          type="date"
-                          value={formData.endDate}
-                          onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
-                          className="rounded-xl border-slate-200 h-12 text-sm shadow-sm focus:ring-indigo-50"
-                        />
-                      ) : (
-                        <div className="flex gap-1.5">
-                          <select 
-                            value={ethEnd.year} 
-                            onChange={e => setEthEnd({...ethEnd, year: parseInt(e.target.value)})}
-                            className="w-1/3 rounded-xl border border-slate-200 bg-white h-12 px-2 text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-50"
-                          >
-                            {getEthiopianYearRange().map(y => <option key={y} value={y}>{y}</option>)}
-                          </select>
-                          <select 
-                            value={ethEnd.month} 
-                            onChange={e => setEthEnd({...ethEnd, month: parseInt(e.target.value)})}
-                            className="w-1/3 rounded-xl border border-slate-200 bg-white h-12 px-2 text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-50"
-                          >
-                            {getEthiopianMonths().map(m => <option key={m.id} value={m.id}>{m.name.split(' ')[0]}</option>)}
-                          </select>
-                          <select 
-                            value={ethEnd.day} 
-                            onChange={e => setEthEnd({...ethEnd, day: parseInt(e.target.value)})}
-                            className="w-1/3 rounded-xl border border-slate-200 bg-white h-12 px-2 text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-50"
-                          >
-                            {Array.from({length: getDaysInEthiopianMonth(ethEnd.year, ethEnd.month)}).map((_, i) => (
-                              <option key={i+1} value={i+1}>{i+1}</option>
-                            ))}
-                          </select>
-                        </div>
-                      )}
+                      <div className="flex gap-1.5">
+                        <select 
+                          value={ethEnd.year} 
+                          onChange={e => setEthEnd({...ethEnd, year: parseInt(e.target.value)})}
+                          className="w-1/3 rounded-xl border border-slate-200 bg-white h-12 px-2 text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-50"
+                        >
+                          {getEthiopianYearRange().map(y => <option key={y} value={y}>{y}</option>)}
+                        </select>
+                        <select 
+                          value={ethEnd.month} 
+                          onChange={e => setEthEnd({...ethEnd, month: parseInt(e.target.value)})}
+                          className="w-1/3 rounded-xl border border-slate-200 bg-white h-12 px-2 text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-50"
+                        >
+                          {getEthiopianMonths().map(m => <option key={m.id} value={m.id}>{m.name.split(' ')[0]}</option>)}
+                        </select>
+                        <select 
+                          value={ethEnd.day} 
+                          onChange={e => setEthEnd({...ethEnd, day: parseInt(e.target.value)})}
+                          className="w-1/3 rounded-xl border border-slate-200 bg-white h-12 px-2 text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-50"
+                        >
+                          {Array.from({length: getDaysInEthiopianMonth(ethEnd.year, ethEnd.month)}).map((_, i) => (
+                            <option key={i+1} value={i+1}>{i+1}</option>
+                          ))}
+                        </select>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -571,41 +556,32 @@ export function RegisterTenantDialog({ currency = "ETB" }: { currency?: string }
 
                 {formData.paymentType === "ADVANCE" && (
                   <div className="space-y-3 p-5 bg-indigo-50 rounded-2xl border border-indigo-100 animate-in fade-in duration-300">
-                    <Label className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest">Valid Until *</Label>
-                    {calendarType === "GREGORIAN" ? (
-                      <Input 
-                        type="date"
-                        value={formData.advanceUntil}
-                        onChange={(e) => setFormData({ ...formData, advanceUntil: e.target.value })}
-                        className="rounded-xl border-indigo-200 h-11 text-sm bg-white font-medium"
-                      />
-                    ) : (
-                      <div className="flex gap-1.5">
-                        <select 
-                          value={ethAdvance.year} 
-                          onChange={e => setEthAdvance({...ethAdvance, year: parseInt(e.target.value)})}
-                          className="w-1/3 rounded-xl border border-indigo-200 bg-white h-11 px-2 text-xs font-bold outline-none"
-                        >
-                          {getEthiopianYearRange().map(y => <option key={y} value={y}>{y}</option>)}
-                        </select>
-                        <select 
-                          value={ethAdvance.month} 
-                          onChange={e => setEthAdvance({...ethAdvance, month: parseInt(e.target.value)})}
-                          className="w-1/3 rounded-xl border border-indigo-200 bg-white h-11 px-2 text-xs font-bold outline-none"
-                        >
-                          {getEthiopianMonths().map(m => <option key={m.id} value={m.id}>{m.name.split(' ')[0]}</option>)}
-                        </select>
-                        <select 
-                          value={ethAdvance.day} 
-                          onChange={e => setEthAdvance({...ethAdvance, day: parseInt(e.target.value)})}
-                          className="w-1/3 rounded-xl border border-indigo-200 bg-white h-11 px-2 text-xs font-bold outline-none"
-                        >
-                          {Array.from({length: getDaysInEthiopianMonth(ethAdvance.year, ethAdvance.month)}).map((_, i) => (
-                            <option key={i+1} value={i+1}>{i+1}</option>
-                          ))}
-                        </select>
-                      </div>
-                    )}
+                    <Label className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest">Valid Until (Ethiopian) *</Label>
+                    <div className="flex gap-1.5">
+                      <select 
+                        value={ethAdvance.year} 
+                        onChange={e => setEthAdvance({...ethAdvance, year: parseInt(e.target.value)})}
+                        className="w-1/3 rounded-xl border border-indigo-200 bg-white h-11 px-2 text-xs font-bold outline-none"
+                      >
+                        {getEthiopianYearRange().map(y => <option key={y} value={y}>{y}</option>)}
+                      </select>
+                      <select 
+                        value={ethAdvance.month} 
+                        onChange={e => setEthAdvance({...ethAdvance, month: parseInt(e.target.value)})}
+                        className="w-1/3 rounded-xl border border-indigo-200 bg-white h-11 px-2 text-xs font-bold outline-none"
+                      >
+                        {getEthiopianMonths().map(m => <option key={m.id} value={m.id}>{m.name.split(' ')[0]}</option>)}
+                      </select>
+                      <select 
+                        value={ethAdvance.day} 
+                        onChange={e => setEthAdvance({...ethAdvance, day: parseInt(e.target.value)})}
+                        className="w-1/3 rounded-xl border border-indigo-200 bg-white h-11 px-2 text-xs font-bold outline-none"
+                      >
+                        {Array.from({length: getDaysInEthiopianMonth(ethAdvance.year, ethAdvance.month)}).map((_, i) => (
+                          <option key={i+1} value={i+1}>{i+1}</option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
                 )}
 

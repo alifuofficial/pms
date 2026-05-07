@@ -25,15 +25,16 @@ import {
   DropdownMenuItem, 
   DropdownMenuTrigger 
 } from "@/components/ui/dropdown-menu";
-import { updateUnit, deleteUnit } from "@/lib/actions/properties";
+import { updateUnit, deleteUnit, vacateUnit } from "@/lib/actions/properties";
 import { generateUnitQrSlug } from "@/lib/actions/qr";
 import { toast } from "sonner";
-import { QrCode, ExternalLink, Download, Copy, Check } from "lucide-react";
+import { QrCode, ExternalLink, Download, Copy, Check, LogOut } from "lucide-react";
 import QRCode from "react-qr-code";
 
 export function UnitActions({ unit }: { unit: any }) {
   const [isEditing, setIsEditing] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isVacating, setIsVacating] = useState(false);
   const [isQrOpen, setIsQrOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [qrSlug, setQrSlug] = useState(unit.qrSlug || "");
@@ -91,6 +92,18 @@ export function UnitActions({ unit }: { unit: any }) {
       toast.error(result.error || "Failed to delete unit.");
     }
   };
+  
+  const handleVacate = async () => {
+    setIsLoading(true);
+    const result = await vacateUnit(unit.id);
+    setIsLoading(false);
+    if (result.success) {
+      toast.success("Unit vacated successfully. It is now available for rent.");
+      setIsVacating(false);
+    } else {
+      toast.error(result.error || "Failed to vacate unit.");
+    }
+  };
 
   return (
     <>
@@ -113,6 +126,14 @@ export function UnitActions({ unit }: { unit: any }) {
           >
             <QrCode size={12} /> Unit Gateway
           </DropdownMenuItem>
+          {unit.status === "OCCUPIED" && (
+            <DropdownMenuItem 
+              onClick={() => setIsVacating(true)}
+              className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-amber-600 rounded-lg cursor-pointer hover:bg-amber-50"
+            >
+              <LogOut size={12} /> Vacate / Leave
+            </DropdownMenuItem>
+          )}
           <DropdownMenuItem 
             onClick={() => setIsDeleting(true)}
             className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-red-600 rounded-lg cursor-pointer hover:bg-red-50"
@@ -343,6 +364,37 @@ export function UnitActions({ unit }: { unit: any }) {
                 onClick={handleDelete}
               >
                 {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Delete Unit"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Vacate Confirmation */}
+      <Dialog open={isVacating} onOpenChange={setIsVacating}>
+        <DialogContent className="sm:max-w-[400px] bg-white rounded-2xl p-0 overflow-hidden border-none shadow-2xl">
+          <div className="p-8 text-center space-y-4">
+            <div className="w-12 h-12 rounded-full bg-amber-50 flex items-center justify-center mx-auto text-amber-600">
+              <LogOut size={24} />
+            </div>
+            <div className="space-y-1">
+              <h3 className="text-lg font-black text-slate-900 uppercase tracking-tight">Vacate Unit</h3>
+              <p className="text-sm text-slate-500 font-medium">Are you sure the tenant is leaving <span className="font-bold text-slate-900">Unit {unit.unitNumber}</span>? This will terminate the active lease and make the unit available.</p>
+            </div>
+            <div className="flex gap-3 pt-4">
+              <Button 
+                variant="outline" 
+                className="flex-1 h-11 rounded-xl text-xs font-bold uppercase tracking-widest border-slate-200" 
+                onClick={() => setIsVacating(false)}
+              >
+                Cancel
+              </Button>
+              <Button 
+                disabled={isLoading}
+                className="flex-1 h-11 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold uppercase tracking-widest rounded-xl shadow-lg shadow-amber-600/20"
+                onClick={handleVacate}
+              >
+                {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Confirm Vacate"}
               </Button>
             </div>
           </div>

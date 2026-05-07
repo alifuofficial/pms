@@ -85,7 +85,9 @@ export async function getPublicUnitStatus(slug: string) {
     const nextPayment = nextDuePayment || (latestApprovedPayment ? {
       id: "estimated",
       amount: unit.rentAmount,
-      dueDate: new Date(new Date(latestApprovedPayment.dueDate).setMonth(new Date(latestApprovedPayment.dueDate).getMonth() + 1)),
+      dueDate: latestApprovedPayment.type === "ADVANCE" && latestApprovedPayment.advanceUntil 
+        ? new Date(latestApprovedPayment.advanceUntil)
+        : new Date(new Date(latestApprovedPayment.dueDate).setMonth(new Date(latestApprovedPayment.dueDate).getMonth() + 1)),
       status: "ESTIMATED"
     } as any : null);
 
@@ -126,12 +128,19 @@ export async function getPublicUnitStatus(slug: string) {
           id: latestApprovedPayment.id,
           amount: latestApprovedPayment.amount,
           dueDate: latestApprovedPayment.dueDate,
+          type: latestApprovedPayment.type,
+          advanceUntil: latestApprovedPayment.advanceUntil,
           status: latestApprovedPayment.status,
           paidAt: latestApprovedPayment.paidAt
         } : null,
         nextDuePayment: nextPayment ? {
           ...nextPayment,
-          amount: nextPayment.amount, // Base amount
+          id: nextPayment.id,
+          amount: nextPayment.amount,
+          dueDate: nextPayment.dueDate,
+          type: nextPayment.type,
+          advanceUntil: nextPayment.advanceUntil,
+          status: nextPayment.status,
           penalty: penalty,
           totalAmount: nextPayment.amount + penalty,
           penaltyTier

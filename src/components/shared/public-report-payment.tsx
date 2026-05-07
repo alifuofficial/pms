@@ -21,9 +21,11 @@ interface PublicReportPaymentProps {
   unitId: string;
   unitNumber: string;
   status: string;
+  nextMonth?: string;
+  nextMonthAmharic?: string;
 }
 
-export function PublicReportPayment({ unitId, unitNumber, status }: PublicReportPaymentProps) {
+export function PublicReportPayment({ unitId, unitNumber, status, nextMonth, nextMonthAmharic }: PublicReportPaymentProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -117,6 +119,17 @@ export function PublicReportPayment({ unitId, unitNumber, status }: PublicReport
       </div>
 
       <form onSubmit={handleSubmit} className="p-8 space-y-6">
+        {nextMonth && (
+          <div className="p-4 bg-indigo-50 border border-indigo-100 rounded-2xl flex items-center justify-between">
+            <div>
+              <p className="text-[9px] font-black text-indigo-400 uppercase tracking-widest mb-1">Target Month</p>
+              <p className="text-xs font-black text-indigo-900 uppercase tracking-tight">{nextMonth}</p>
+            </div>
+            <div className="text-right">
+              <p className="text-[10px] font-bold text-indigo-600">{nextMonthAmharic}</p>
+            </div>
+          </div>
+        )}
         <div className="space-y-4">
           <div className="space-y-1.5">
             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Sender Full Name</label>

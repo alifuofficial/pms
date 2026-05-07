@@ -15,9 +15,10 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { formatSystemDate } from "@/lib/calendar";
+import { formatSystemDate, formatEthiopianMonthYear } from "@/lib/calendar";
 import { differenceInDays, format } from "date-fns";
 import Link from "next/link";
+import Kenat from "kenat";
 
 export default async function PublicUnitPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
@@ -239,18 +240,35 @@ export default async function PublicUnitPage({ params }: { params: Promise<{ slu
                 )}
 
                 <div className="space-y-4">
-                  <div className="bg-slate-50 p-6 rounded-[2rem] border border-slate-100 space-y-4">
-                    <div className="space-y-1">
-                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Last Payment Month</p>
+                  <div className="bg-slate-50 p-6 rounded-[2rem] border border-slate-100">
+                    <div className="grid grid-cols-2 gap-6">
+                      <div className="space-y-1">
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Last Covered</p>
                       {lease.latestApprovedPayment ? (
                         <div className="space-y-0.5">
                           <p className="text-sm font-black text-slate-900">{format(new Date(lease.latestApprovedPayment.dueDate), "MMMM yyyy")}</p>
-                          <p className="text-[10px] font-bold text-emerald-600 uppercase">{formatSystemDate(new Date(lease.latestApprovedPayment.dueDate), "ETHIOPIAN")}</p>
+                            <p className="text-[10px] font-bold text-emerald-600 uppercase">
+                              {formatEthiopianMonthYear(new Date(lease.latestApprovedPayment.dueDate))}
+                            </p>
                         </div>
                       ) : (
                         <p className="text-xs font-bold text-slate-400 uppercase">No approved payments found</p>
                       )}
                     </div>
+                    <div className="space-y-1">
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Next Month</p>
+                      {lease.nextDuePayment ? (
+                        <div className="space-y-0.5">
+                          <p className="text-sm font-black text-slate-900">{format(new Date(lease.nextDuePayment.dueDate), "MMMM yyyy")}</p>
+                          <p className="text-[10px] font-bold text-indigo-600 uppercase">
+                            {formatEthiopianMonthYear(new Date(lease.nextDuePayment.dueDate))}
+                          </p>
+                        </div>
+                      ) : (
+                        <p className="text-xs font-bold text-slate-400">N/A</p>
+                      )}
+                    </div>
+                  </div>
                     
                     <div className="h-px bg-slate-200/50" />
                     
@@ -328,7 +346,9 @@ export default async function PublicUnitPage({ params }: { params: Promise<{ slu
                <PublicReportPayment 
                  unitId={unit.id}
                  unitNumber={unit.unitNumber}
-                 status={status}
+                 status={lease.latestApprovedPayment ? "PAID" : "UNPAID"}
+                 nextMonth={lease.nextDuePayment ? format(new Date(lease.nextDuePayment.dueDate), "MMMM yyyy") : undefined}
+                 nextMonthAmharic={lease.nextDuePayment ? new Kenat(new Date(lease.nextDuePayment.dueDate)).format("amharic") : undefined}
                />
             </div>
           )}
