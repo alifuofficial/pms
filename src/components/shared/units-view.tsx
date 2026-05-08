@@ -35,8 +35,8 @@ export async function UnitsView({
   }
   if (searchParams?.q) {
     where.OR = [
-      { unitNumber: { contains: searchParams.q, mode: "insensitive" } },
-      { property:   { name:    { contains: searchParams.q, mode: "insensitive" } } }
+      { unitNumber: { contains: searchParams.q } },
+      { property:   { name:    { contains: searchParams.q } } }
     ];
   }
   // Floor tab filter
@@ -80,8 +80,8 @@ export async function UnitsView({
         if (searchParams?.type)       base.type       = searchParams.type;
         if (searchParams?.q) {
           base.OR = [
-            { unitNumber: { contains: searchParams.q, mode: "insensitive" } },
-            { property:   { name:    { contains: searchParams.q, mode: "insensitive" } } }
+            { unitNumber: { contains: searchParams.q } },
+            { property:   { name:    { contains: searchParams.q } } }
           ];
         }
         return base;
@@ -100,8 +100,8 @@ export async function UnitsView({
         if (searchParams?.type)       base.type       = searchParams.type;
         if (searchParams?.q) {
           base.OR = [
-            { unitNumber: { contains: searchParams.q, mode: "insensitive" } },
-            { property:   { name:    { contains: searchParams.q, mode: "insensitive" } } }
+            { unitNumber: { contains: searchParams.q } },
+            { property:   { name:    { contains: searchParams.q } } }
           ];
         }
         return base;
