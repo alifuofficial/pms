@@ -78,7 +78,8 @@ export function getEthiopianMonthEnd(date: Date): Date {
     const lastDay = getDaysInEthiopianMonth(etDate.year, etDate.month);
     // Build the last-day Ethiopian date and convert back to Gregorian
     const lastDayEt = new Kenat({ year: etDate.year, month: etDate.month, day: lastDay });
-    return lastDayEt.toGregorian();
+    const greg = lastDayEt.getGregorian();
+    return new Date(greg.year, greg.month - 1, greg.day);
   } catch {
     // Fallback: last day of Gregorian month
     const d = new Date(date);
