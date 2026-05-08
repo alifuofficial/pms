@@ -163,12 +163,19 @@ export function UnitActions({ unit }: { unit: any }) {
               </div>
               <div className="space-y-1.5">
                 <Label className="text-[10px] font-semibold uppercase text-slate-400">Floor</Label>
-                <Input 
-                  type="number"
+                <select
+                  className="w-full rounded-lg border border-slate-200 bg-white h-10 px-3 text-sm font-medium outline-none"
                   value={editData.floor}
-                  onChange={(e) => setEditData({ ...editData, floor: parseInt(e.target.value) || 0 })}
-                  className="rounded-lg border-slate-200 h-10 text-sm font-medium"
-                />
+                  onChange={(e) => setEditData({ ...editData, floor: parseInt(e.target.value) })}
+                >
+                  <option value="-1">Basement</option>
+                  <option value="0">Ground</option>
+                  {Array.from({ length: 20 }, (_, i) => i + 1).map(n => (
+                    <option key={n} value={n}>
+                      {n === 1 ? "1st" : n === 2 ? "2nd" : n === 3 ? "3rd" : `${n}th`} Floor
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
 

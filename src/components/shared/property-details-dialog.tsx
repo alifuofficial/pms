@@ -15,7 +15,14 @@ import Link from "next/link";
 
 export function PropertyDetailsDialog({ property, currency = "USD" }: { property: any, currency?: string }) {
   // Sort units by floor
-  const sortedUnits = [...property.units].sort((a, b) => (a.floor || 0) - (b.floor || 0));
+  const sortedUnits = [...property.units].sort((a, b) => (a.floor ?? 0) - (b.floor ?? 0));
+
+  const formatFloor = (f: number) => {
+    if (f === -1) return "Basement";
+    if (f === 0) return "Ground";
+    const suffix = f === 1 ? "st" : f === 2 ? "nd" : f === 3 ? "rd" : "th";
+    return `${f}${suffix} Floor`;
+  };
 
   return (
     <Dialog>
@@ -63,7 +70,7 @@ export function PropertyDetailsDialog({ property, currency = "USD" }: { property
                           </div>
                         </td>
                         <td className="py-3 px-4">
-                          <span className="text-xs font-medium text-slate-600">Floor {unit.floor}</span>
+                          <span className="text-xs font-medium text-slate-600">{formatFloor(unit.floor ?? 0)}</span>
                         </td>
                         <td className="py-3 px-4">
                           <span className="text-xs font-medium text-slate-600">{unit.size} m²</span>

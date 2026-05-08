@@ -129,7 +129,11 @@ export async function UnitsView({
                       {unit.property.name}
                     </p>
                     <p className="text-[11px] text-slate-400 font-medium flex items-center gap-1">
-                      <Layers size={10} /> Floor {unit.floor}
+                      <Layers size={10} /> {
+                        unit.floor === -1 ? "Basement" :
+                        unit.floor === 0 ? "Ground" :
+                        `${unit.floor}${unit.floor === 1 ? "st" : unit.floor === 2 ? "nd" : unit.floor === 3 ? "rd" : "th"} Floor`
+                      }
                     </p>
                   </div>
                 </td>
