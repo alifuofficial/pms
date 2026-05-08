@@ -327,8 +327,17 @@ export function SettingsForm({ initialData, initialBankAccounts = [] }: { initia
                   <div className="flex items-center gap-8 pt-4 border-t border-slate-50">
                     <div className="w-24 h-24 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-center overflow-hidden shrink-0">
                       {formData.logoUrl ? (
-                        <img src={formData.logoUrl} alt="Logo" className="w-full h-full object-contain p-2" />
-                      ) : (
+                        <img
+                          src={formData.logoUrl}
+                          alt="Logo"
+                          className="w-full h-full object-contain p-2"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).style.display = "none";
+                            (e.target as HTMLImageElement).nextElementSibling?.removeAttribute("style");
+                          }}
+                        />
+                      ) : null}
+                      {(!formData.logoUrl) && (
                         <Building2 size={32} className="text-slate-200" />
                       )}
                     </div>
