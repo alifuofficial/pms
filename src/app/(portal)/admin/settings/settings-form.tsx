@@ -637,13 +637,23 @@ export function SettingsForm({ initialData, initialBankAccounts = [] }: { initia
                       <p className="text-xs text-slate-500">Send a test message to verify your API key is working correctly.</p>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Input
-                        type="tel"
-                        placeholder="e.g. 251912345678"
-                        value={testPhone}
-                        onChange={(e) => setTestPhone(e.target.value)}
-                        className="h-10 rounded-lg border-slate-200 text-sm flex-1"
-                      />
+                      <div className="relative flex-1">
+                        <Input
+                          type="tel"
+                          placeholder="09xxxxxxxx or 2519xxxxxxxx"
+                          value={testPhone}
+                          onChange={(e) => {
+                            const raw = e.target.value.replace(/\D/g, "");
+                            if (raw.startsWith("09")) setTestPhone("251" + raw.slice(1));
+                            else if (raw.startsWith("9") && raw.length <= 9) setTestPhone("251" + raw);
+                            else setTestPhone(raw);
+                          }}
+                          className="h-10 rounded-lg border-slate-200 text-sm w-full"
+                        />
+                        {testPhone.startsWith("251") && (
+                          <span className="absolute right-3 top-2.5 text-[10px] font-bold text-emerald-500">✓ International</span>
+                        )}
+                      </div>
                       <Button
                         type="button"
                         onClick={handleTestSms}
@@ -653,7 +663,9 @@ export function SettingsForm({ initialData, initialBankAccounts = [] }: { initia
                         {isTestingSms ? <Loader2 size={14} className="animate-spin" /> : "Send Test"}
                       </Button>
                     </div>
-                    <p className="text-[10px] text-slate-400 font-medium">Phone number must include country code (e.g. 251 for Ethiopia). Results appear in SMS Logs under Notifications.</p>
+                    <p className="text-[10px] text-slate-400 font-medium">
+                      Numbers starting with <span className="font-bold text-slate-600">09</span> are auto-converted to <span className="font-bold text-slate-600">2519</span> format. Results appear in SMS Logs.
+                    </p>
                   </div>
                 </div>
               )}

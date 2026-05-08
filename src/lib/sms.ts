@@ -1,5 +1,13 @@
 import { prisma } from "@/lib/prisma";
 
+/** Normalize Ethiopian phone numbers: 09xx → 2519xx, 9xx (9-digit) → 2519xx */
+function normalizePhone(raw: string): string {
+  const digits = raw.replace(/\D/g, "");
+  if (digits.startsWith("09")) return "251" + digits.slice(1);
+  if (digits.startsWith("9") && digits.length === 9) return "251" + digits;
+  return digits;
+}
+
 export async function sendSMS(
   msisdn: string,
   textOrTemplate: string,
@@ -9,6 +17,7 @@ export async function sendSMS(
   let finalMessage = textOrTemplate;
   let logStatus = "FAILED";
   let logResponse = "";
+  msisdn = normalizePhone(msisdn); // auto-convert 09xx → 2519xx
 
   try {
     const settings = await prisma.systemSettings.findUnique({ where: { id: "global" } });
@@ -66,16 +75,20 @@ export async function sendSMS(
       body: JSON.stringify({ msisdn, text: finalMessage })
     });
 
-    const data = await response.json();
+    const data = await response.json().catch(() => ({}));
     console.log("[SMS_ETHIOPIA_RESPONSE]", data);
     logResponse = JSON.stringify(data);
 
+    // Treat HTTP 2xx as success. Additionally check common body shapes
+    // (SMS Ethiopia may return 200 with varying body structures).
     const isSuccessful =
-      response.ok &&
-      (data.status?.toLowerCase() === "success" ||
-        data.status?.toLowerCase() === "accepted" ||
-        data.code === 200 ||
-        data.id);
+      response.ok ||
+      data?.success === true ||
+      data?.status?.toLowerCase() === "success" ||
+      data?.status?.toLowerCase() === "accepted" ||
+      data?.status?.toLowerCase() === "sent" ||
+      data?.code === 200 ||
+      !!data?.id;
 
     logStatus = isSuccessful ? "SUCCESS" : "FAILED";
 
