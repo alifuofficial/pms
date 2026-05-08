@@ -33,7 +33,7 @@ export function AddUnitDialog({
   const [formData, setFormData] = useState({
     propertyId: initialPropertyId || "",
     unitNumber: "",
-    floor: "",
+    floor: "0",
     size: "",
     type: "Studio",
     rentAmount: "",
@@ -76,7 +76,7 @@ export function AddUnitDialog({
       setFormData({ 
         propertyId: initialPropertyId || "", 
         unitNumber: "", 
-        floor: "", 
+        floor: "0", 
         size: "", 
         type: "Studio", 
         rentAmount: "" 
@@ -133,13 +133,19 @@ export function AddUnitDialog({
               </div>
               <div className="space-y-1.5">
                 <Label className="text-[10px] font-semibold uppercase text-slate-400">Floor</Label>
-                <Input 
-                  type="number"
-                  placeholder="Ex: 1"
+                <select
+                  className="w-full rounded-lg border border-slate-200 bg-white h-10 px-3 text-sm font-medium outline-none"
                   value={formData.floor}
                   onChange={(e) => setFormData({ ...formData, floor: e.target.value })}
-                  className="rounded-lg border-slate-200 bg-white h-10 text-sm font-medium"
-                />
+                >
+                  <option value="-1">Basement</option>
+                  <option value="0">Ground</option>
+                  {Array.from({ length: 20 }, (_, i) => i + 1).map(n => (
+                    <option key={n} value={String(n)}>
+                      {n === 1 ? "1st" : n === 2 ? "2nd" : n === 3 ? "3rd" : `${n}th`} Floor
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
 
