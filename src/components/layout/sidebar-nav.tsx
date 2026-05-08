@@ -64,7 +64,7 @@ const navItems: NavItem[] = [
   { title: "Staff Management", href: "/users", icon: UserCog, roles: ["ADMIN"], isShared: true, group: "System" },
   { title: "File Archive", href: "/files", icon: FolderOpen, roles: ["ADMIN", "MANAGER"], isShared: true, group: "System" },
   { title: "Notification Templates", href: "/notify", icon: MessageSquareText, roles: ["ADMIN", "MANAGER"], isShared: true, group: "Communications" },
-  { title: "Audit Logs", href: "/audit", icon: ShieldAlert, roles: ["ADMIN"], isShared: true, group: "System" },
+  { title: "Audit Logs", href: "/admin/audit-log", icon: ShieldAlert, roles: ["ADMIN"], isShared: true, group: "System" },
   { title: "System Settings", href: "/settings", icon: Settings, roles: ["ADMIN"], isShared: true, group: "System" },
   { title: "Personal Settings", href: "/settings", icon: UserCog, roles: ["ACCOUNTANT", "MANAGER", "TENANT"], isShared: true, group: "System" },
 

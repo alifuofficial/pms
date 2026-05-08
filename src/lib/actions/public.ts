@@ -10,15 +10,21 @@ export async function reportPublicPayment(formData: FormData) {
     const senderName = formData.get("senderName") as string;
     const transactionId = formData.get("transactionId") as string;
     const screenshot = formData.get("screenshot") as File;
-
-    console.log("[REPORT_PAYMENT_SUBMITTED]", { unitId, senderName, transactionId, fileSize: screenshot?.size });
+    const paymentType = (formData.get("paymentType") as string) || "MONTHLY";
+    const advanceMonths = parseInt(formData.get("advanceMonths") as string) || 1;
 
     if (!unitId || !senderName || !transactionId) {
-      console.error("[REPORT_PAYMENT_ERROR] Missing required fields");
       return { success: false, error: "Missing required fields." };
     }
 
-    // Find the unit and its active/pending lease
+    // ── Uniqueness check: reject duplicate transaction references ────────────
+    const existingTxn = await prisma.payment.findFirst({
+      where: { transactionId: transactionId.trim() }
+    });
+    if (existingTxn) {
+      return { success: false, error: "This Transaction ID / Ref has already been submitted. Please check your reference number." };
+    }
+
     const unit = await prisma.unit.findUnique({
       where: { id: unitId },
       include: {
@@ -42,6 +48,7 @@ export async function reportPublicPayment(formData: FormData) {
 
     const lease = unit.leases[0];
     const pendingPayment = lease.payments[0];
+    const reportedAmount = parseFloat(formData.get("amount") as string) || 0;
 
     let receiptUrl = "";
     if (screenshot && screenshot.size > 0) {
@@ -49,6 +56,14 @@ export async function reportPublicPayment(formData: FormData) {
       if (uploadResult.success) {
         receiptUrl = uploadResult.url || "";
       }
+    }
+
+    // Calculate advanceUntil date for ADVANCE payments
+    // This is critical so approvePayment knows it's not a penalty overpayment
+    let advanceUntil: Date | null = null;
+    if (paymentType === "ADVANCE" && advanceMonths > 1) {
+      const baseDate = new Date();
+      advanceUntil = new Date(baseDate.setMonth(baseDate.getMonth() + advanceMonths - 1));
     }
 
     if (pendingPayment) {
@@ -59,38 +74,40 @@ export async function reportPublicPayment(formData: FormData) {
           senderName,
           transactionId,
           receiptUrl,
+          amount: reportedAmount,
+          type: paymentType as any,
+          advanceUntil: advanceUntil,
           status: "PENDING",
-          paidAt: new Date()
         }
       });
     } else {
-      // Calculate next due date based on latest payment
+      // Calculate next due date based on latest APPROVED payment
       const latestPayment = await prisma.payment.findFirst({
-        where: { leaseId: lease.id },
+        where: { leaseId: lease.id, status: "APPROVED" },
         orderBy: { dueDate: "desc" }
       });
 
       let nextDue = new Date();
       if (latestPayment) {
-        const baseDate = latestPayment.type === "ADVANCE" && latestPayment.advanceUntil 
-          ? new Date(latestPayment.advanceUntil) 
+        const baseDate = latestPayment.type === "ADVANCE" && latestPayment.advanceUntil
+          ? new Date(latestPayment.advanceUntil)
           : new Date(latestPayment.dueDate);
-        
-        nextDue = new Date(baseDate.setMonth(baseDate.getMonth() + 1));
+
+        nextDue = new Date(new Date(baseDate).setMonth(new Date(baseDate).getMonth() + 1));
       }
 
       await prisma.payment.create({
         data: {
           leaseId: lease.id,
           tenantId: lease.tenantId,
-          amount: unit.rentAmount,
+          amount: reportedAmount,
           dueDate: nextDue,
           status: "PENDING",
-          type: "MONTHLY",
+          type: paymentType as any,
+          advanceUntil: advanceUntil,
           senderName,
           transactionId,
           receiptUrl,
-          paidAt: new Date()
         }
       });
     }

@@ -96,10 +96,26 @@ export const getSystemSettings = cache(async () => {
 
 export async function updateSystemSettings(data: any) {
   try {
+    const { id, updatedAt, ...cleanData } = data;
+
+    // Ensure numeric fields are actually numbers and not NaN
+    if (cleanData.lateFeePercentage !== undefined) {
+      cleanData.lateFeePercentage = isNaN(parseFloat(cleanData.lateFeePercentage)) ? 5.0 : parseFloat(cleanData.lateFeePercentage);
+    }
+    if (cleanData.warningFeePercentage !== undefined) {
+      cleanData.warningFeePercentage = isNaN(parseFloat(cleanData.warningFeePercentage)) ? 10.0 : parseFloat(cleanData.warningFeePercentage);
+    }
+    if (cleanData.smtpPort !== undefined) {
+      cleanData.smtpPort = isNaN(parseInt(cleanData.smtpPort)) ? null : parseInt(cleanData.smtpPort);
+    }
+    if (cleanData.ftpPort !== undefined) {
+      cleanData.ftpPort = isNaN(parseInt(cleanData.ftpPort)) ? null : parseInt(cleanData.ftpPort);
+    }
+
     await prisma.systemSettings.upsert({
       where: { id: "global" },
-      update: data,
-      create: { id: "global", ...data },
+      update: cleanData,
+      create: { id: "global", ...cleanData },
     });
     revalidatePath("/admin/settings");
     return { success: true };

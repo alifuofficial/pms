@@ -10,6 +10,7 @@ import {
   DialogFooter
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { 
   CreditCard, 
   CheckCircle2, 
@@ -22,9 +23,10 @@ import {
   ExternalLink,
   Download,
   User,
-  Hash
+  Hash,
+  DollarSign
 } from "lucide-react";
-import { approvePayment, rejectPayment } from "@/lib/actions/payments";
+import { approvePayment, rejectPayment, togglePenaltyPaid } from "@/lib/actions/payments";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -42,7 +44,10 @@ export function VerifyPaymentDialog({ payment, currency }: VerifyPaymentDialogPr
 
   const handleApprove = async () => {
     setIsLoading(true);
-    const result = await approvePayment(payment.id);
+    const penaltyInput = document.getElementById("penalty-received-input") as HTMLInputElement;
+    const penaltyReceived = penaltyInput ? parseFloat(penaltyInput.value) : undefined;
+    
+    const result = await approvePayment(payment.id, penaltyReceived);
     setIsLoading(false);
     if (result.success) {
       toast.success("Payment approved and verified.");
@@ -128,14 +133,61 @@ export function VerifyPaymentDialog({ payment, currency }: VerifyPaymentDialogPr
 
             <div className="pt-4 border-t border-slate-200 flex justify-between items-end">
               <div className="space-y-1">
-                <p className="text-[10px] font-bold text-slate-400 uppercase">Total Amount</p>
-                <p className="text-2xl font-black text-slate-900">{currency} {payment.amount.toLocaleString()}</p>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total Reported Amount</p>
+                <p className="text-xl font-black text-slate-900">{currency} {payment.amount.toLocaleString()}</p>
               </div>
-              <div className={cn(
-                "px-2 py-1 rounded text-[10px] font-black uppercase tracking-tighter border",
-                payment.status === "APPROVED" ? "bg-emerald-50 text-emerald-600 border-emerald-100" : payment.status === "REJECTED" ? "bg-red-50 text-red-600 border-red-100" : "bg-amber-50 text-amber-600 border-amber-100"
-              )}>
-                {payment.status}
+              <div className="text-right space-y-1">
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Source</p>
+                <Badge variant="outline" className="text-[10px] font-black border-slate-200">Combined Payment</Badge>
+              </div>
+            </div>
+
+            <div className="pt-4 border-t border-slate-200 space-y-4">
+              <div className="bg-amber-50/50 border border-amber-100 rounded-2xl p-4 space-y-4">
+                <div className="flex items-center justify-between">
+                   <div className="flex items-center gap-2">
+                     <div className="p-1.5 bg-amber-100 text-amber-600 rounded-lg">
+                        <DollarSign size={14} />
+                     </div>
+                     <p className="text-[10px] font-black text-amber-900 uppercase tracking-widest">Financial Allocation</p>
+                   </div>
+                   <p className="text-[9px] font-bold text-amber-600 uppercase">Verification Split</p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                   <div className="space-y-2">
+                      <label className="text-[9px] font-black text-slate-400 uppercase tracking-tight">Penalty Portion</label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">{currency}</span>
+                        <input 
+                          type="number"
+                          id="penalty-received-input"
+                          defaultValue={Math.max(0, payment.amount - (payment.lease?.unit?.rentAmount || 0))}
+                          className="w-full h-10 pl-10 pr-3 bg-white border-amber-100 rounded-xl font-mono text-xs font-black focus:ring-2 focus:ring-amber-500 transition-all"
+                          placeholder="Fines..."
+                        />
+                      </div>
+                   </div>
+                   <div className="space-y-2">
+                      <label className="text-[9px] font-black text-slate-400 uppercase tracking-tight">Rent Allocation</label>
+                      <div className="h-10 px-4 flex items-center bg-slate-100/50 border border-slate-100 rounded-xl">
+                        <p className="text-xs font-black text-slate-500 uppercase tracking-tighter">Automatic</p>
+                      </div>
+                   </div>
+                </div>
+                <p className="text-[9px] text-amber-600 font-medium italic">
+                  * Entering an amount here will automatically save it to the dedicated Penalty table.
+                </p>
+              </div>
+
+              <div className="pt-2 flex justify-between items-center">
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Transaction Status</p>
+                <div className={cn(
+                  "px-2 py-1 rounded text-[10px] font-black uppercase tracking-tighter border",
+                  payment.status === "APPROVED" ? "bg-emerald-50 text-emerald-600 border-emerald-100" : payment.status === "REJECTED" ? "bg-red-50 text-red-600 border-red-100" : "bg-amber-50 text-amber-600 border-amber-100"
+                )}>
+                  {payment.status}
+                </div>
               </div>
             </div>
           </div>

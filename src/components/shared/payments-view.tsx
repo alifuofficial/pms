@@ -6,30 +6,53 @@ import { cn } from "@/lib/utils";
 import { getSystemSettings } from "@/lib/actions/settings";
 import { VerifyPaymentDialog } from "./verify-payment-dialog";
 import { TenantPaymentDialog } from "./tenant-payment-dialog";
+import { Pagination } from "./pagination";
 
 export async function PaymentsView({ 
   title = "Transactions", 
   tenantId,
-  role = "ADMIN"
+  role = "ADMIN",
+  searchParams,
 }: { 
   title?: string;
   tenantId?: string;
   role?: "ADMIN" | "TENANT" | "ACCOUNTANT" | "MANAGER";
+  searchParams?: any;
 }) {
   const settings = await getSystemSettings();
-  
-  const payments = await prisma.payment.findMany({
-    where: tenantId ? { tenantId } : {},
-    include: { tenant: true },
-    orderBy: { createdAt: "desc" },
-  });
+
+  const where: any = tenantId ? { tenantId } : {};
+  if (searchParams?.status) where.status = searchParams.status;
+
+  const page = parseInt(searchParams?.page || "1");
+  const limit = parseInt(searchParams?.limit || "15");
+  const skip = (page - 1) * limit;
+
+  const [payments, totalCount] = await Promise.all([
+    prisma.payment.findMany({
+      where,
+      include: { 
+        tenant: true,
+        lease: { include: { unit: true } }
+      },
+      orderBy: { createdAt: "desc" },
+      skip,
+      take: limit,
+    }),
+    prisma.payment.count({ where }),
+  ]);
+
+  const totalPages = Math.ceil(totalCount / limit);
 
   return (
     <div className="max-w-[1200px] mx-auto space-y-6 animate-in fade-in duration-700">
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
         <div className="space-y-0.5">
           <h1 className="text-2xl font-semibold tracking-tight text-slate-900">{title}</h1>
-          <p className="text-sm text-slate-500 font-medium">Verify and approve system-wide rental transactions.</p>
+          <p className="text-sm text-slate-500 font-medium">
+            Verify and approve system-wide rental transactions.
+            <span className="ml-2 text-slate-400">({totalCount} total)</span>
+          </p>
         </div>
         <div className="flex items-center gap-2">
           <div className="relative">
@@ -49,7 +72,8 @@ export async function PaymentsView({
         <table className="w-full text-left">
           <thead className="bg-slate-50/50 text-[10px] text-slate-400 font-semibold uppercase tracking-wider border-b border-slate-100">
             <tr>
-              <th className="py-3 px-6">Tenant & Reference</th>
+              <th className="py-3 px-6">Tenant &amp; Reference</th>
+              <th className="py-3 px-6">Transaction Ref</th>
               <th className="py-3 px-6">Payment Period</th>
               <th className="py-3 px-6">Amount</th>
               <th className="py-3 px-6 text-center">Status</th>
@@ -70,6 +94,11 @@ export async function PaymentsView({
                         <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-tight">INV-{p.id.slice(0, 8).toUpperCase()}</p>
                       </div>
                     </div>
+                  </td>
+                  <td className="py-3 px-6">
+                    <p className="text-xs font-mono font-semibold text-slate-700">
+                      {(p as any).transactionId || <span className="text-slate-300 italic">—</span>}
+                    </p>
                   </td>
                   <td className="py-3 px-6">
                     <div className="flex flex-col gap-0.5">
@@ -106,7 +135,7 @@ export async function PaymentsView({
               ))
             ) : (
               <tr>
-                <td colSpan={5} className="py-12 text-center text-xs text-slate-400 font-medium italic">
+                <td colSpan={6} className="py-12 text-center text-xs text-slate-400 font-medium italic">
                   No payment records found in the system.
                 </td>
               </tr>
@@ -114,6 +143,7 @@ export async function PaymentsView({
           </tbody>
         </table>
       </div>
+      <Pagination totalPages={totalPages} currentPage={page} />
     </div>
   );
 }

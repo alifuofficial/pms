@@ -18,6 +18,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { RevenueChart, OccupancyChart } from "@/components/shared/dashboard-charts";
+import { PenaltyList } from "@/components/shared/penalty-list";
 import { Badge } from "@/components/ui/badge";
 import { getSystemToday } from "@/lib/calendar";
 import Link from "next/link";
@@ -86,6 +87,19 @@ export default async function ManagerDashboard() {
     take: 4,
     include: { tenant: true, unit: { include: { property: true } } },
     orderBy: { createdAt: "desc" },
+  });
+
+  const pendingPenalties = await prisma.penalty.findMany({
+    where: {
+      lease: { unit: { propertyId: { in: propertyIds } } },
+      status: "UNPAID"
+    },
+    include: {
+      tenant: true,
+      lease: { include: { unit: true } }
+    },
+    orderBy: { dueDate: "desc" },
+    take: 5
   });
 
   return (
@@ -223,9 +237,16 @@ export default async function ManagerDashboard() {
            </div>
         </div>
 
+      {/* Bottom Content Area */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Recent Tenants Table */}
+...
         {/* Recent Activity Sidebar */}
-        <div className="space-y-4">
-          <h2 className="text-sm font-bold text-slate-800 px-1 uppercase tracking-tight">Recent Activity</h2>
+        <div className="space-y-6">
+          <PenaltyList penalties={pendingPenalties} currency={settings?.currency || "USD"} />
+
+          <div className="space-y-4">
+            <h2 className="text-sm font-bold text-slate-800 px-1 uppercase tracking-tight">Recent Activity</h2>
           <div className="space-y-2">
             {auditLogs.length === 0 ? (
               <div className="p-10 text-center bg-white rounded-xl border border-slate-100 shadow-sm">

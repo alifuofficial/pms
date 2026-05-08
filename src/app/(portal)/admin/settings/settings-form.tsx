@@ -658,22 +658,68 @@ export function SettingsForm({ initialData, initialBankAccounts = [] }: { initia
                     </div>
 
                     <div className="space-y-4">
-                      <div className="space-y-1.5">
-                        <Label className="text-[10px] font-semibold uppercase text-slate-400">Penalty Percentage (%)</Label>
-                        <div className="relative">
-                          <Input 
-                            type="number"
-                            step="0.1"
-                            value={formData.lateFeePercentage || 5}
-                            onChange={(e) => setFormData({ ...formData, lateFeePercentage: parseFloat(e.target.value) })}
-                            className="h-10 rounded-lg border-slate-200 text-sm pl-8"
-                          />
-                          <span className="absolute left-3 top-2.5 text-slate-400 text-sm font-bold">%</span>
+                      {/* Tier 1 & Tier 2 side by side */}
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-1.5">
+                          <Label className="text-[10px] font-semibold uppercase text-slate-400">
+                            Tier 1 — Late Fee (%)
+                          </Label>
+                          <div className="relative">
+                            <Input 
+                              type="number"
+                              step="0.1"
+                              min="0"
+                              max="100"
+                              value={formData.lateFeePercentage || 5}
+                              onChange={(e) => setFormData({ ...formData, lateFeePercentage: parseFloat(e.target.value) })}
+                              className="h-10 rounded-lg border-slate-200 text-sm pl-8"
+                            />
+                            <span className="absolute left-3 top-2.5 text-slate-400 text-sm font-bold">%</span>
+                          </div>
+                          <p className="text-[10px] text-slate-400 font-medium">
+                            Applied on Day 6 – 35 (after grace period)
+                          </p>
                         </div>
-                        <p className="text-[10px] text-slate-400 font-medium leading-relaxed">
-                          Tier 1: {formData.lateFeePercentage || 5}% applied after 5 days.<br/>
-                          Tier 2: Total 10% (additional {(10 - (formData.lateFeePercentage || 5)).toFixed(1)}%) applied after 30 days.
-                        </p>
+
+                        <div className="space-y-1.5">
+                          <Label className="text-[10px] font-semibold uppercase text-amber-500">
+                            Tier 2 — Warning Penalty (%)
+                          </Label>
+                          <div className="relative">
+                            <Input 
+                              type="number"
+                              step="0.1"
+                              min="0"
+                              max="100"
+                              value={formData.warningFeePercentage || 10}
+                              onChange={(e) => setFormData({ ...formData, warningFeePercentage: parseFloat(e.target.value) })}
+                              className="h-10 rounded-lg border-amber-200 bg-amber-50/30 text-sm pl-8 focus:ring-amber-400"
+                            />
+                            <span className="absolute left-3 top-2.5 text-amber-400 text-sm font-bold">%</span>
+                          </div>
+                          <p className="text-[10px] text-amber-500 font-medium">
+                            Final warning applied from Day 36 onwards
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Summary card */}
+                      <div className="p-4 bg-slate-50 rounded-xl border border-slate-100 space-y-2">
+                        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Penalty Schedule Preview</p>
+                        <div className="space-y-1.5">
+                          <div className="flex justify-between text-[11px]">
+                            <span className="text-slate-500 font-medium">Day 1 – 5 &nbsp;(Grace period)</span>
+                            <span className="font-bold text-emerald-600">No penalty</span>
+                          </div>
+                          <div className="flex justify-between text-[11px]">
+                            <span className="text-slate-500 font-medium">Day 6 – 35 &nbsp;(Tier 1)</span>
+                            <span className="font-bold text-amber-600">{formData.lateFeePercentage || 5}% of rent</span>
+                          </div>
+                          <div className="flex justify-between text-[11px]">
+                            <span className="text-slate-500 font-medium">Day 36+ &nbsp;&nbsp;&nbsp;&nbsp;(Tier 2 Warning)</span>
+                            <span className="font-bold text-rose-600">{formData.warningFeePercentage || 10}% of rent</span>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </div>

@@ -16,6 +16,7 @@ import {
 import { cn } from "@/lib/utils";
 import { reportPublicPayment } from "@/lib/actions/public";
 import { toast } from "sonner";
+import { format } from "date-fns";
 
 interface PublicReportPaymentProps {
   unitId: string;
@@ -23,12 +24,55 @@ interface PublicReportPaymentProps {
   status: string;
   nextMonth?: string;
   nextMonthAmharic?: string;
+  rentAmount: number;
+  currentPenalty: number;
+  historicalPenalty: number;
+  currency: string;
+  grandTotal?: number;    // Total across ALL overdue months
+  arrearsCount?: number;  // Number of overdue months
 }
 
-export function PublicReportPayment({ unitId, unitNumber, status, nextMonth, nextMonthAmharic }: PublicReportPaymentProps) {
+export function PublicReportPayment({ 
+  unitId, 
+  unitNumber, 
+  status, 
+  nextMonth, 
+  nextMonthAmharic,
+  rentAmount,
+  currentPenalty,
+  historicalPenalty,
+  currency,
+  grandTotal = 0,
+  arrearsCount = 0
+}: PublicReportPaymentProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [paymentType, setPaymentType] = useState<"MONTHLY" | "ADVANCE">("MONTHLY");
+  const [advanceMonths, setAdvanceMonths] = useState(1);
+  const [fileName, setFileName] = useState<string | null>(null);
+
+  const totalPenalty = currentPenalty + historicalPenalty;
+  
+  // When multiple months are owed, default to the full grand total
+  // Otherwise calculate per the selected payment type
+  let calculatedAmount = 0;
+  if (arrearsCount > 1 && grandTotal > 0) {
+    calculatedAmount = grandTotal; // Tenant must pay all arrears at once
+  } else if (paymentType === "MONTHLY") {
+    calculatedAmount = rentAmount + totalPenalty;
+  } else {
+    calculatedAmount = (rentAmount * advanceMonths) + totalPenalty;
+  }
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setFileName(file.name);
+    } else {
+      setFileName(null);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -36,6 +80,9 @@ export function PublicReportPayment({ unitId, unitNumber, status, nextMonth, nex
     
     const formData = new FormData(e.currentTarget);
     formData.append("unitId", unitId);
+    formData.append("amount", calculatedAmount.toString());
+    formData.append("paymentType", paymentType);
+    formData.append("advanceMonths", advanceMonths.toString());
 
     try {
       const result = await reportPublicPayment(formData);
@@ -66,7 +113,10 @@ export function PublicReportPayment({ unitId, unitNumber, status, nextMonth, nex
         </div>
         <Button 
           variant="outline" 
-          onClick={() => setSubmitted(false)}
+          onClick={() => {
+            setSubmitted(false);
+            setIsOpen(false);
+          }}
           className="rounded-xl border-emerald-200 text-emerald-700 font-black text-[10px] uppercase tracking-widest px-8"
         >
           Return to Status
@@ -119,17 +169,82 @@ export function PublicReportPayment({ unitId, unitNumber, status, nextMonth, nex
       </div>
 
       <form onSubmit={handleSubmit} className="p-8 space-y-6">
-        {nextMonth && (
-          <div className="p-4 bg-indigo-50 border border-indigo-100 rounded-2xl flex items-center justify-between">
-            <div>
-              <p className="text-[9px] font-black text-indigo-400 uppercase tracking-widest mb-1">Target Month</p>
-              <p className="text-xs font-black text-indigo-900 uppercase tracking-tight">{nextMonth}</p>
-            </div>
-            <div className="text-right">
-              <p className="text-[10px] font-bold text-indigo-600">{nextMonthAmharic}</p>
-            </div>
-          </div>
-        )}
+        {/* Payment Logic Engine */}
+        <div className="space-y-4">
+           <div className="flex bg-slate-100 p-1 rounded-2xl">
+              <button 
+                type="button"
+                onClick={() => setPaymentType("MONTHLY")}
+                className={cn(
+                  "flex-1 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all",
+                  paymentType === "MONTHLY" ? "bg-white shadow-sm text-slate-900" : "text-slate-400 hover:text-slate-600"
+                )}
+              >
+                Standard
+              </button>
+              <button 
+                type="button"
+                onClick={() => setPaymentType("ADVANCE")}
+                className={cn(
+                  "flex-1 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all",
+                  paymentType === "ADVANCE" ? "bg-white shadow-sm text-slate-900" : "text-slate-400 hover:text-slate-600"
+                )}
+              >
+                Advance
+              </button>
+           </div>
+
+           <div className="p-6 rounded-[2rem] space-y-4 relative overflow-hidden transition-colors duration-500 bg-slate-900 text-white">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full -mr-16 -mt-16 blur-2xl" />
+              <div className="relative z-10">
+                 <p className="text-[9px] font-black text-white/40 uppercase tracking-widest mb-1">
+                   Calculated Total
+                 </p>
+                 <div className="flex items-baseline gap-1.5">
+                    <span className="text-sm font-black text-white/40">{currency}</span>
+                    <h4 className="text-4xl font-black tracking-tighter tabular-nums">{calculatedAmount.toLocaleString()}</h4>
+                 </div>
+                 
+                 <div className="mt-4 pt-4 border-t border-white/10 space-y-2">
+                    <div className="flex justify-between text-[9px] font-black uppercase tracking-widest opacity-60">
+                       <span>Month Rent</span>
+                       <span>{currency} {(rentAmount * (paymentType === "ADVANCE" ? advanceMonths : 1)).toLocaleString()}</span>
+                    </div>
+                    {totalPenalty > 0 && (
+                      <div className="flex justify-between text-[9px] font-black uppercase tracking-widest text-rose-400">
+                         <span>Penalties Owed</span>
+                         <span>{currency} {totalPenalty.toLocaleString()}</span>
+                      </div>
+                    )}
+                 </div>
+              </div>
+           </div>
+
+           {paymentType === "ADVANCE" && (
+             <div className="space-y-2 px-1">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Months in Advance</label>
+                <div className="flex items-center gap-3">
+                   <button 
+                    type="button"
+                    onClick={() => setAdvanceMonths(Math.max(1, advanceMonths - 1))}
+                    className="w-12 h-12 bg-slate-100 rounded-xl flex items-center justify-center font-black text-xl hover:bg-slate-200 transition-colors"
+                   >-</button>
+                   <div className="flex-1 h-12 bg-white border border-slate-200 rounded-xl flex items-center justify-center font-black text-lg font-mono">
+                      {advanceMonths}
+                   </div>
+                   <button 
+                    type="button"
+                    onClick={() => setAdvanceMonths(advanceMonths + 1)}
+                    className="w-12 h-12 bg-slate-900 text-white rounded-xl flex items-center justify-center font-black text-xl hover:bg-slate-800 transition-colors"
+                   >+</button>
+                </div>
+                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-tight text-center pt-1">
+                   Total covers through {format(new Date(new Date().setMonth(new Date().getMonth() + advanceMonths)), "MMMM yyyy")}
+                </p>
+             </div>
+           )}
+        </div>
+
         <div className="space-y-4">
           <div className="space-y-1.5">
             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Sender Full Name</label>
@@ -165,11 +280,24 @@ export function PublicReportPayment({ unitId, unitNumber, status, nextMonth, nex
                 name="screenshot"
                 accept="image/*"
                 required
-                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                onChange={handleFileChange}
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-20"
               />
-              <div className="h-24 border-2 border-dashed border-slate-200 rounded-2xl flex flex-col items-center justify-center gap-2 bg-slate-50 group-hover:border-slate-300 transition-colors">
-                <Camera size={24} className="text-slate-400" />
-                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Attach Evidence</span>
+              <div className={cn(
+                "h-24 border-2 border-dashed rounded-2xl flex flex-col items-center justify-center gap-2 transition-all duration-300 z-10",
+                fileName ? "bg-emerald-50 border-emerald-200" : "bg-slate-50 border-slate-200 group-hover:border-slate-300"
+              )}>
+                {fileName ? (
+                  <>
+                    <CheckCircle2 size={24} className="text-emerald-500" />
+                    <span className="text-[10px] font-black text-emerald-600 uppercase tracking-tight truncate max-w-[200px]">{fileName}</span>
+                  </>
+                ) : (
+                  <>
+                    <Camera size={24} className="text-slate-400" />
+                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Attach Evidence</span>
+                  </>
+                )}
               </div>
             </div>
           </div>

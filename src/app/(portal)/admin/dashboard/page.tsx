@@ -16,10 +16,12 @@ import {
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { RevenueChart, OccupancyChart } from "@/components/shared/dashboard-charts";
+import { PenaltyList } from "@/components/shared/penalty-list";
 import { Badge } from "@/components/ui/badge";
 import { getSystemToday } from "@/lib/calendar";
 import { getRevenueAnalytics, getOccupancyAnalytics, getRecentAuditLogs } from "@/lib/actions/analytics";
 import { formatDistanceToNow } from "date-fns";
+import Link from "next/link";
 
 export default async function AdminDashboard() {
   const settings = await prisma.systemSettings.findUnique({ where: { id: "global" } });
@@ -37,16 +39,35 @@ export default async function AdminDashboard() {
       totalProperties: await prisma.property.count(),
       activeTenants: await prisma.user.count({ where: { role: "TENANT" } }),
       pendingApprovals: await prisma.payment.count({ where: { status: "PENDING" } }),
-      totalRevenue: (await prisma.payment.aggregate({
-        where: { status: "APPROVED" },
-        _sum: { amount: true }
-      }))._sum.amount || 0
+      totalRevenue: await (async () => {
+        const rent = await prisma.payment.aggregate({
+          where: { status: "APPROVED" },
+          _sum: { amount: true }
+        });
+        const penalty = await prisma.penalty.aggregate({
+          where: { status: "PAID" },
+          _sum: { paidAmount: true }
+        });
+        return (rent._sum.amount || 0) + (penalty._sum.paidAmount || 0);
+      })()
     }))()
   ]);
 
   const recentUsers = await prisma.user.findMany({
     take: 5,
     orderBy: { createdAt: "desc" },
+  });
+
+  const pendingPenalties = await prisma.penalty.findMany({
+    where: {
+      status: "UNPAID"
+    },
+    include: {
+      tenant: true,
+      lease: { include: { unit: true } }
+    },
+    orderBy: { dueDate: "desc" },
+    take: 10
   });
 
   return (
@@ -97,35 +118,42 @@ export default async function AdminDashboard() {
         ))}
       </div>
 
-      {/* Analytics Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <Card className="border border-slate-200 shadow-none bg-white rounded-xl">
-          <CardHeader className="p-5 flex flex-row items-center justify-between space-y-0 border-b border-slate-50">
-            <div className="space-y-0.5">
-              <CardTitle className="text-sm font-semibold">Revenue Trend</CardTitle>
-              <p className="text-[10px] text-slate-400 font-medium uppercase tracking-wider">Monthly Collections</p>
-            </div>
-            <div className="text-emerald-600 font-bold text-xs bg-emerald-50 px-2 py-0.5 rounded">
-              LIVE
-            </div>
-          </CardHeader>
-          <CardContent className="p-5">
-            <RevenueChart data={revenueData} />
-          </CardContent>
-        </Card>
+      {/* Analytics & Penalty Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-2 space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Card className="border border-slate-200 shadow-none bg-white rounded-xl">
+              <CardHeader className="p-5 flex flex-row items-center justify-between space-y-0 border-b border-slate-50">
+                <div className="space-y-0.5">
+                  <CardTitle className="text-sm font-semibold">Revenue Trend</CardTitle>
+                  <p className="text-[10px] text-slate-400 font-medium uppercase tracking-wider">Monthly Collections</p>
+                </div>
+                <div className="text-emerald-600 font-bold text-xs bg-emerald-50 px-2 py-0.5 rounded">
+                  LIVE
+                </div>
+              </CardHeader>
+              <CardContent className="p-5">
+                <RevenueChart data={revenueData} />
+              </CardContent>
+            </Card>
 
-        <Card className="border border-slate-200 shadow-none bg-white rounded-xl">
-          <CardHeader className="p-5 flex flex-row items-center justify-between space-y-0 border-b border-slate-50">
-            <div className="space-y-0.5">
-              <CardTitle className="text-sm font-semibold">Occupancy Rate</CardTitle>
-              <p className="text-[10px] text-slate-400 font-medium uppercase tracking-wider">Unit Utilization</p>
-            </div>
-            <Badge variant="secondary" className="bg-slate-100 text-slate-500 font-bold text-[10px] tracking-tighter uppercase">Sync</Badge>
-          </CardHeader>
-          <CardContent className="p-5">
-            <OccupancyChart data={occupancyData} />
-          </CardContent>
-        </Card>
+            <Card className="border border-slate-200 shadow-none bg-white rounded-xl">
+              <CardHeader className="p-5 flex flex-row items-center justify-between space-y-0 border-b border-slate-50">
+                <div className="space-y-0.5">
+                  <CardTitle className="text-sm font-semibold">Occupancy Rate</CardTitle>
+                  <p className="text-[10px] text-slate-400 font-medium uppercase tracking-wider">Unit Utilization</p>
+                </div>
+                <Badge variant="secondary" className="bg-slate-100 text-slate-500 font-bold text-[10px] tracking-tighter uppercase">Sync</Badge>
+              </CardHeader>
+              <CardContent className="p-5">
+                <OccupancyChart data={occupancyData} />
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+        <div className="lg:col-span-1">
+          <PenaltyList penalties={pendingPenalties} currency={settings?.currency || "USD"} />
+        </div>
       </div>
 
       {/* Bottom Grid */}
@@ -176,7 +204,14 @@ export default async function AdminDashboard() {
         </div>
 
         <div className="space-y-4">
-          <h2 className="text-sm font-semibold text-slate-800 px-1">Activity Log</h2>
+          <div className="flex items-center justify-between px-1">
+            <h2 className="text-sm font-semibold text-slate-800">Activity Log</h2>
+            <Link href="/admin/audit-log">
+              <Button variant="ghost" size="sm" className="h-8 text-xs text-blue-600 font-semibold">
+                View All
+              </Button>
+            </Link>
+          </div>
           <div className="space-y-2">
             {auditLogs.length === 0 ? (
               <div className="p-8 text-center bg-white rounded-xl border border-slate-100">

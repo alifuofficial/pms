@@ -21,6 +21,7 @@ import { RevenueChart } from "@/components/shared/dashboard-charts";
 import { formatSystemDate, getSystemToday } from "@/lib/calendar";
 import { cn } from "@/lib/utils";
 import { VerifyPaymentDialog } from "@/components/shared/verify-payment-dialog";
+import { PenaltyList } from "@/components/shared/penalty-list";
 import { auth } from "@/auth";
 import Link from "next/link";
 import { getRevenueAnalytics, getRecentAuditLogs } from "@/lib/actions/analytics";
@@ -45,13 +46,20 @@ export default async function AccountantDashboard() {
     getRecentAuditLogs(10)
   ]);
   
+  const rentRevenueStats = await prisma.payment.aggregate({
+    where: { status: "APPROVED", ...propertyFilter },
+    _sum: { amount: true },
+  });
+
+  const penaltyRevenueStats = await prisma.penalty.aggregate({
+    where: { status: "PAID", ...propertyFilter },
+    _sum: { paidAmount: true },
+  });
+
   const stats = {
     pendingPayments: await prisma.payment.count({ where: { status: "PENDING", ...propertyFilter } }),
     approvedPayments: await prisma.payment.count({ where: { status: "APPROVED", ...propertyFilter } }),
-    totalRevenue: (await prisma.payment.aggregate({
-      where: { status: "APPROVED", ...propertyFilter },
-      _sum: { amount: true },
-    }))._sum.amount || 0,
+    totalRevenue: (rentRevenueStats._sum.amount || 0) + (penaltyRevenueStats._sum.paidAmount || 0),
     expectedRevenue: (await prisma.payment.aggregate({
       where: propertyFilter,
       _sum: { amount: true },
@@ -67,6 +75,18 @@ export default async function AccountantDashboard() {
     take: 6,
     include: { tenant: true },
     orderBy: { createdAt: "desc" },
+  });
+
+  const pendingPenalties = await prisma.penalty.findMany({
+    where: {
+      status: "UNPAID"
+    },
+    include: {
+      tenant: true,
+      lease: { include: { unit: true } }
+    },
+    orderBy: { dueDate: "desc" },
+    take: 10
   });
 
   return (
@@ -205,6 +225,8 @@ export default async function AccountantDashboard() {
 
         {/* Sidebar Activity */}
         <div className="space-y-6">
+          <PenaltyList penalties={pendingPenalties} currency={settings.currency} />
+
           <div className="space-y-4">
             <h2 className="text-sm font-semibold text-slate-800 px-1 flex items-center gap-2">
               <TrendingUp size={16} className="text-slate-400" />

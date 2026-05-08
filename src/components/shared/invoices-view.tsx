@@ -8,15 +8,19 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
+import { Pagination } from "./pagination";
 
 interface InvoicesViewProps {
   payments: any[];
   currency: string;
   calendarType: string;
   role: string;
+  currentPage?: number;
+  totalPages?: number;
+  totalCount?: number;
 }
 
-export function InvoicesView({ payments, currency, calendarType, role }: InvoicesViewProps) {
+export function InvoicesView({ payments, currency, calendarType, role, currentPage = 1, totalPages = 1, totalCount }: InvoicesViewProps) {
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
@@ -81,7 +85,6 @@ export function InvoicesView({ payments, currency, calendarType, role }: Invoice
                   </td>
                   <td className="py-4 px-6">
                     <p className="text-sm font-black text-slate-900">{currency} {p.amount.toLocaleString()}</p>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter mt-0.5">{p.type}</p>
                   </td>
                   <td className="py-4 px-6">
                     <Badge variant="outline" className={cn(
@@ -106,6 +109,7 @@ export function InvoicesView({ payments, currency, calendarType, role }: Invoice
           </tbody>
         </table>
       </div>
+      <Pagination totalPages={totalPages} currentPage={currentPage} />
     </div>
   );
 }

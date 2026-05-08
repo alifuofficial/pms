@@ -11,8 +11,7 @@ export async function processLateFees() {
 
     const pendingPayments = await prisma.payment.findMany({
       where: { 
-        status: "PENDING",
-        lateFeeApplied: { lt: 2 } // Only those that haven't reached tier 2
+        status: "PENDING"
       },
       include: {
         tenant: {
@@ -36,21 +35,27 @@ export async function processLateFees() {
       const diffTime = now.getTime() - dueDate.getTime();
       const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
-      let appliedTier = payment.lateFeeApplied;
-      let templateSlug = "";
+      // Ethiopian Legal Context: 
+      // Deadline is usually end of month. Grace period is 5 days.
+      // Penalty starts on Day 6 (diffDays > 5).
+      // Final Warning (10%) starts after next month + 5 days (diffDays > 35).
+      
+      const existingPenalty = await prisma.penalty.findUnique({ where: { id: `penalty-${payment.id}` } });
+      const currentPenaltyAmount = existingPenalty?.amount || 0;
 
-      if (diffDays > 12 && appliedTier < 2) {
+      let templateSlug = "";
+      let newPenaltyAmount = currentPenaltyAmount;
+
+      if (diffDays > 35 && (currentPenaltyAmount < payment.lease.unit.rentAmount * 0.10)) {
         templateSlug = "late-fee-2";
-        appliedTier = 2;
-      } else if (diffDays > 5 && appliedTier < 1) {
+        newPenaltyAmount = payment.lease.unit.rentAmount * 0.10; // Final Warning: 10%
+      } else if (diffDays > 5 && (currentPenaltyAmount === 0)) {
         templateSlug = "late-fee-1";
-        appliedTier = 1;
+        newPenaltyAmount = payment.lease.unit.rentAmount * ((settings.lateFeePercentage || 5) / 100);
       }
 
       if (templateSlug && payment.tenant.phoneNumber) {
-        // Calculate amount including penalty for the SMS
-        const penaltyRate = appliedTier === 2 ? 0.10 : (settings.lateFeePercentage / 100);
-        const totalAmount = payment.amount + (payment.lease.unit.rentAmount * penaltyRate);
+        const totalAmount = payment.amount + newPenaltyAmount;
 
         await sendSMS(payment.tenant.phoneNumber, templateSlug, {
           tenant_name: payment.tenant.name || "Tenant",
@@ -60,9 +65,20 @@ export async function processLateFees() {
           due_date: payment.dueDate.toLocaleDateString()
         });
 
-        await prisma.payment.update({
-          where: { id: payment.id },
-          data: { lateFeeApplied: appliedTier }
+        // Save to Penalty table
+        await prisma.penalty.upsert({
+          where: { id: `penalty-${payment.id}` }, // Deterministic ID for this payment's penalty
+          create: {
+            id: `penalty-${payment.id}`,
+            leaseId: payment.leaseId,
+            tenantId: payment.tenantId,
+            amount: newPenaltyAmount,
+            dueDate: payment.dueDate,
+            status: "UNPAID"
+          },
+          update: {
+            amount: newPenaltyAmount
+          }
         });
         
         processedCount++;

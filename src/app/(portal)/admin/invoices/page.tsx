@@ -4,7 +4,11 @@ import { InvoicesView } from "@/components/shared/invoices-view";
 import { auth } from "@/auth";
 import { redirect } from "next/navigation";
 
-export default async function AdminInvoicesPage() {
+export default async function AdminInvoicesPage({
+  searchParams,
+}: {
+  searchParams: { [key: string]: string | string[] | undefined };
+}) {
   const session = await auth();
   if (!session?.user || session.user.role !== "ADMIN") redirect("/auth/login");
 
@@ -13,17 +17,24 @@ export default async function AdminInvoicesPage() {
     getEffectiveCalendar()
   ]);
 
-  const payments = await prisma.payment.findMany({
-    include: {
-      tenant: true,
-      lease: {
-        include: {
-          unit: true
-        }
-      }
-    },
-    orderBy: { createdAt: "desc" }
-  });
+  const page = parseInt((searchParams?.page as string) || "1");
+  const limit = 15;
+  const skip = (page - 1) * limit;
+
+  const [payments, totalCount] = await Promise.all([
+    prisma.payment.findMany({
+      include: {
+        tenant: true,
+        lease: { include: { unit: true } }
+      },
+      orderBy: { createdAt: "desc" },
+      skip,
+      take: limit,
+    }),
+    prisma.payment.count(),
+  ]);
+
+  const totalPages = Math.ceil(totalCount / limit);
 
   return (
     <InvoicesView 
@@ -31,6 +42,9 @@ export default async function AdminInvoicesPage() {
       currency={settings.currency} 
       calendarType={calendarType}
       role="ADMIN"
+      currentPage={page}
+      totalPages={totalPages}
+      totalCount={totalCount}
     />
   );
 }

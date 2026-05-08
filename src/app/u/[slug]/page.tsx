@@ -62,27 +62,41 @@ export default async function PublicUnitPage({ params }: { params: Promise<{ slu
 
     const nextPayment = lease?.nextDuePayment;
     const now = new Date();
-    const dueDate = nextPayment ? new Date(nextPayment.dueDate) : null;
+    // Use the Ethiopian month-end date for status decisions, or fall back to stored dueDate
+    const ethiopianDue = nextPayment?.ethiopianDueDate 
+      ? new Date(nextPayment.ethiopianDueDate) 
+      : nextPayment ? new Date(nextPayment.dueDate) : null;
+    // daysFromDue: negative = days remaining until month end, positive = days past month end
+    const daysFromDue: number = nextPayment?.daysFromDue ?? (ethiopianDue ? Math.floor((now.getTime() - ethiopianDue.getTime()) / 86400000) : 0);
+    daysLeft = -daysFromDue; // flip sign: positive = days remaining for the UI
     
     if (nextPayment) {
-        const dLeft = dueDate ? differenceInDays(dueDate, now) : 0;
-        daysLeft = dLeft;
-
         if (nextPayment.receiptUrl) {
+            // Payment submitted, waiting for accountant review
             status = "PENDING";
             statusColor = "text-blue-600 bg-blue-50 border-blue-100";
             themeColor = "bg-slate-900";
             accentColor = "text-slate-900";
             statusIcon = <Loader2 size={14} className="animate-spin" />;
             statusLabel = "UNDER REVIEW";
-        } else if (dueDate && now > dueDate) {
+        } else if (daysFromDue > 5) {
+            // Past grace period — truly overdue
             status = "OVERDUE";
             statusColor = "text-rose-600 bg-rose-50 border-rose-100";
             themeColor = "bg-rose-600";
             accentColor = "text-rose-600";
             statusIcon = <AlertCircle size={14} />;
             statusLabel = "OVERDUE";
-        } else if (dLeft <= 10) {
+        } else if (daysFromDue > 0) {
+            // Within 5-day grace period — warn but no penalty yet
+            status = "DUE";
+            statusColor = "text-amber-600 bg-amber-50 border-amber-100";
+            themeColor = "bg-amber-500";
+            accentColor = "text-amber-500";
+            statusIcon = <Clock size={14} />;
+            statusLabel = "GRACE PERIOD";
+        } else if (daysLeft <= 10) {
+            // 10 days or less remaining in the month
             status = "DUE";
             statusColor = "text-amber-600 bg-amber-50 border-amber-100";
             themeColor = "bg-amber-500";
@@ -90,6 +104,7 @@ export default async function PublicUnitPage({ params }: { params: Promise<{ slu
             statusIcon = <Clock size={14} />;
             statusLabel = "PAY NOW";
         } else {
+            // Plenty of time — all good
             status = "PAID";
             statusColor = "text-emerald-600 bg-emerald-50 border-emerald-100";
             themeColor = "bg-emerald-600";
@@ -177,22 +192,38 @@ export default async function PublicUnitPage({ params }: { params: Promise<{ slu
                 <div className="grid grid-cols-2 gap-4">
                    <div className={cn(
                      "p-5 rounded-[2rem] border space-y-2",
-                     lease.nextDuePayment?.penalty && lease.nextDuePayment.penalty > 0 
+                     ((lease.nextDuePayment?.penalty ?? 0) > 0) || ((lease.arrearsCount ?? 0) > 1)
                        ? "bg-rose-50 border-rose-100" 
                        : "bg-slate-50/50 border-slate-100/80"
                    )}>
                       <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                        {lease.nextDuePayment?.penalty && lease.nextDuePayment.penalty > 0 ? "Total to Pay" : "Monthly Rent"}
+                        {(lease.arrearsCount ?? 0) > 1
+                          ? "Total Arrears"
+                          : (lease.nextDuePayment?.penalty ?? 0) > 0
+                            ? "Total to Pay"
+                            : "Monthly Rent"}
                       </p>
                       <div className="flex items-baseline gap-1">
                         <span className="text-xs font-black text-slate-400">{settings.currency}</span>
                         <p className={cn(
                           "text-2xl font-black tracking-tighter transition-colors duration-500",
-                          lease.nextDuePayment?.penalty && lease.nextDuePayment.penalty > 0 ? "text-rose-600" : accentColor
+                          ((lease.nextDuePayment?.penalty ?? 0) > 0) || ((lease.arrearsCount ?? 0) > 1) ? "text-rose-600" : accentColor
                         )}>
-                          {(lease.nextDuePayment?.totalAmount || unit.rentAmount).toLocaleString()}
+                          {((lease.arrearsCount ?? 0) > 1
+                            ? (lease.grandTotal ?? 0)
+                            : (lease.nextDuePayment?.displayTotal ?? lease.nextDuePayment?.totalAmount ?? unit.rentAmount)
+                          ).toLocaleString()}
                         </p>
                       </div>
+                      {(lease.arrearsCount ?? 0) > 1 && (
+                        <p className="text-[9px] font-black text-rose-500 uppercase tracking-wider">{lease.arrearsCount} months overdue</p>
+                      )}
+                      {/* Penalty breakdown for single month */}
+                      {(lease.arrearsCount ?? 0) <= 1 && (lease.nextDuePayment?.penalty ?? 0) > 0 && (
+                        <p className="text-[9px] font-bold text-rose-400 uppercase tracking-wider">
+                          Rent {settings.currency} {unit.rentAmount.toLocaleString()} + Fee {settings.currency} {(lease.nextDuePayment?.penalty ?? 0).toLocaleString()}
+                        </p>
+                      )}
                    </div>
                    <div className="bg-slate-50/50 p-5 rounded-[2rem] border border-slate-100/80 space-y-2">
                       <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Countdown</p>
@@ -201,11 +232,17 @@ export default async function PublicUnitPage({ params }: { params: Promise<{ slu
                           <p className={cn(
                             "text-2xl font-black tracking-tighter transition-colors duration-500",
                             accentColor
-                          )}>{daysLeft < 0 ? Math.abs(daysLeft) : daysLeft}</p>
-                          <span className="text-[10px] font-black text-slate-400 uppercase">{daysLeft < 0 ? "Days Past" : "Days Left"}</span>
+                          )}>{Math.abs(daysLeft)}</p>
+                          <span className="text-[10px] font-black text-slate-400 uppercase">
+                            {daysLeft <= 0 ? "Days Past" : "Days Left"}
+                          </span>
                         </div>
                       ) : (
                         <p className="text-sm font-black text-slate-900 uppercase">Current</p>
+                      )}
+                      {/* Grace period indicator: past month-end but within 5 days */}
+                      {daysLeft !== null && daysLeft <= 0 && Math.abs(daysLeft) <= 5 && (
+                        <p className="text-[9px] font-black text-amber-500 uppercase tracking-wider">Grace Period — No Penalty Yet</p>
                       )}
                    </div>
                 </div>
@@ -236,6 +273,97 @@ export default async function PublicUnitPage({ params }: { params: Promise<{ slu
                         Account flag: Legal action or eviction proceedings may be initiated if payment is not received immediately.
                       </p>
                     )}
+                  </div>
+                )}
+
+                {/* ── MULTI-MONTH ARREARS BREAKDOWN ── */}
+                {lease.arrearsMonths && lease.arrearsMonths.length > 0 && (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between px-1">
+                      <div className="flex items-center gap-2">
+                        <AlertCircle size={10} className="text-rose-500" />
+                        <p className="text-[10px] font-black text-rose-600 uppercase tracking-[0.2em]">Overdue Breakdown</p>
+                      </div>
+                      <p className="text-[9px] font-black text-rose-400 uppercase">{lease.arrearsMonths.length} Month{lease.arrearsMonths.length > 1 ? 's' : ''}</p>
+                    </div>
+                    <div className="bg-rose-50/50 rounded-[2rem] border border-rose-100 overflow-hidden divide-y divide-rose-100">
+                      {(lease.arrearsMonths as any[]).map((m, i) => (
+                        <div key={m.id} className="p-4 flex items-center justify-between">
+                          <div>
+                            <p className="text-[11px] font-black text-rose-900 uppercase tracking-tight flex items-center gap-1.5">
+                              {i === 0 && <span className="w-1.5 h-1.5 rounded-full bg-rose-500 inline-block" />}
+                              {format(new Date(m.dueDate), "MMMM yyyy")}
+                            </p>
+                            <p className="text-[9px] font-bold text-rose-500 uppercase">
+                              {formatEthiopianMonthYear(new Date(m.dueDate))}
+                            </p>
+                            {m.penalty > 0 && (
+                              <p className="text-[9px] font-bold text-amber-600 uppercase mt-0.5">
+                                + {settings.currency} {m.penalty.toLocaleString()} penalty ({m.penaltyTier === 2 ? '10%' : '5%'})
+                              </p>
+                            )}
+                          </div>
+                          <div className="text-right">
+                            <p className="text-xs font-black text-rose-700">
+                              {settings.currency} {m.totalAmount.toLocaleString()}
+                            </p>
+                            {m.receiptUrl && (
+                              <p className="text-[9px] font-bold text-blue-500 uppercase">Under Review</p>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                      {/* Historical penalty records from Penalty table */}
+                      {lease.unpaidPenalties && (lease.unpaidPenalties as any[]).length > 0 && 
+                        (lease.unpaidPenalties as any[]).map((p) => (
+                          <div key={p.id} className="p-4 flex items-center justify-between bg-amber-50/30">
+                            <div>
+                              <p className="text-[11px] font-black text-amber-900 uppercase tracking-tight">Historical Penalty</p>
+                              <p className="text-[9px] font-bold text-amber-600 uppercase">{formatEthiopianMonthYear(new Date(p.dueDate))}</p>
+                            </div>
+                            <p className="text-xs font-black text-amber-700">{settings.currency} {p.amount.toLocaleString()}</p>
+                          </div>
+                        ))
+                      }
+                      {/* Grand Total row */}
+                      {lease.arrearsMonths.length > 1 && (
+                        <div className="p-4 flex items-center justify-between bg-rose-100/50">
+                          <p className="text-[11px] font-black text-rose-900 uppercase tracking-widest">Grand Total</p>
+                          <p className="text-sm font-black text-rose-700">{settings.currency} {(lease.grandTotal || 0).toLocaleString()}</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Historical penalty-only records when no pending payments */}
+                {(!lease.arrearsMonths || lease.arrearsMonths.length === 0) && 
+                  lease.nextDuePayment?.historicalPenalties && 
+                  lease.nextDuePayment.historicalPenalties.length > 0 && (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2 px-1">
+                       <AlertCircle size={10} className="text-rose-500" />
+                       <p className="text-[10px] font-black text-rose-600 uppercase tracking-[0.2em]">Arrears Breakdown</p>
+                    </div>
+                    <div className="bg-rose-50/50 rounded-[2rem] border border-rose-100 overflow-hidden divide-y divide-rose-100">
+                      {(lease.nextDuePayment.historicalPenalties as any[]).map((p) => (
+                        <div key={p.id} className="p-4 flex items-center justify-between">
+                          <div>
+                            <p className="text-[11px] font-black text-rose-900 uppercase tracking-tight">
+                              Late Fee: {format(new Date(p.dueDate), "MMMM yyyy")}
+                            </p>
+                            <p className="text-[9px] font-bold text-rose-500 uppercase">
+                              {formatEthiopianMonthYear(new Date(p.dueDate))}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-xs font-black text-rose-700">
+                              {settings.currency} {p.amount.toLocaleString()}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
 
@@ -276,9 +404,19 @@ export default async function PublicUnitPage({ params }: { params: Promise<{ slu
                       <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Next Payment Due</p>
                       {lease.nextDuePayment ? (
                         <div className="space-y-0.5">
-                          <p className="text-sm font-black text-slate-900">{format(new Date(lease.nextDuePayment.dueDate), "MMMM d, yyyy")}</p>
+                          {/* Show Ethiopian month-end date as the actual deadline */}
+                          <p className="text-sm font-black text-slate-900">
+                            {lease.nextDuePayment.ethiopianDueDate 
+                              ? format(new Date(lease.nextDuePayment.ethiopianDueDate), "MMMM d, yyyy")
+                              : format(new Date(lease.nextDuePayment.dueDate), "MMMM d, yyyy")}
+                          </p>
                           <p className="text-[10px] font-bold text-amber-600 uppercase">
-                             {formatSystemDate(new Date(lease.nextDuePayment.dueDate), "ETHIOPIAN")}
+                             {formatSystemDate(
+                               lease.nextDuePayment.ethiopianDueDate 
+                                 ? new Date(lease.nextDuePayment.ethiopianDueDate)
+                                 : new Date(lease.nextDuePayment.dueDate), 
+                               "ETHIOPIAN"
+                             )}
                           </p>
                           {lease.nextDuePayment.status === "ESTIMATED" && (
                             <div className="pt-2 space-y-1">
@@ -349,6 +487,12 @@ export default async function PublicUnitPage({ params }: { params: Promise<{ slu
                  status={lease.latestApprovedPayment ? "PAID" : "UNPAID"}
                  nextMonth={lease.nextDuePayment ? format(new Date(lease.nextDuePayment.dueDate), "MMMM yyyy") : undefined}
                  nextMonthAmharic={lease.nextDuePayment ? formatEthiopianMonthYear(new Date(lease.nextDuePayment.dueDate)) : undefined}
+                 rentAmount={unit.rentAmount}
+                 currentPenalty={lease.nextDuePayment?.penalty || 0}
+                 historicalPenalty={lease.nextDuePayment?.unpaidPenaltyTotal || 0}
+                 currency={settings.currency}
+                 grandTotal={lease.grandTotal || 0}
+                 arrearsCount={lease.arrearsCount || 0}
                />
             </div>
           )}

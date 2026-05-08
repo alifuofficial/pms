@@ -1,10 +1,5 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
 generator client {
-  provider = "prisma-client-js"
+  provider   = "prisma-client-js"
   engineType = "library"
 }
 
@@ -13,29 +8,22 @@ datasource db {
 }
 
 model User {
-  id            String    @id @default(cuid())
-  name          String?
-  email         String?   @unique
-  phoneNumber   String?
-  passwordHash  String
-  role          Role      @default(TENANT)
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  calendarType  String    @default("GREGORIAN")
-
-  managedProperties    Property[] @relation("PropertyManager")
-  accountantProperties Property[] @relation("PropertyAccountant")
-  leases               Lease[]    @relation("TenantLeases")
-  payments             Payment[]  @relation("TenantPayments")
-  approvedPayments     Payment[]  @relation("AccountantApprovals")
+  id                   String     @id @default(cuid())
+  name                 String?
+  email                String?    @unique
+  phoneNumber          String?
+  passwordHash         String
+  role                 Role       @default(TENANT)
+  createdAt            DateTime   @default(now())
+  updatedAt            DateTime   @updatedAt
+  calendarType         String     @default("GREGORIAN")
   auditLogs            AuditLog[]
-}
-
-enum Role {
-  ADMIN
-  ACCOUNTANT
-  MANAGER
-  TENANT
+  leases               Lease[]    @relation("TenantLeases")
+  approvedPayments     Payment[]  @relation("AccountantApprovals")
+  payments             Payment[]  @relation("TenantPayments")
+  penalties            Penalty[]  @relation("TenantPenalties")
+  accountantProperties Property[] @relation("PropertyAccountant")
+  managedProperties    Property[] @relation("PropertyManager")
 }
 
 model Property {
@@ -44,145 +32,122 @@ model Property {
   address      String
   type         PropertyType @default(RESIDENTIAL)
   managerId    String
-  manager      User         @relation("PropertyManager", fields: [managerId], references: [id])
   accountantId String?
-  accountant   User?        @relation("PropertyAccountant", fields: [accountantId], references: [id])
-  units        Unit[]
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
-}
-
-enum PropertyType {
-  RESIDENTIAL
-  COMMERCIAL
-  BOTH
+  accountant   User?        @relation("PropertyAccountant", fields: [accountantId], references: [id])
+  manager      User         @relation("PropertyManager", fields: [managerId], references: [id])
+  units        Unit[]
 }
 
 model Unit {
   id         String     @id @default(cuid())
   propertyId String
-  property   Property   @relation(fields: [propertyId], references: [id], onDelete: Cascade)
   unitNumber String
-  floor      Int?
-  size       Float?     // m2
-  type       String     // e.g., Studio, 1BR, 2BR
+  type       String
   rentAmount Float
   status     UnitStatus @default(AVAILABLE)
-  leases     Lease[]
-  qrSlug     String?    @unique
   createdAt  DateTime   @default(now())
   updatedAt  DateTime   @updatedAt
+  floor      Int?
+  size       Float?
+  qrSlug     String?    @unique
+  leases     Lease[]
+  property   Property   @relation(fields: [propertyId], references: [id], onDelete: Cascade)
 
   @@unique([propertyId, unitNumber])
 }
 
-enum UnitStatus {
-  AVAILABLE
-  OCCUPIED
-  MAINTENANCE
-}
-
 model Lease {
-  id                 String      @id @default(cuid())
-  unitId             String
-  unit               Unit        @relation(fields: [unitId], references: [id])
-  tenantId           String
-  tenant             User        @relation("TenantLeases", fields: [tenantId], references: [id])
-  startDate          DateTime
-  endDate            DateTime
-  status             LeaseStatus @default(PENDING)
-  terms              String?
-  leaseAgreementUrl  String?
-  payments           Payment[]
-  createdAt          DateTime    @default(now())
-  updatedAt          DateTime    @updatedAt
-}
-
-enum LeaseStatus {
-  PENDING
-  ACTIVE
-  EXPIRED
-  TERMINATED
+  id                String      @id @default(cuid())
+  unitId            String
+  tenantId          String
+  startDate         DateTime
+  endDate           DateTime
+  status            LeaseStatus @default(PENDING)
+  terms             String?
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+  leaseAgreementUrl String?
+  tenant            User        @relation("TenantLeases", fields: [tenantId], references: [id])
+  unit              Unit        @relation(fields: [unitId], references: [id])
+  payments          Payment[]
+  penalties         Penalty[]
 }
 
 model Payment {
-  id           String        @id @default(cuid())
-  tenantId     String
-  tenant       User          @relation("TenantPayments", fields: [tenantId], references: [id])
-  leaseId      String
-  lease        Lease         @relation(fields: [leaseId], references: [id])
-  amount       Float
-  dueDate      DateTime
-  paidAt       DateTime?
-  status       PaymentStatus @default(PENDING)
-  type         PaymentType   @default(MONTHLY)
-  advanceUntil DateTime?
-  approvedBy   String?
-  approver     User?         @relation("AccountantApprovals", fields: [approvedBy], references: [id])
-  receiptUrl   String?
+  id            String        @id @default(cuid())
+  tenantId      String
+  leaseId       String
+  amount        Float
+  dueDate       DateTime
+  paidAt        DateTime?
+  status        PaymentStatus @default(PENDING)
+  type          PaymentType   @default(MONTHLY)
+  advanceUntil  DateTime?
+  approvedBy    String?
+  approver      User?         @relation("AccountantApprovals", fields: [approvedBy], references: [id])
+  receiptUrl    String?
   senderName    String?
   transactionId String?
-  lateFeeApplied Int           @default(0)
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  lease         Lease         @relation(fields: [leaseId], references: [id])
+  tenant        User          @relation("TenantPayments", fields: [tenantId], references: [id])
 }
 
-enum PaymentType {
-  MONTHLY
-  ADVANCE
-}
-
-enum PaymentStatus {
-  PENDING
-  APPROVED
-  REJECTED
+model Penalty {
+  id            String    @id @default(cuid())
+  leaseId       String
+  tenantId      String
+  amount        Float
+  paidAmount    Float     @default(0)
+  status        String    @default("UNPAID") // UNPAID, PARTIAL, PAID
+  dueDate       DateTime
+  paidAt        DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  lease         Lease     @relation(fields: [leaseId], references: [id])
+  tenant        User      @relation("TenantPenalties", fields: [tenantId], references: [id])
 }
 
 model AuditLog {
   id        String   @id @default(cuid())
   userId    String
-  user      User     @relation(fields: [userId], references: [id])
   action    String
-  metadata  String?  // JSON string
+  metadata  String?
   createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
 }
 
 model SystemSettings {
-  id               String   @id @default("global")
-  systemName       String   @default("NexusPMS")
-  organizationName String?
-  tinNumber        String?
-  address          String?
-  website          String?
-  phone            String?
-  logoUrl          String?
-  primaryColor     String   @default("#2563eb")
-  supportEmail     String?
-  currency         String   @default("USD")
-  calendarType     String   @default("GREGORIAN")
-  
-  // Late Fee Configuration
-  lateFeeEnabled    Boolean @default(false)
-  lateFeePercentage Float   @default(5.0)
-
-  // SMTP Configuration
-  smtpHost         String?
-  smtpPort         Int?
-  smtpUser         String?
-  smtpPass         String?
-  
-  // FTP Configuration
-  ftpHost          String?
-  ftpPort          Int?
-  ftpUser          String?
-  ftpPass          String?
-  ftpEnabled       Boolean  @default(false)
-  ftpBaseUrl       String?
-
-  // SMS Ethiopia Configuration
-  smsEthiopiaKey   String?
-
-  updatedAt        DateTime @updatedAt
+  id                String   @id @default("global")
+  systemName        String   @default("NexusPMS")
+  organizationName  String?
+  tinNumber         String?
+  address           String?
+  website           String?
+  phone             String?
+  logoUrl           String?
+  primaryColor      String   @default("#2563eb")
+  supportEmail      String?
+  currency          String   @default("USD")
+  calendarType      String   @default("GREGORIAN")
+  lateFeeEnabled       Boolean  @default(false)
+  lateFeePercentage    Float    @default(5.0)
+  warningFeePercentage Float    @default(10.0)
+  smtpHost             String?
+  smtpPort          Int?
+  smtpUser          String?
+  smtpPass          String?
+  ftpHost           String?
+  ftpPort           Int?
+  ftpUser           String?
+  ftpPass           String?
+  ftpEnabled        Boolean  @default(false)
+  ftpBaseUrl        String?
+  smsEthiopiaKey    String?
+  updatedAt         DateTime @updatedAt
 }
 
 model BankAccount {
@@ -206,8 +171,46 @@ model SmsTemplate {
 
 model Otp {
   id         String   @id @default(cuid())
-  identifier String   // email or phoneNumber
+  identifier String
   code       String
   expiresAt  DateTime
   createdAt  DateTime @default(now())
+}
+
+enum Role {
+  ADMIN
+  ACCOUNTANT
+  MANAGER
+  TENANT
+}
+
+enum PropertyType {
+  RESIDENTIAL
+  COMMERCIAL
+  BOTH
+}
+
+enum UnitStatus {
+  AVAILABLE
+  OCCUPIED
+  MAINTENANCE
+}
+
+enum LeaseStatus {
+  PENDING
+  ACTIVE
+  EXPIRED
+  TERMINATED
+}
+
+enum PaymentType {
+  MONTHLY
+  ADVANCE
+  PENALTY
+}
+
+enum PaymentStatus {
+  PENDING
+  APPROVED
+  REJECTED
 }

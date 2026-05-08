@@ -12,27 +12,31 @@ export async function getRevenueAnalytics(months: number = 6, propertyIds?: stri
     const start = startOfMonth(date);
     const end = endOfMonth(date);
 
-    const revenue = await prisma.payment.aggregate({
+    const rentRevenue = await prisma.payment.aggregate({
       where: {
         status: "APPROVED",
-        paidAt: {
-          gte: start,
-          lte: end,
-        },
+        paidAt: { gte: start, lte: end },
         ...(propertyIds && propertyIds.length > 0 ? {
-          lease: {
-            unit: {
-              propertyId: { in: propertyIds }
-            }
-          }
+          lease: { unit: { propertyId: { in: propertyIds } } }
         } : {})
       },
       _sum: { amount: true },
     });
 
+    const penaltyRevenue = await prisma.penalty.aggregate({
+      where: {
+        status: "PAID",
+        paidAt: { gte: start, lte: end },
+        ...(propertyIds && propertyIds.length > 0 ? {
+          lease: { unit: { propertyId: { in: propertyIds } } }
+        } : {})
+      },
+      _sum: { paidAmount: true },
+    });
+
     result.push({
       name: format(date, "MMM"),
-      revenue: revenue._sum.amount || 0,
+      revenue: (rentRevenue._sum.amount || 0) + (penaltyRevenue._sum.paidAmount || 0),
     });
   }
 
