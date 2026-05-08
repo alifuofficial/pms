@@ -236,11 +236,6 @@ export default async function ManagerDashboard() {
               </table>
            </div>
         </div>
-
-      {/* Bottom Content Area */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Recent Tenants Table */}
-...
         {/* Recent Activity Sidebar */}
         <div className="space-y-6">
           <PenaltyList penalties={pendingPenalties} currency={settings?.currency || "USD"} />
@@ -278,6 +273,7 @@ export default async function ManagerDashboard() {
           </div>
         </div>
       </div>
+    </div>
     </div>
   );
 }
