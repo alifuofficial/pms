@@ -53,16 +53,23 @@ export function PublicReportPayment({
   const [fileName, setFileName] = useState<string | null>(null);
 
   const totalPenalty = currentPenalty + historicalPenalty;
-  
-  // When multiple months are owed, default to the full grand total
-  // Otherwise calculate per the selected payment type
+  const hasArrears = arrearsCount > 0 && grandTotal > 0;
+  const advanceRentTotal = rentAmount * advanceMonths;
+
+  // Smart calculation:
+  // - If arrears exist + Monthly → pay off all arrears (grandTotal)
+  // - If arrears exist + Advance → pay off all arrears PLUS N future months rent
+  // - If no arrears + Monthly   → rent + penalty
+  // - If no arrears + Advance   → rent × N + penalty
   let calculatedAmount = 0;
-  if (arrearsCount > 1 && grandTotal > 0) {
-    calculatedAmount = grandTotal; // Tenant must pay all arrears at once
-  } else if (paymentType === "MONTHLY") {
-    calculatedAmount = rentAmount + totalPenalty;
+  if (hasArrears) {
+    calculatedAmount = paymentType === "ADVANCE"
+      ? grandTotal + advanceRentTotal   // Clear debt + prepay N months
+      : grandTotal;                     // Clear debt only
+  } else if (paymentType === "ADVANCE") {
+    calculatedAmount = advanceRentTotal + totalPenalty;
   } else {
-    calculatedAmount = (rentAmount * advanceMonths) + totalPenalty;
+    calculatedAmount = rentAmount + totalPenalty;
   }
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -180,7 +187,7 @@ export function PublicReportPayment({
                   paymentType === "MONTHLY" ? "bg-white shadow-sm text-slate-900" : "text-slate-400 hover:text-slate-600"
                 )}
               >
-                Standard
+                {hasArrears ? "Clear Arrears" : "Standard"}
               </button>
               <button 
                 type="button"
@@ -190,7 +197,7 @@ export function PublicReportPayment({
                   paymentType === "ADVANCE" ? "bg-white shadow-sm text-slate-900" : "text-slate-400 hover:text-slate-600"
                 )}
               >
-                Advance
+                {hasArrears ? "Clear + Advance" : "Advance"}
               </button>
            </div>
 
@@ -206,11 +213,29 @@ export function PublicReportPayment({
                  </div>
                  
                  <div className="mt-4 pt-4 border-t border-white/10 space-y-2">
-                    <div className="flex justify-between text-[9px] font-black uppercase tracking-widest opacity-60">
-                       <span>Month Rent</span>
-                       <span>{currency} {(rentAmount * (paymentType === "ADVANCE" ? advanceMonths : 1)).toLocaleString()}</span>
-                    </div>
-                    {totalPenalty > 0 && (
+                    {/* Arrears line — shown when tenant has debt */}
+                    {hasArrears && (
+                      <div className="flex justify-between text-[9px] font-black uppercase tracking-widest text-rose-400">
+                         <span>Arrears Owed ({arrearsCount} {arrearsCount === 1 ? "month" : "months"})</span>
+                         <span>{currency} {grandTotal.toLocaleString()}</span>
+                      </div>
+                    )}
+                    {/* Single month rent — shown when no arrears */}
+                    {!hasArrears && (
+                      <div className="flex justify-between text-[9px] font-black uppercase tracking-widest opacity-60">
+                         <span>Month Rent</span>
+                         <span>{currency} {rentAmount.toLocaleString()}</span>
+                      </div>
+                    )}
+                    {/* Advance months line */}
+                    {paymentType === "ADVANCE" && (
+                      <div className="flex justify-between text-[9px] font-black uppercase tracking-widest text-blue-300">
+                         <span>Advance ({advanceMonths} {advanceMonths === 1 ? "month" : "months"} × {currency} {rentAmount.toLocaleString()})</span>
+                         <span>{currency} {advanceRentTotal.toLocaleString()}</span>
+                      </div>
+                    )}
+                    {/* Penalty line — shown when no arrears but has single penalty */}
+                    {!hasArrears && totalPenalty > 0 && (
                       <div className="flex justify-between text-[9px] font-black uppercase tracking-widest text-rose-400">
                          <span>Penalties Owed</span>
                          <span>{currency} {totalPenalty.toLocaleString()}</span>
