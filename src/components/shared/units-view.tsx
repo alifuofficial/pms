@@ -1,17 +1,17 @@
+import { Suspense } from "react";
 import { prisma } from "@/lib/prisma";
 import { Button } from "@/components/ui/button";
-import { Home, Search, Plus, Building2, Layers, Maximize2 } from "lucide-react";
-import { Input } from "@/components/ui/input";
-import { cn } from "@/lib/utils";
-import { UnitActions } from "./unit-actions";
+import { Plus } from "lucide-react";
+import { UnitsBulkTable } from "./units-bulk-table";
 import { AddUnitDialog } from "./add-unit-dialog";
 import { UnitsFilter } from "./units-filter";
+import { UnitsSearchInput } from "./units-search-input";
+import { FloorTabs } from "./floor-tabs";
 import { getProperties } from "@/lib/actions/properties";
 import { getSystemSettings } from "@/lib/actions/settings";
 import { DataImportExport } from "./data-import-export";
 import { exportUnitsCsv, importUnitsCsv } from "@/lib/actions/import-export";
 import { Pagination } from "./pagination";
-import { UnitsBulkTable } from "./units-bulk-table";
 
 export async function UnitsView({ 
   title = "Inventory",
@@ -23,11 +23,11 @@ export async function UnitsView({
   const properties = await getProperties();
   const settings = await getSystemSettings();
 
-  
+  // ── Build where clause from searchParams ─────────────────────
   const where: any = {};
   if (searchParams?.propertyId) where.propertyId = searchParams.propertyId;
-  if (searchParams?.status) where.status = searchParams.status;
-  if (searchParams?.type) where.type = searchParams.type;
+  if (searchParams?.status)     where.status     = searchParams.status;
+  if (searchParams?.type)       where.type       = searchParams.type;
   if (searchParams?.minPrice || searchParams?.maxPrice) {
     where.rentAmount = {};
     if (searchParams.minPrice) where.rentAmount.gte = parseFloat(searchParams.minPrice);
@@ -35,16 +35,25 @@ export async function UnitsView({
   }
   if (searchParams?.q) {
     where.OR = [
-      { unitNumber: { contains: searchParams.q } },
-      { property: { name: { contains: searchParams.q } } }
+      { unitNumber: { contains: searchParams.q, mode: "insensitive" } },
+      { property:   { name:    { contains: searchParams.q, mode: "insensitive" } } }
     ];
   }
+  // Floor tab filter
+  const currentFloor = searchParams?.floor !== undefined && searchParams.floor !== ""
+    ? parseInt(searchParams.floor as string)
+    : undefined;
+  if (currentFloor !== undefined) where.floor = currentFloor;
 
-  const page = parseInt(searchParams?.page || "1");
+  // ── Pagination ───────────────────────────────────────────────
+  const page  = parseInt(searchParams?.page  || "1");
   const limit = parseInt(searchParams?.limit || "10");
-  const skip = (page - 1) * limit;
+  const skip  = (page - 1) * limit;
 
-  const [units, totalCount] = await Promise.all([
+  // ── Main queries ─────────────────────────────────────────────
+  // Run all queries in parallel
+  const [units, totalCount, allFloors, allUnitsForCounts] = await Promise.all([
+    // Paginated units matching current filters
     prisma.unit.findMany({
       where,
       include: { 
@@ -55,28 +64,81 @@ export async function UnitsView({
           take: 1
         }
       },
-      orderBy: { createdAt: "desc" },
+      orderBy: [{ floor: "asc" }, { unitNumber: "asc" }],
       skip,
       take: limit,
     }),
-    prisma.unit.count({ where })
+    // Total count for pagination
+    prisma.unit.count({ where }),
+    // Distinct floor values across ALL units (ignoring active floor tab filter)
+    prisma.unit.findMany({
+      where: (() => {
+        // Same filters EXCEPT floor, so tabs show all available floors
+        const base: any = {};
+        if (searchParams?.propertyId) base.propertyId = searchParams.propertyId;
+        if (searchParams?.status)     base.status     = searchParams.status;
+        if (searchParams?.type)       base.type       = searchParams.type;
+        if (searchParams?.q) {
+          base.OR = [
+            { unitNumber: { contains: searchParams.q, mode: "insensitive" } },
+            { property:   { name:    { contains: searchParams.q, mode: "insensitive" } } }
+          ];
+        }
+        return base;
+      })(),
+      select: { floor: true },
+      distinct: ["floor"],
+      orderBy:  { floor: "asc" },
+    }),
+    // Per-floor counts (same base filter, no floor filter)
+    prisma.unit.groupBy({
+      by:    ["floor"],
+      where: (() => {
+        const base: any = {};
+        if (searchParams?.propertyId) base.propertyId = searchParams.propertyId;
+        if (searchParams?.status)     base.status     = searchParams.status;
+        if (searchParams?.type)       base.type       = searchParams.type;
+        if (searchParams?.q) {
+          base.OR = [
+            { unitNumber: { contains: searchParams.q, mode: "insensitive" } },
+            { property:   { name:    { contains: searchParams.q, mode: "insensitive" } } }
+          ];
+        }
+        return base;
+      })(),
+      _count: { _all: true },
+    }),
   ]);
 
   const totalPages = Math.ceil(totalCount / limit);
 
+  // Build floors array and counts map
+  const distinctFloors = allFloors.map((u) => u.floor ?? 0).sort((a, b) => a - b);
+  const floorCounts: Record<number, number> = {};
+  allUnitsForCounts.forEach((g) => {
+    floorCounts[g.floor ?? 0] = g._count._all;
+  });
+  const grandTotalForTabs = Object.values(floorCounts).reduce((s, n) => s + n, 0);
+
   return (
-    <div className="max-w-[1200px] mx-auto space-y-6 animate-in fade-in duration-700">
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+    <div className="max-w-[1200px] mx-auto space-y-4 animate-in fade-in duration-700">
+      {/* ── Header ──────────────────────────────────────────── */}
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div className="space-y-0.5">
           <h1 className="text-2xl font-semibold tracking-tight text-slate-900">{title}</h1>
           <p className="text-sm text-slate-500 font-medium">Detailed inventory of all managed rental units.</p>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="relative">
-            <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-            <Input placeholder="Unit # or Property..." className="pl-9 h-9 w-64 bg-white border-slate-200 rounded-lg text-sm" />
-          </div>
-          <UnitsFilter properties={properties} />
+        <div className="flex items-center gap-2 flex-wrap">
+          <Suspense fallback={
+            <div className="h-9 w-64 bg-slate-100 rounded-lg animate-pulse" />
+          }>
+            <UnitsSearchInput defaultValue={searchParams?.q} />
+          </Suspense>
+          <Suspense fallback={
+            <div className="h-9 w-28 bg-slate-100 rounded-lg animate-pulse" />
+          }>
+            <UnitsFilter properties={properties} />
+          </Suspense>
           <DataImportExport 
             type="UNITS"
             onExport={exportUnitsCsv}
@@ -92,6 +154,25 @@ export async function UnitsView({
         </div>
       </div>
 
+      {/* ── Floor Tabs ───────────────────────────────────────── */}
+      {distinctFloors.length > 0 && (
+        <Suspense fallback={
+          <div className="flex gap-2">
+            {[...Array(3)].map((_, i) => (
+              <div key={i} className="h-8 w-20 bg-slate-100 rounded-lg animate-pulse" />
+            ))}
+          </div>
+        }>
+          <FloorTabs
+            floors={distinctFloors}
+            counts={floorCounts}
+            currentFloor={currentFloor}
+            totalCount={grandTotalForTabs}
+          />
+        </Suspense>
+      )}
+
+      {/* ── Table ────────────────────────────────────────────── */}
       <UnitsBulkTable units={units} currency={settings.currency} />
       <Pagination totalPages={totalPages} currentPage={page} />
     </div>
