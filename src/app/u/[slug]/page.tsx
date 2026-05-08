@@ -352,7 +352,11 @@ export default async function PublicUnitPage({ params }: { params: Promise<{ slu
                               {format(new Date(m.dueDate), "MMMM yyyy")}
                             </p>
                             <p className="text-[9px] font-bold text-rose-500 uppercase">
-                              {formatEthiopianMonthYear(new Date(m.dueDate))}
+                              {formatEthiopianMonthYear(new Date(
+                                new Date(m.dueDate).getFullYear(),
+                                new Date(m.dueDate).getMonth(),
+                                15
+                              ))}
                             </p>
                             {m.penalty > 0 && (
                               <p className="text-[9px] font-bold text-amber-600 uppercase mt-0.5">
@@ -376,7 +380,7 @@ export default async function PublicUnitPage({ params }: { params: Promise<{ slu
                           <div key={p.id} className="p-4 flex items-center justify-between bg-amber-50/30">
                             <div>
                               <p className="text-[11px] font-black text-amber-900 uppercase tracking-tight">Historical Penalty</p>
-                              <p className="text-[9px] font-bold text-amber-600 uppercase">{formatEthiopianMonthYear(new Date(p.dueDate))}</p>
+                              <p className="text-[9px] font-bold text-amber-600 uppercase">{formatEthiopianMonthYear(new Date(new Date(p.dueDate).getFullYear(), new Date(p.dueDate).getMonth(), 15))}</p>
                             </div>
                             <p className="text-xs font-black text-amber-700">{settings.currency} {p.amount.toLocaleString()}</p>
                           </div>
@@ -410,7 +414,7 @@ export default async function PublicUnitPage({ params }: { params: Promise<{ slu
                               Late Fee: {format(new Date(p.dueDate), "MMMM yyyy")}
                             </p>
                             <p className="text-[9px] font-bold text-rose-500 uppercase">
-                              {formatEthiopianMonthYear(new Date(p.dueDate))}
+                              {formatEthiopianMonthYear(new Date(new Date(p.dueDate).getFullYear(), new Date(p.dueDate).getMonth(), 15))}
                             </p>
                           </div>
                           <div className="text-right">
