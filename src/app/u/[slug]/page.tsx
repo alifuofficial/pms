@@ -1,5 +1,6 @@
 import { getPublicUnitStatus } from "@/lib/actions/qr";
 import { PublicReportPayment } from "@/components/shared/public-report-payment";
+import { prisma } from "@/lib/prisma";
 import { 
   Building2, 
   Clock, 
@@ -11,7 +12,8 @@ import {
   ArrowRight,
   ChevronRight,
   ShieldCheck,
-  Loader2
+  Loader2,
+  Wrench
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -22,6 +24,61 @@ import Kenat from "kenat";
 
 export default async function PublicUnitPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
+
+  // ── Maintenance mode check (runs before any unit lookup) ────
+  const sysSettings = await prisma.systemSettings.findUnique({ where: { id: "global" } });
+  if (sysSettings?.maintenanceMode) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex flex-col items-center justify-center p-6 text-center relative overflow-hidden">
+        {/* Animated background rings */}
+        <div className="absolute inset-0 pointer-events-none">
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] rounded-full border border-white/5 animate-ping" style={{ animationDuration: "4s" }} />
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[400px] h-[400px] rounded-full border border-white/5 animate-ping" style={{ animationDuration: "3s", animationDelay: "1s" }} />
+        </div>
+
+        <div className="relative max-w-sm w-full space-y-8">
+          {/* Logo / Branding */}
+          <div className="flex items-center justify-center gap-3">
+            {sysSettings.logoUrl ? (
+              <img src={sysSettings.logoUrl} alt="Logo" className="h-10 object-contain" />
+            ) : (
+              <div className="w-10 h-10 bg-white/10 rounded-xl flex items-center justify-center">
+                <Building2 size={20} className="text-white/60" />
+              </div>
+            )}
+            <span className="text-white font-black text-lg tracking-tight">
+              {sysSettings.systemName || "Soreti PMS"}
+            </span>
+          </div>
+
+          {/* Icon */}
+          <div className="mx-auto w-24 h-24 bg-amber-500/10 border border-amber-500/20 rounded-3xl flex items-center justify-center">
+            <Wrench size={40} className="text-amber-400" />
+          </div>
+
+          {/* Message */}
+          <div className="space-y-3">
+            <h1 className="text-3xl font-black text-white tracking-tight">Under Maintenance</h1>
+            <p className="text-sm font-medium text-slate-400 leading-relaxed">
+              {sysSettings.maintenanceMessage || "We are currently performing scheduled maintenance. Please check back shortly."}
+            </p>
+          </div>
+
+          {/* Status pill */}
+          <div className="inline-flex items-center gap-2 px-4 py-2 bg-amber-500/10 border border-amber-500/20 rounded-full">
+            <span className="w-2 h-2 bg-amber-400 rounded-full animate-pulse" />
+            <span className="text-xs font-bold text-amber-400 uppercase tracking-widest">Service Temporarily Unavailable</span>
+          </div>
+
+          {/* Footer */}
+          <p className="text-[11px] text-slate-600 font-medium">
+            Powered by {sysSettings.systemName || "Soreti PMS"}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   const result = await getPublicUnitStatus(slug);
 
   if (!result.success || !result.unit) {

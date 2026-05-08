@@ -314,9 +314,66 @@ export function SettingsForm({ initialData, initialBankAccounts = [] }: { initia
                       </div>
                     </div>
                   </div>
+
+                  {/* ── Maintenance Mode ─────────────────────────── */}
+                  <div className="space-y-1 pt-6">
+                    <h2 className="text-base font-semibold text-slate-900">Public Gateway</h2>
+                    <p className="text-xs text-slate-500">Control tenant-facing QR pages and public service availability.</p>
+                  </div>
+                  <div className={cn(
+                    "rounded-xl border p-4 space-y-4 transition-colors",
+                    formData.maintenanceMode
+                      ? "bg-red-50 border-red-200"
+                      : "bg-slate-50 border-slate-100"
+                  )}>
+                    <div className="flex items-center justify-between">
+                      <div className="space-y-0.5">
+                        <p className={cn(
+                          "text-sm font-semibold",
+                          formData.maintenanceMode ? "text-red-700" : "text-slate-900"
+                        )}>
+                          Maintenance Mode
+                          {formData.maintenanceMode && (
+                            <span className="ml-2 text-[10px] font-black uppercase tracking-widest text-white bg-red-500 px-2 py-0.5 rounded-full">
+                              ACTIVE
+                            </span>
+                          )}
+                        </p>
+                        <p className={cn(
+                          "text-[10px] font-medium",
+                          formData.maintenanceMode ? "text-red-500" : "text-slate-500"
+                        )}>
+                          When enabled, all QR scanned pages will show the maintenance screen instead of unit info.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setFormData({ ...formData, maintenanceMode: !formData.maintenanceMode })}
+                        className={cn(
+                          "relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors focus:outline-none",
+                          formData.maintenanceMode ? "bg-red-500" : "bg-slate-200"
+                        )}
+                      >
+                        <span className={cn(
+                          "inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform",
+                          formData.maintenanceMode ? "translate-x-6" : "translate-x-1"
+                        )} />
+                      </button>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-[10px] font-semibold uppercase text-slate-400">Maintenance Message</Label>
+                      <textarea
+                        rows={3}
+                        placeholder="We are currently performing scheduled maintenance. Please check back shortly."
+                        value={formData.maintenanceMessage || ""}
+                        onChange={(e) => setFormData({ ...formData, maintenanceMessage: e.target.value })}
+                        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm font-medium outline-none resize-none text-slate-800 placeholder:text-slate-300"
+                      />
+                      <p className="text-[10px] text-slate-400 font-medium">This message is shown to tenants when they scan their QR code during maintenance.</p>
+                    </div>
+                  </div>
                 </div>
               )}
-
 
               {activeTab === "branding" && (
                 <div className="p-6 space-y-6">
