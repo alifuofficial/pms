@@ -3,7 +3,8 @@ import { UnitsView } from "@/components/shared/units-view";
 export default async function AdminUnitsPage({
   searchParams,
 }: {
-  searchParams: { [key: string]: string | string[] | undefined };
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
-  return <UnitsView title="Admin Units" searchParams={searchParams} />;
+  const params = await searchParams;
+  return <UnitsView title="Admin Units" searchParams={params} />;
 }

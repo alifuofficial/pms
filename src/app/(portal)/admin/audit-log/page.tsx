@@ -11,12 +11,13 @@ import { cn } from "@/lib/utils";
 export default async function AuditLogPage({
   searchParams,
 }: {
-  searchParams: { [key: string]: string | string[] | undefined };
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
   const session = await auth();
   if (!session?.user || session.user.role !== "ADMIN") redirect("/auth/login");
 
-  const page = parseInt((searchParams?.page as string) || "1");
+  const params = await searchParams;
+  const page = parseInt((params?.page as string) || "1");
   const limit = 20;
   const skip = (page - 1) * limit;
 

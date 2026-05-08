@@ -7,7 +7,7 @@ import { redirect } from "next/navigation";
 export default async function AdminInvoicesPage({
   searchParams,
 }: {
-  searchParams: { [key: string]: string | string[] | undefined };
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
   const session = await auth();
   if (!session?.user || session.user.role !== "ADMIN") redirect("/auth/login");
@@ -17,7 +17,8 @@ export default async function AdminInvoicesPage({
     getEffectiveCalendar()
   ]);
 
-  const page = parseInt((searchParams?.page as string) || "1");
+  const params = await searchParams;
+  const page = parseInt((params?.page as string) || "1");
   const limit = 15;
   const skip = (page - 1) * limit;
 
