@@ -21,7 +21,7 @@ import {
   Trash2,
   Plus
 } from "lucide-react";
-import { updateSystemSettings, addBankAccount, deleteBankAccount, testSmtp, testFtp } from "@/lib/actions/settings";
+import { updateSystemSettings, addBankAccount, deleteBankAccount, testSmtp, testFtp, testSms } from "@/lib/actions/settings";
 import { factoryResetSystem } from "@/lib/actions/system";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -42,6 +42,8 @@ export function SettingsForm({ initialData, initialBankAccounts = [] }: { initia
   const [newBank, setNewBank] = useState({ bankName: "", accountName: "", accountNumber: "" });
   const [isTestingSmtp, setIsTestingSmtp] = useState(false);
   const [isTestingFtp, setIsTestingFtp] = useState(false);
+  const [isTestingSms, setIsTestingSms] = useState(false);
+  const [testPhone, setTestPhone] = useState("");
 
   const handleTestSmtp = async () => {
     if (!formData.smtpHost || !formData.smtpPort || !formData.smtpUser || !formData.smtpPass) {
@@ -80,6 +82,19 @@ export function SettingsForm({ initialData, initialBankAccounts = [] }: { initia
       toast.success("FTP connection successful!");
     } else {
       toast.error(`FTP Error: ${result.error}`);
+    }
+  };
+
+  const handleTestSms = async () => {
+    if (!testPhone) { toast.error("Enter a phone number to test."); return; }
+    if (!formData.smsEthiopiaKey) { toast.error("Enter your API key first."); return; }
+    setIsTestingSms(true);
+    const result = await testSms(testPhone);
+    setIsTestingSms(false);
+    if (result.success) {
+      toast.success(`Test SMS sent to ${testPhone}!`);
+    } else {
+      toast.error(`SMS Error: ${(result as any).error}`);
     }
   };
 
@@ -578,7 +593,30 @@ export function SettingsForm({ initialData, initialBankAccounts = [] }: { initia
                     <h2 className="text-base font-semibold text-slate-900">SMS Configuration</h2>
                     <p className="text-xs text-slate-500">Configure SMS Ethiopia for system alerts and tenant notifications.</p>
                   </div>
-                  <div className="grid grid-cols-1 gap-4 pt-4 border-t border-slate-50">
+
+                  {/* Global Enable/Disable Toggle */}
+                  <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-100">
+                    <div className="space-y-0.5">
+                      <p className="text-sm font-semibold text-slate-900">Enable SMS Notifications</p>
+                      <p className="text-[10px] text-slate-500 font-medium">When disabled, no SMS will be dispatched system-wide.</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setFormData({ ...formData, smsEnabled: !formData.smsEnabled })}
+                      className={cn(
+                        "relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none",
+                        formData.smsEnabled ? "bg-emerald-500" : "bg-slate-200"
+                      )}
+                    >
+                      <span className={cn(
+                        "inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform",
+                        formData.smsEnabled ? "translate-x-6" : "translate-x-1"
+                      )} />
+                    </button>
+                  </div>
+
+                  {/* API Key */}
+                  <div className="grid grid-cols-1 gap-4 pt-2 border-t border-slate-50">
                     <div className="space-y-1.5">
                       <Label className="text-[10px] font-semibold uppercase text-slate-400">API Key</Label>
                       <Input 
@@ -590,6 +628,32 @@ export function SettingsForm({ initialData, initialBankAccounts = [] }: { initia
                       />
                       <p className="text-[10px] text-slate-400 font-medium">Keep your API key secret. Get your key from the SMS Ethiopia Console.</p>
                     </div>
+                  </div>
+
+                  {/* Test SMS */}
+                  <div className="pt-2 border-t border-slate-50 space-y-3">
+                    <div className="space-y-1">
+                      <p className="text-sm font-semibold text-slate-900">Send Test SMS</p>
+                      <p className="text-xs text-slate-500">Send a test message to verify your API key is working correctly.</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        type="tel"
+                        placeholder="e.g. 251912345678"
+                        value={testPhone}
+                        onChange={(e) => setTestPhone(e.target.value)}
+                        className="h-10 rounded-lg border-slate-200 text-sm flex-1"
+                      />
+                      <Button
+                        type="button"
+                        onClick={handleTestSms}
+                        disabled={isTestingSms || !formData.smsEthiopiaKey}
+                        className="h-10 px-4 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-lg shadow-none"
+                      >
+                        {isTestingSms ? <Loader2 size={14} className="animate-spin" /> : "Send Test"}
+                      </Button>
+                    </div>
+                    <p className="text-[10px] text-slate-400 font-medium">Phone number must include country code (e.g. 251 for Ethiopia). Results appear in SMS Logs under Notifications.</p>
                   </div>
                 </div>
               )}

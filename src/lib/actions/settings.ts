@@ -146,3 +146,18 @@ export async function deleteBankAccount(id: string) {
     return { success: false, error: "Failed to delete bank account" };
   }
 }
+
+export async function testSms(phone: string) {
+  try {
+    const { sendSMS } = await import("@/lib/sms");
+    const result = await sendSMS(
+      phone,
+      "This is a test message from Soreti PMS. If you received this, your SMS Ethiopia integration is working correctly.",
+      undefined,
+      "settings-test"
+    );
+    return result;
+  } catch (error: any) {
+    return { success: false, error: error?.message || "Test SMS failed" };
+  }
+}

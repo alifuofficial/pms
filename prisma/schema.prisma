@@ -147,7 +147,18 @@ model SystemSettings {
   ftpEnabled        Boolean  @default(false)
   ftpBaseUrl        String?
   smsEthiopiaKey    String?
+  smsEnabled        Boolean  @default(true)
   updatedAt         DateTime @updatedAt
+}
+
+model SmsLog {
+  id        String   @id @default(cuid())
+  msisdn    String
+  message   String
+  status    String   @default("PENDING")
+  source    String?
+  response  String?
+  createdAt DateTime @default(now())
 }
 
 model BankAccount {
