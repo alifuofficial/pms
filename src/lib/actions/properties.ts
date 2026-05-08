@@ -150,6 +150,31 @@ export async function updateUnit(id: string, data: {
   }
 }
 
+export async function bulkUpdateUnits(ids: string[], data: {
+  floor?: number;
+  status?: "AVAILABLE" | "OCCUPIED" | "MAINTENANCE";
+  type?: string;
+  rentAmount?: number;
+}) {
+  const session = await auth();
+  if (!session?.user) return { success: false, error: "Unauthorized" };
+  if (ids.length === 0) return { success: false, error: "No units selected" };
+
+  try {
+    await prisma.unit.updateMany({
+      where: { id: { in: ids } },
+      data,
+    });
+    revalidatePath("/admin/units");
+    revalidatePath("/manager/units");
+    revalidatePath("/admin/properties");
+    return { success: true, count: ids.length };
+  } catch (error) {
+    console.error("Bulk Update Units Error:", error);
+    return { success: false, error: "Bulk update failed" };
+  }
+}
+
 export async function deleteUnit(id: string) {
   const session = await auth();
   if (!session?.user || session.user.role !== "ADMIN") return { success: false, error: "Unauthorized" };

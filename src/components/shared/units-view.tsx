@@ -11,6 +11,7 @@ import { getSystemSettings } from "@/lib/actions/settings";
 import { DataImportExport } from "./data-import-export";
 import { exportUnitsCsv, importUnitsCsv } from "@/lib/actions/import-export";
 import { Pagination } from "./pagination";
+import { UnitsBulkTable } from "./units-bulk-table";
 
 export async function UnitsView({ 
   title = "Inventory",
@@ -91,83 +92,7 @@ export async function UnitsView({
         </div>
       </div>
 
-      <div className="bg-white rounded-xl border border-slate-100 overflow-hidden shadow-none">
-        <table className="w-full text-left">
-          <thead className="bg-slate-50/50 text-[10px] text-slate-400 font-semibold uppercase tracking-wider border-b border-slate-100">
-            <tr>
-              <th className="py-3 px-6">Unit</th>
-              <th className="py-3 px-6">Location</th>
-              <th className="py-3 px-6">Specs</th>
-              <th className="py-3 px-6">Financials</th>
-              <th className="py-3 px-6 text-center">Status</th>
-              <th className="py-3 px-6 text-right">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-50">
-            {units.map((unit) => (
-              <tr key={unit.id} className="hover:bg-slate-50/50 transition-colors">
-                <td className="py-3 px-6">
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center border border-blue-100 shrink-0">
-                      <Home size={16} />
-                    </div>
-                    <div>
-                      <p className="text-sm font-semibold text-slate-900">Unit {unit.unitNumber}</p>
-                      <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-tight">{unit.type}</p>
-                      {unit.status === "OCCUPIED" && (unit as any).leases?.[0]?.tenant && (
-                        <p className="text-[10px] text-emerald-600 font-medium mt-0.5 truncate max-w-[140px]">
-                          Occupied by: {(unit as any).leases[0].tenant.name}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                </td>
-                <td className="py-3 px-6">
-                  <div className="flex flex-col gap-0.5">
-                    <p className="text-sm font-semibold text-slate-700 flex items-center gap-1">
-                      <Building2 size={12} className="text-slate-400" />
-                      {unit.property.name}
-                    </p>
-                    <p className="text-[11px] text-slate-400 font-medium flex items-center gap-1">
-                      <Layers size={10} /> {
-                        unit.floor === -1 ? "Basement" :
-                        unit.floor === 0 ? "Ground" :
-                        `${unit.floor}${unit.floor === 1 ? "st" : unit.floor === 2 ? "nd" : unit.floor === 3 ? "rd" : "th"} Floor`
-                      }
-                    </p>
-                  </div>
-                </td>
-                <td className="py-3 px-6">
-                  <div className="flex items-center gap-1.5 text-slate-600 text-[11px] font-medium">
-                    <Maximize2 size={12} className="text-slate-400" />
-                    <span>{unit.size} m²</span>
-                  </div>
-                </td>
-                <td className="py-3 px-6">
-                  <div className="flex flex-col gap-0.5">
-                    <p className="text-sm font-semibold text-slate-900">{settings.currency} {unit.rentAmount.toLocaleString()}</p>
-
-                    <p className="text-[10px] text-slate-400 font-semibold uppercase">monthly rent</p>
-                  </div>
-                </td>
-                <td className="py-3 px-6 text-center">
-                  <span className={cn(
-                    "px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-tight border",
-                    unit.status === "AVAILABLE" 
-                      ? "bg-emerald-50 text-emerald-600 border-emerald-100" 
-                      : "bg-amber-50 text-amber-600 border-amber-100"
-                  )}>
-                    {unit.status.toLowerCase()}
-                  </span>
-                </td>
-                <td className="py-3 px-6 text-right">
-                  <UnitActions unit={unit} />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <UnitsBulkTable units={units} currency={settings.currency} />
       <Pagination totalPages={totalPages} currentPage={page} />
     </div>
   );
