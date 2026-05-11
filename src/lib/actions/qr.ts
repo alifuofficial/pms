@@ -72,45 +72,41 @@ function getArrearMonths(leaseStart: Date, payments: any[]): Date[] {
   const approvedPayments = payments.filter(p => p.status === "APPROVED");
   
   for (const p of approvedPayments) {
-    const start = new Date(p.dueDate);
-    const end = p.advanceUntil ? new Date(p.advanceUntil) : start;
+    const startEt = toEthiopian(new Date(p.dueDate));
+    const endEt = toEthiopian(p.advanceUntil ? new Date(p.advanceUntil) : new Date(p.dueDate));
     
-    let temp = toEthiopian(start);
-    const endEt = toEthiopian(end);
-    
-    // Safety limit to prevent infinite loops
+    let tempYear = startEt.year;
+    let tempMonth = startEt.month;
     let iterations = 0;
     while (iterations < 60) {
-      coveredMonthKeys.add(`${temp.year}-${temp.month}`);
-      if (temp.year === endEt.year && temp.month === endEt.month) break;
-      
-      // Increment Ethiopian Month
-      temp.month++;
-      if (temp.month > 13) { temp.month = 1; temp.year++; }
+      coveredMonthKeys.add(`${tempYear}-${tempMonth}`);
+      if (tempYear === endEt.year && tempMonth === endEt.month) break;
+      tempMonth++;
+      if (tempMonth > 13) { tempMonth = 1; tempYear++; }
       iterations++;
     }
   }
 
-  // Iterate from leaseStart to now
-  let cursorEt = toEthiopian(leaseStart);
+  const startEt = toEthiopian(leaseStart);
   const nowEt = toEthiopian(now);
 
+  let tempYear = startEt.year;
+  let tempMonth = startEt.month;
   let iterations = 0;
+  
   while (iterations < 60) {
-    const key = `${cursorEt.year}-${cursorEt.month}`;
+    const key = `${tempYear}-${tempMonth}`;
     
-    // We only count it as an arrear if the month has actually started
-    // and isn't covered.
     if (!coveredMonthKeys.has(key)) {
-      const etDateObj = new Kenat({ year: cursorEt.year, month: cursorEt.month, day: 1 });
-      const greg = etDateObj.getGregorian();
-      arrears.push(new Date(greg.year, greg.month - 1, greg.day));
+      const etDateObj = new Kenat({ year: tempYear, month: tempMonth, day: 1 });
+      const greg = etDateObj.getGregorian() as any;
+      // Force UTC to avoid local timezone drift parsing back
+      arrears.push(new Date(Date.UTC(greg.year, greg.month - 1, greg.day, 12, 0, 0)));
     }
     
-    if (cursorEt.year === nowEt.year && cursorEt.month === nowEt.month) break;
-
-    cursorEt.month++;
-    if (cursorEt.month > 13) { cursorEt.month = 1; cursorEt.year++; }
+    if (tempYear === nowEt.year && tempMonth === nowEt.month) break;
+    tempMonth++;
+    if (tempMonth > 13) { tempMonth = 1; tempYear++; }
     iterations++;
   }
 
