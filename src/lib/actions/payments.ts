@@ -155,7 +155,7 @@ export async function approvePayment(paymentId: string, penaltyAmountReceived?: 
       });
       if (lease && lease.status === "PENDING") {
         await prisma.lease.update({
-          where: { id: payment.leaseId },
+          where: { id: currentPayment.leaseId },
           data: { status: "ACTIVE" }
         });
         

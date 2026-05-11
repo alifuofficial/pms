@@ -172,7 +172,7 @@ export async function getPublicUnitStatus(slug: string) {
 
     const arrearsMonths = [
       ...pendingPayments.map(p => {
-        const { penalty, diffDays } = calcMonthPenalty(new Date(p.dueDate), unit.rentAmount, settings);
+        const { penalty, penaltyTier, diffDays } = calcMonthPenalty(new Date(p.dueDate), unit.rentAmount, settings);
         return {
           id: p.id,
           dueDate: p.dueDate,
@@ -180,6 +180,7 @@ export async function getPublicUnitStatus(slug: string) {
           daysFromDue: diffDays,
           baseAmount: unit.rentAmount,
           penalty,
+          penaltyTier,
           totalAmount: unit.rentAmount + penalty,
           status: p.status as string,
           receiptUrl: p.receiptUrl || null,
@@ -187,7 +188,7 @@ export async function getPublicUnitStatus(slug: string) {
         };
       }),
       ...gapMonthDates.filter(gd => !pendingDueDates.has(`${gd.getFullYear()}-${gd.getMonth()}`)).map(gd => {
-        const { penalty, diffDays } = calcMonthPenalty(gd, unit.rentAmount, settings);
+        const { penalty, penaltyTier, diffDays } = calcMonthPenalty(gd, unit.rentAmount, settings);
         return {
           id: `gap-${gd.getFullYear()}-${gd.getMonth()}`,
           dueDate: gd,
@@ -195,6 +196,7 @@ export async function getPublicUnitStatus(slug: string) {
           daysFromDue: diffDays,
           baseAmount: unit.rentAmount,
           penalty,
+          penaltyTier,
           totalAmount: unit.rentAmount + penalty,
           status: "UNRECORDED",
           receiptUrl: null,
@@ -219,7 +221,7 @@ export async function getPublicUnitStatus(slug: string) {
     const estimatedNext = !primaryMonth && latestApprovedPayment ? (() => {
       const nextDate = new Date(latestApprovedPayment.advanceUntil || latestApprovedPayment.dueDate);
       nextDate.setMonth(nextDate.getMonth() + 1);
-      const { penalty, diffDays } = calcMonthPenalty(nextDate, unit.rentAmount, settings);
+      const { penalty, penaltyTier, diffDays } = calcMonthPenalty(nextDate, unit.rentAmount, settings);
       return {
         id: "estimated",
         dueDate: nextDate,
@@ -227,6 +229,7 @@ export async function getPublicUnitStatus(slug: string) {
         daysFromDue: diffDays,
         baseAmount: unit.rentAmount,
         penalty,
+        penaltyTier,
         totalAmount: unit.rentAmount + penalty,
         status: "ESTIMATED",
         isGap: false,
@@ -259,10 +262,12 @@ export async function getPublicUnitStatus(slug: string) {
         arrearsCount: arrearsMonths.length,
         grandTotal,
         unpaidPenaltyTotal,
+        unpaidPenalties,
         nextDuePayment: nextDuePayment ? {
           ...nextDuePayment,
           unpaidPenaltyTotal,
           displayTotal: arrearsMonths.length > 1 ? grandTotal : (nextDuePayment.totalAmount + unpaidPenaltyTotal),
+          historicalPenalties: unpaidPenalties,
         } : null,
         latestApprovedPayment: latestApprovedPayment ? {
           id: latestApprovedPayment.id,
