@@ -261,8 +261,14 @@ export async function getPublicUnitStatus(slug: string) {
           ...nextDuePayment,
           unpaidPenaltyTotal,
           displayTotal: arrearsMonths.length > 1 ? grandTotal : (nextDuePayment.totalAmount + unpaidPenaltyTotal),
+        } : null,
+        latestApprovedPayment: latestApprovedPayment ? {
+          id: latestApprovedPayment.id,
+          dueDate: latestApprovedPayment.dueDate,
+          advanceUntil: latestApprovedPayment.advanceUntil,
         } : null
       } : null,
+
       settings: {
         currency: settings?.currency || "USD",
         bankAccounts,
