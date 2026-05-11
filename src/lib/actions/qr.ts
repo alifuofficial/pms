@@ -242,7 +242,9 @@ export async function getPublicUnitStatus(slug: string) {
         unitNumber: unit.unitNumber,
         property: unit.property.name,
         rentAmount: unit.rentAmount,
-        status: unit.status
+        status: unit.status,
+        type: (unit as any).type || "Studio",
+        size: (unit as any).size || unit.rentAmount
       },
       lease: activeLease ? {
         id: activeLease.id,
