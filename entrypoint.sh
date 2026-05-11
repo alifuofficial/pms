@@ -32,8 +32,16 @@ else
 fi
 
 echo "Running database synchronization..."
-# Use global prisma for reliability. Removed --accept-data-loss to protect data from accidental destructive schema changes.
-prisma db push --url "$DATABASE_URL"
+# Use global prisma for reliability.
+# Check if this is the first clean deployment by looking for a flag file in the persistent volume
+if [ ! -f "/app/data/.clean_deploy_done" ]; then
+  echo "First-time clean deployment detected. Applying schema with --accept-data-loss to resolve legacy conflicts..."
+  prisma db push --url "$DATABASE_URL" --accept-data-loss
+  touch "/app/data/.clean_deploy_done"
+else
+  echo "Running safe database synchronization (protecting future data)..."
+  prisma db push --url "$DATABASE_URL"
+fi
 
 
 echo "Seeding/Updating initial data..."
