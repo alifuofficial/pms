@@ -12,7 +12,7 @@ model User {
   name                 String?
   email                String?    @unique
   phoneNumber          String?
-  passwordHash         String
+  passwordHash         String?
   role                 Role       @default(TENANT)
   createdAt            DateTime   @default(now())
   updatedAt            DateTime   @updatedAt
