@@ -2,7 +2,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
-import { getDaysIntoEthiopianMonth, getDaysUntilEthiopianExpiry, getEthiopianMonthEnd } from "@/lib/calendar";
+import { getDaysIntoEthiopianMonth, getDaysUntilEthiopianExpiry, getEthiopianMonthEnd, addEthiopianMonths } from "@/lib/calendar";
 import Kenat from "kenat";
 
 function generateSlug(length = 10) {
@@ -47,8 +47,8 @@ export async function generateUnitQrSlug(unitId: string) {
 /** Calculates penalty amount and tier for a given due date based on Ethiopian calendar. */
 function calcMonthPenalty(dueDate: Date, rentAmount: number, settings: any) {
   const diffDays = getDaysIntoEthiopianMonth(dueDate);
-  // Grace period: Day 1 to Day 5. Penalty starts on Day 6.
-  if (!settings?.lateFeeEnabled || diffDays <= 5) return { penalty: 0, penaltyTier: 0, diffDays };
+  // Grace period: Day 1 to Day 5 (diffDays 0 to 4). Penalty starts on Day 6 (diffDays >= 5).
+  if (!settings?.lateFeeEnabled || diffDays < 5) return { penalty: 0, penaltyTier: 0, diffDays };
   
   // Rule: Flat 5% penalty fee. Non-compounding.
   const penaltyAmount = rentAmount * ((settings.lateFeePercentage || 5) / 100);
@@ -219,8 +219,7 @@ export async function getPublicUnitStatus(slug: string) {
     // ── STEP 4: Next Due Payment ───────────────────────────────────────────
     const primaryMonth = arrearsMonths[0] || null;
     const estimatedNext = !primaryMonth && latestApprovedPayment ? (() => {
-      const nextDate = new Date(latestApprovedPayment.advanceUntil || latestApprovedPayment.dueDate);
-      nextDate.setMonth(nextDate.getMonth() + 1);
+      const nextDate = addEthiopianMonths(new Date(latestApprovedPayment.advanceUntil || latestApprovedPayment.dueDate), 1);
       const { penalty, penaltyTier, diffDays } = calcMonthPenalty(nextDate, unit.rentAmount, settings);
       return {
         id: "estimated",

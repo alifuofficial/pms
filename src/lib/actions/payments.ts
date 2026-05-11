@@ -3,11 +3,14 @@
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 import { auth } from "@/auth";
+import { addEthiopianMonths } from "@/lib/calendar";
 
 export async function approvePayment(paymentId: string, penaltyAmountReceived?: number) {
   try {
     const session = await auth();
-    if (!session?.user) return { success: false, error: "Unauthorized" };
+    if (!session?.user || (session.user.role !== "ACCOUNTANT" && session.user.role !== "ADMIN")) {
+      return { success: false, error: "Unauthorized" };
+    }
 
     const currentPayment = await prisma.payment.findUnique({ 
       where: { id: paymentId },
@@ -24,38 +27,38 @@ export async function approvePayment(paymentId: string, penaltyAmountReceived?: 
     if (!currentPayment) return { success: false, error: "Payment not found" };
 
     const monthlyRent = currentPayment.lease.unit.rentAmount;
-    const isAdvance = currentPayment.type === "ADVANCE" && currentPayment.advanceUntil;
     
-    // For MONTHLY payments that might cover multiple months of arrears, we calculate how many months are being paid
-    const monthCount = currentPayment.type === "PENALTY" ? 0 : Math.max(1, Math.floor(currentPayment.amount / monthlyRent));
+    // Sort penalties chronologically to clear oldest debt first
+    const unpaidPenalties = currentPayment.lease.penalties || [];
+    unpaidPenalties.sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
 
-    // FIX #3: For ADVANCE payments, expected rent = monthlyRent * months covered
-    let expectedRent = monthlyRent;
-    if (currentPayment.type === "PENALTY") {
-      expectedRent = 0;
-    } else if (isAdvance && currentPayment.advanceUntil) {
-      const dueMonth = new Date(currentPayment.dueDate).getMonth();
-      const dueYear = new Date(currentPayment.dueDate).getFullYear();
-      const untilMonth = new Date(currentPayment.advanceUntil).getMonth();
-      const untilYear = new Date(currentPayment.advanceUntil).getFullYear();
-      const monthsDiff = (untilYear - dueYear) * 12 + (untilMonth - dueMonth) + 1;
-      expectedRent = monthlyRent * Math.max(1, monthsDiff);
+    let fundsRemaining = currentPayment.amount;
+    let actualPenalty = 0;
+
+    // Settle Penalties Sequentially First
+    if (penaltyAmountReceived !== undefined) {
+       actualPenalty = penaltyAmountReceived;
+       fundsRemaining -= actualPenalty;
     } else {
-      expectedRent = monthlyRent * monthCount;
+       for (const penalty of unpaidPenalties) {
+         if (fundsRemaining <= 0) break;
+         const outstanding = penalty.amount - penalty.paidAmount;
+         const toPay = Math.min(outstanding, fundsRemaining);
+         if (toPay > 0) {
+           actualPenalty += toPay;
+           fundsRemaining -= toPay;
+         }
+       }
     }
 
-    // FIX #2 & #3: Auto-detect penalty only if the payment exceeds expected rent
-    // If accountant manually specified a penalty, use that. Otherwise auto-detect.
-    const actualPenalty = penaltyAmountReceived !== undefined
-      ? penaltyAmountReceived
-      : Math.max(0, currentPayment.amount - expectedRent);
+    const rentFinal = Math.max(0, fundsRemaining);
+    const totalPool = rentFinal + (currentPayment.lease as any).advanceBalance;
+    const monthsToAdd = Math.floor(totalPool / monthlyRent);
+    const newAdvanceBalance = totalPool % monthlyRent;
 
-    const rentFinal = currentPayment.amount - actualPenalty;
-
-    // Calculate advanceUntil if not already set or if it's a multi-month payment
-    let advanceUntilUpdate = currentPayment.advanceUntil;
-    if (monthCount > 1 && !advanceUntilUpdate) {
-      advanceUntilUpdate = new Date(new Date(currentPayment.dueDate).setMonth(new Date(currentPayment.dueDate).getMonth() + (monthCount - 1)));
+    let finalAdvanceUntil = currentPayment.advanceUntil || currentPayment.dueDate;
+    if (monthsToAdd > 0) {
+      finalAdvanceUntil = addEthiopianMonths(new Date(currentPayment.dueDate), monthsToAdd - 1);
     }
 
     // ── Execute Transaction ────────────────────────────────────────────────
@@ -65,8 +68,9 @@ export async function approvePayment(paymentId: string, penaltyAmountReceived?: 
         where: { id: paymentId },
         data: { 
           status: "APPROVED",
-          amount: rentFinal,
+          amount: currentPayment.amount,
           penalty: actualPenalty,
+          advanceUntil: finalAdvanceUntil,
           paidAt: new Date(),
           approver: { connect: { id: session.user.id } },
         },
@@ -74,7 +78,6 @@ export async function approvePayment(paymentId: string, penaltyAmountReceived?: 
 
       // 2. Settle Penalties
       if (actualPenalty > 0) {
-        const unpaidPenalties = currentPayment.lease.penalties;
         let remainingPenalty = actualPenalty;
 
         for (const unpaidRecord of unpaidPenalties) {
@@ -82,15 +85,17 @@ export async function approvePayment(paymentId: string, penaltyAmountReceived?: 
           const outstanding = unpaidRecord.amount - unpaidRecord.paidAmount;
           const toSettle = Math.min(outstanding, remainingPenalty);
 
-          await tx.penalty.update({
-            where: { id: unpaidRecord.id },
-            data: {
-              paidAmount: unpaidRecord.paidAmount + toSettle,
-              status: (unpaidRecord.paidAmount + toSettle) >= unpaidRecord.amount ? "PAID" : "PARTIAL",
-              paidAt: new Date()
-            }
-          });
-          remainingPenalty -= toSettle;
+          if (toSettle > 0) {
+            await tx.penalty.update({
+              where: { id: unpaidRecord.id },
+              data: {
+                paidAmount: unpaidRecord.paidAmount + toSettle,
+                status: (unpaidRecord.paidAmount + toSettle) >= unpaidRecord.amount ? "PAID" : "PARTIAL",
+                paidAt: new Date()
+              }
+            });
+            remainingPenalty -= toSettle;
+          }
         }
 
         if (remainingPenalty > 0) {
@@ -109,25 +114,11 @@ export async function approvePayment(paymentId: string, penaltyAmountReceived?: 
       }
 
       // 3. Handle Advance Balance & Coverage Extension
-      const totalPool = rentFinal + (currentPayment.lease as any).advanceBalance;
-      const monthsToAdd = Math.floor(totalPool / monthlyRent);
-      const newAdvanceBalance = totalPool % monthlyRent;
-
-      let finalAdvanceUntil = currentPayment.advanceUntil;
-      if (monthsToAdd > 1) {
-        finalAdvanceUntil = new Date(new Date(currentPayment.dueDate).setMonth(new Date(currentPayment.dueDate).getMonth() + (monthsToAdd - 1)));
-      }
-
-      await tx.payment.update({
-        where: { id: paymentId },
-        data: { advanceUntil: finalAdvanceUntil }
-      });
-
       await tx.lease.update({
         where: { id: currentPayment.leaseId },
         data: { 
           advanceBalance: newAdvanceBalance,
-          status: "ACTIVE" // Ensure active
+          status: "ACTIVE"
         }
       });
 
@@ -141,8 +132,8 @@ export async function approvePayment(paymentId: string, penaltyAmountReceived?: 
       await tx.auditLog.create({
         data: {
           userId: session.user.id,
-          action: `Approved payment of ${rentFinal} (penalty: ${actualPenalty}). New balance: ${newAdvanceBalance}`,
-          metadata: JSON.stringify({ paymentId, rentFinal, actualPenalty, newAdvanceBalance })
+          action: `Approved payment of ${currentPayment.amount} (penalty: ${actualPenalty}, rent: ${rentFinal}). New balance: ${newAdvanceBalance}`,
+          metadata: JSON.stringify({ paymentId, amount: currentPayment.amount, rentFinal, actualPenalty, newAdvanceBalance })
         }
       });
     });

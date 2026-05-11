@@ -3,6 +3,7 @@
 import { prisma } from "@/lib/prisma";
 import { sendSMS } from "@/lib/sms";
 import { revalidatePath } from "next/cache";
+import { getDaysIntoEthiopianMonth, getDaysUntilEthiopianExpiry } from "@/lib/calendar";
 
 export async function processLateFees() {
   try {
@@ -31,14 +32,11 @@ export async function processLateFees() {
     const now = new Date();
 
     for (const payment of pendingPayments) {
-      const dueDate = new Date(payment.dueDate);
-      const diffTime = now.getTime() - dueDate.getTime();
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      const diffDays = getDaysIntoEthiopianMonth(new Date(payment.dueDate));
 
       // Ethiopian Legal Context: 
-      // Deadline is usually end of month. Grace period is 5 days.
-      // Penalty starts on Day 6 (diffDays > 5).
-      // Final Warning (10%) starts after next month + 5 days (diffDays > 35).
+      // Deadline is usually end of month. Grace period is Day 1 to Day 5.
+      // Penalty starts on Day 6 (diffDays >= 5).
       
       const existingPenalty = await prisma.penalty.findUnique({ where: { id: `penalty-${payment.id}` } });
       const currentPenaltyAmount = existingPenalty?.amount || 0;
@@ -46,10 +44,7 @@ export async function processLateFees() {
       let templateSlug = "";
       let newPenaltyAmount = currentPenaltyAmount;
 
-      if (diffDays > 35 && (currentPenaltyAmount < payment.lease.unit.rentAmount * 0.10)) {
-        templateSlug = "late-fee-2";
-        newPenaltyAmount = payment.lease.unit.rentAmount * 0.10; // Final Warning: 10%
-      } else if (diffDays > 5 && (currentPenaltyAmount === 0)) {
+      if (diffDays >= 5 && currentPenaltyAmount === 0) {
         templateSlug = "late-fee-1";
         newPenaltyAmount = payment.lease.unit.rentAmount * ((settings.lateFeePercentage || 5) / 100);
       }
@@ -93,5 +88,45 @@ export async function processLateFees() {
   } catch (error) {
     console.error("Process Late Fees Error:", error);
     return { success: false, error: "Failed to process late fees." };
+  }
+}
+
+export async function processDailyAlerts() {
+  try {
+    const activeLeases = await prisma.lease.findMany({
+      where: { status: "ACTIVE" },
+      include: {
+        tenant: { select: { name: true, phoneNumber: true } },
+        unit: { include: { property: true } },
+        payments: { where: { status: "APPROVED" }, orderBy: { dueDate: "asc" } }
+      }
+    });
+
+    let processedCount = 0;
+
+    for (const lease of activeLeases) {
+      if (!lease.tenant.phoneNumber) continue;
+
+      const latestPayment = lease.payments[lease.payments.length - 1];
+      const coverageUntil = latestPayment?.advanceUntil || latestPayment?.dueDate || lease.startDate;
+      const daysLeft = getDaysUntilEthiopianExpiry(new Date(coverageUntil));
+
+      // Low Remaining Days Alert (e.g. 5 days left)
+      if (daysLeft === 5) {
+        await sendSMS(lease.tenant.phoneNumber, "Your prepaid rental balance will expire in 5 days. Please renew your balance to avoid grace period and penalties.");
+        processedCount++;
+      }
+      
+      // Grace Period Start Alert (0 days left -> coverage ended today)
+      else if (daysLeft === 0) {
+        await sendSMS(lease.tenant.phoneNumber, "Your prepaid rental coverage has ended. You have entered the 5-day grace period. Please pay within 5 days to avoid the 5% late penalty.");
+        processedCount++;
+      }
+    }
+
+    return { success: true, processedCount };
+  } catch (error) {
+    console.error("Process Daily Alerts Error:", error);
+    return { success: false, error: "Failed to process daily alerts." };
   }
 }

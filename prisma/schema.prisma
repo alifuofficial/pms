@@ -22,6 +22,8 @@ model User {
   approvedPayments     Payment[]  @relation("AccountantApprovals")
   payments             Payment[]  @relation("TenantPayments")
   penalties            Penalty[]  @relation("TenantPenalties")
+  refunds              Refund[]   @relation("TenantRefunds")
+  approvedRefunds      Refund[]   @relation("ManagerApprovals")
   accountantProperties Property[] @relation("PropertyAccountant")
   managedProperties    Property[] @relation("PropertyManager")
 }
@@ -74,6 +76,7 @@ model Lease {
   unit              Unit        @relation(fields: [unitId], references: [id])
   payments          Payment[]
   penalties         Penalty[]
+  refunds           Refund[]
 }
 
 model Payment {
@@ -111,6 +114,21 @@ model Penalty {
   updatedAt     DateTime  @updatedAt
   lease         Lease     @relation(fields: [leaseId], references: [id])
   tenant        User      @relation("TenantPenalties", fields: [tenantId], references: [id])
+}
+
+model Refund {
+  id            String        @id @default(cuid())
+  tenantId      String
+  leaseId       String
+  amount        Float
+  reason        String?
+  status        RefundStatus  @default(PENDING)
+  approvedBy    String?
+  approver      User?         @relation("ManagerApprovals", fields: [approvedBy], references: [id])
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  lease         Lease         @relation(fields: [leaseId], references: [id])
+  tenant        User          @relation("TenantRefunds", fields: [tenantId], references: [id])
 }
 
 model AuditLog {
@@ -225,6 +243,12 @@ enum PaymentType {
 }
 
 enum PaymentStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum RefundStatus {
   PENDING
   APPROVED
   REJECTED

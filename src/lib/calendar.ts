@@ -31,8 +31,14 @@ export function formatEthiopianMonthYear(date: Date) {
   }
 }
 
+export function getNowInAddisAbaba(): Date {
+  // Returns a Date object where the local time matches the current time in Addis Ababa
+  const nowStr = new Date().toLocaleString("en-US", { timeZone: "Africa/Addis_Ababa" });
+  return new Date(nowStr);
+}
+
 export function getSystemToday(calendarType: string) {
-  return formatSystemDate(new Date(), calendarType);
+  return formatSystemDate(getNowInAddisAbaba(), calendarType);
 }
 export function getEthiopianYearRange() {
   const currentYear = new Kenat(new Date()).getEthiopian().year;
@@ -69,6 +75,29 @@ export function getDaysInEthiopianMonth(year: number, month: number) {
 }
 
 /**
+ * Adds Ethiopian months to a date, strictly preserving the Ethiopian day of month
+ * or capping at the end of the month (e.g. Pagume).
+ */
+export function addEthiopianMonths(date: Date, monthsToAdd: number): Date {
+  const etDate = new Kenat(date).getEthiopian();
+  let newYear = etDate.year;
+  let newMonth = etDate.month + monthsToAdd;
+
+  while (newMonth > 13) {
+    newMonth -= 13;
+    newYear++;
+  }
+  
+  // Cap the day to the max days in the new month
+  const maxDays = getDaysInEthiopianMonth(newYear, newMonth);
+  const newDay = Math.min(etDate.day, maxDays);
+
+  const newEtObj = new Kenat({ year: newYear, month: newMonth, day: newDay });
+  const greg = newEtObj.getGregorian();
+  return new Date(greg.year, greg.month - 1, greg.day);
+}
+
+/**
  * Returns a Gregorian Date representing the LAST day (day 30) of the Ethiopian
  * month that contains the given date. This is the tenant's payment due date.
  */
@@ -94,7 +123,7 @@ export function getEthiopianMonthEnd(date: Date): Date {
  * Used for Penalty triggers (starts on Day 6).
  */
 export function getDaysIntoEthiopianMonth(date: Date): number {
-  const now = new Date();
+  const now = getNowInAddisAbaba();
   const etDate = new Kenat(date).getEthiopian();
   // Get Gregorian date for Day 1 of this Ethiopian month
   const monthStartEt = new Kenat({ year: etDate.year, month: etDate.month, day: 1 });
@@ -113,7 +142,7 @@ export function getDaysIntoEthiopianMonth(date: Date): number {
  * - Negative -> Days past due since coverage expired.
  */
 export function getDaysUntilEthiopianExpiry(expiryDate: Date): number {
-  const now = new Date();
+  const now = getNowInAddisAbaba();
   const monthEnd = getEthiopianMonthEnd(expiryDate);
   
   const nowDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
