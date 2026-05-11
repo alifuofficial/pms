@@ -111,7 +111,9 @@ export async function getTenantRevenueAnalytics(tenantId: string, months: number
     });
   }
 
+  return result;
 }
+
 
 export async function getPaymentTypeBreakdown(propertyIds?: string[]) {
   const propertyWhere = propertyIds && propertyIds.length > 0 
