@@ -5,6 +5,11 @@ if [ -z "$DATABASE_URL" ]; then
   export DATABASE_URL="file:/app/data/prod.db"
 fi
 
+# Override .env if it exists in standalone to prevent Next.js workers from falling back to dev.db
+if [ -f ".env" ]; then
+  sed -i "s|file:./dev.db|$DATABASE_URL|g" .env
+fi
+
 echo "--- STARTING DEPLOYMENT STEPS ---"
 echo "DATABASE_URL: $DATABASE_URL"
 
@@ -27,8 +32,8 @@ else
 fi
 
 echo "Running database synchronization..."
-# Use global prisma for reliability. db push is non-destructive for schema additions.
-prisma db push --url "$DATABASE_URL" --accept-data-loss
+# Use global prisma for reliability. Removed --accept-data-loss to protect data from accidental destructive schema changes.
+prisma db push --url "$DATABASE_URL"
 
 
 echo "Seeding/Updating initial data..."
