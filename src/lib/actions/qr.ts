@@ -50,6 +50,11 @@ function calcMonthPenalty(dueDate: Date, rentAmount: number, settings: any) {
   // Grace period: Day 1 to Day 5 (diffDays 0 to 4). Penalty starts on Day 6 (diffDays >= 5).
   if (!settings?.lateFeeEnabled || diffDays < 5) return { penalty: 0, penaltyTier: 0, diffDays };
   
+  if (diffDays >= 35) {
+    const penaltyAmount = rentAmount * ((settings.warningFeePercentage || 10) / 100);
+    return { penalty: penaltyAmount, penaltyTier: 2, diffDays };
+  }
+  
   // Rule: Flat 5% penalty fee. Non-compounding.
   const penaltyAmount = rentAmount * ((settings.lateFeePercentage || 5) / 100);
   return { penalty: penaltyAmount, penaltyTier: 1, diffDays };

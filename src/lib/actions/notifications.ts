@@ -44,7 +44,10 @@ export async function processLateFees() {
       let templateSlug = "";
       let newPenaltyAmount = currentPenaltyAmount;
 
-      if (diffDays >= 5 && currentPenaltyAmount === 0) {
+      if (diffDays >= 35 && currentPenaltyAmount < payment.lease.unit.rentAmount * ((settings.warningFeePercentage || 10) / 100)) {
+        templateSlug = "late-fee-2";
+        newPenaltyAmount = payment.lease.unit.rentAmount * ((settings.warningFeePercentage || 10) / 100);
+      } else if (diffDays >= 5 && diffDays < 35 && currentPenaltyAmount === 0) {
         templateSlug = "late-fee-1";
         newPenaltyAmount = payment.lease.unit.rentAmount * ((settings.lateFeePercentage || 5) / 100);
       }
