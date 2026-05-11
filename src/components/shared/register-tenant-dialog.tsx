@@ -164,19 +164,24 @@ export function RegisterTenantDialog({ currency = "ETB" }: { currency?: string }
       let finalAdvanceUntil: Date | undefined;
 
       if (calendarType === "ETHIOPIAN") {
-        const s = new Kenat(`${ethStart.year}/${ethStart.month}/${ethStart.day}`).getGregorian() as any;
-        const e_ = new Kenat(`${ethEnd.year}/${ethEnd.month}/${ethEnd.day}`).getGregorian() as any;
-        finalStartDate = new Date(s.year, s.month - 1, s.day);
-        finalEndDate = new Date(e_.year, e_.month - 1, e_.day);
+        const s = new Kenat({ year: ethStart.year, month: ethStart.month, day: ethStart.day }).getGregorian() as any;
+        const e_ = new Kenat({ year: ethEnd.year, month: ethEnd.month, day: ethEnd.day }).getGregorian() as any;
+        finalStartDate = new Date(Date.UTC(s.year, s.month - 1, s.day, 12, 0, 0));
+        finalEndDate = new Date(Date.UTC(e_.year, e_.month - 1, e_.day, 12, 0, 0));
 
         if (formData.paymentType === "ADVANCE") {
-          const a = new Kenat(`${ethAdvance.year}/${ethAdvance.month}/${ethAdvance.day}`).getGregorian() as any;
-          finalAdvanceUntil = new Date(a.year, a.month - 1, a.day);
+          const a = new Kenat({ year: ethAdvance.year, month: ethAdvance.month, day: ethAdvance.day }).getGregorian() as any;
+          finalAdvanceUntil = new Date(Date.UTC(a.year, a.month - 1, a.day, 12, 0, 0));
         }
       } else {
-        finalStartDate = new Date(formData.startDate);
-        finalEndDate = new Date(formData.endDate);
-        if (formData.advanceUntil) finalAdvanceUntil = new Date(formData.advanceUntil);
+        const s = new Date(formData.startDate);
+        const e = new Date(formData.endDate);
+        finalStartDate = new Date(Date.UTC(s.getFullYear(), s.getMonth(), s.getDate(), 12, 0, 0));
+        finalEndDate = new Date(Date.UTC(e.getFullYear(), e.getMonth(), e.getDate(), 12, 0, 0));
+        if (formData.advanceUntil) {
+          const a = new Date(formData.advanceUntil);
+          finalAdvanceUntil = new Date(Date.UTC(a.getFullYear(), a.getMonth(), a.getDate(), 12, 0, 0));
+        }
       }
 
       // 3. Register

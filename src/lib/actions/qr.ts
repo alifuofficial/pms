@@ -2,7 +2,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
-import { getDaysIntoEthiopianMonth, getDaysUntilEthiopianExpiry, getEthiopianMonthEnd, addEthiopianMonths } from "@/lib/calendar";
+import { getDaysIntoEthiopianMonth, getDaysUntilEthiopianExpiry, getEthiopianMonthEnd, addEthiopianMonths, toEthiopian } from "@/lib/calendar";
 import Kenat from "kenat";
 
 function generateSlug(length = 10) {
@@ -75,8 +75,8 @@ function getArrearMonths(leaseStart: Date, payments: any[]): Date[] {
     const start = new Date(p.dueDate);
     const end = p.advanceUntil ? new Date(p.advanceUntil) : start;
     
-    let temp = new Kenat(start).getEthiopian();
-    const endEt = new Kenat(end).getEthiopian();
+    let temp = toEthiopian(start);
+    const endEt = toEthiopian(end);
     
     // Safety limit to prevent infinite loops
     let iterations = 0;
@@ -92,8 +92,8 @@ function getArrearMonths(leaseStart: Date, payments: any[]): Date[] {
   }
 
   // Iterate from leaseStart to now
-  let cursorEt = new Kenat(leaseStart).getEthiopian();
-  const nowEt = new Kenat(now).getEthiopian();
+  let cursorEt = toEthiopian(leaseStart);
+  const nowEt = toEthiopian(now);
 
   let iterations = 0;
   while (iterations < 60) {
