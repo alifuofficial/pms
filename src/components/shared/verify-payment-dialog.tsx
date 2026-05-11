@@ -162,7 +162,16 @@ export function VerifyPaymentDialog({ payment, currency }: VerifyPaymentDialogPr
                         <input 
                           type="number"
                           id="penalty-received-input"
-                          defaultValue={Math.max(0, payment.amount - (payment.lease?.unit?.rentAmount || 0))}
+                          defaultValue={(() => {
+                            if (payment.type === "PENALTY") return payment.amount;
+                            const monthlyRent = payment.lease?.unit?.rentAmount || 0;
+                            if (monthlyRent <= 0) return 0;
+                            
+                            // Calculate how many full months of rent this covers
+                            const monthsCovered = Math.max(1, Math.floor(payment.amount / monthlyRent));
+                            const rentPortion = monthlyRent * monthsCovered;
+                            return Math.max(0, payment.amount - rentPortion);
+                          })()}
                           className="w-full h-10 pl-10 pr-3 bg-white border-amber-100 rounded-xl font-mono text-xs font-black focus:ring-2 focus:ring-amber-500 transition-all"
                           placeholder="Fines..."
                         />

@@ -111,5 +111,41 @@ export async function getTenantRevenueAnalytics(tenantId: string, months: number
     });
   }
 
-  return result;
+}
+
+export async function getPaymentTypeBreakdown(propertyIds?: string[]) {
+  const propertyWhere = propertyIds && propertyIds.length > 0 
+    ? { lease: { unit: { propertyId: { in: propertyIds } } } }
+    : {};
+
+  const monthlyCount = await prisma.payment.count({
+    where: { 
+      ...propertyWhere,
+      type: "MONTHLY",
+      status: "APPROVED" 
+    }
+  });
+
+  const advanceCount = await prisma.payment.count({
+    where: { 
+      ...propertyWhere,
+      type: "ADVANCE",
+      status: "APPROVED" 
+    }
+  });
+
+  const penaltyCount = await prisma.penalty.count({
+    where: { 
+      ...(propertyIds && propertyIds.length > 0 ? {
+        lease: { unit: { propertyId: { in: propertyIds } } }
+      } : {}),
+      status: "PAID" 
+    }
+  });
+
+  return [
+    { name: "Monthly Rent", value: monthlyCount, color: "#2563eb" },
+    { name: "Advance Payments", value: advanceCount, color: "#8b5cf6" },
+    { name: "Penalties", value: penaltyCount, color: "#f59e0b" },
+  ];
 }

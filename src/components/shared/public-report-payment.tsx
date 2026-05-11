@@ -86,10 +86,15 @@ export function PublicReportPayment({
     setLoading(true);
     
     const formData = new FormData(e.currentTarget);
+    // Total months covered = all arrears + any additional advance months
+    const totalMonths = hasArrears 
+      ? (paymentType === "ADVANCE" ? (arrearsCount + advanceMonths) : arrearsCount)
+      : (paymentType === "ADVANCE" ? advanceMonths : 1);
+
     formData.append("unitId", unitId);
     formData.append("amount", calculatedAmount.toString());
     formData.append("paymentType", paymentType);
-    formData.append("advanceMonths", advanceMonths.toString());
+    formData.append("advanceMonths", totalMonths.toString());
 
     try {
       const result = await reportPublicPayment(formData);
@@ -147,14 +152,14 @@ export function PublicReportPayment({
            )}>
               <CreditCard size={18} />
            </div>
-           <div className="text-left">
-             <p className="text-[10px] font-black text-white/40 uppercase tracking-[0.2em] leading-none mb-1">
-               {isPaid ? "Advance Payment" : "Quick Action"}
-             </p>
-             <p className="text-xs font-black text-white uppercase tracking-tight">
-               {isPaid ? "Pay for Next Month" : "Report New Payment"}
-             </p>
-           </div>
+            <div className="text-left">
+              <p className="text-[10px] font-black text-white/40 uppercase tracking-[0.2em] leading-none mb-1">
+                {hasArrears ? "Urgent Action" : "Payment Hub"}
+              </p>
+              <p className="text-xs font-black text-white uppercase tracking-tight">
+                {hasArrears ? `Settle ${arrearsCount} Overdue ${arrearsCount === 1 ? "Month" : "Months"}` : "Pay for Next Month"}
+              </p>
+            </div>
         </div>
         <div className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center group-hover:bg-white/20 transition-colors relative z-10">
            <ChevronRight size={16} className="text-white" />

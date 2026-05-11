@@ -18,6 +18,7 @@ import {
 import { formatSystemDate, formatEthiopianMonthYear } from "@/lib/calendar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import Kenat from "kenat";
+import { Badge } from "@/components/ui/badge";
 
 interface ReportsViewProps {
   metrics: {
@@ -30,6 +31,7 @@ interface ReportsViewProps {
     totalUnits: number;
     occupiedUnits: number;
     recentPayments: any[];
+    advancePayments: any[];
   };
   currency: string;
   calendarType: string;
@@ -218,6 +220,58 @@ export function ReportsView({ metrics, currency, calendarType, startDate, endDat
                       "bg-amber-50 text-amber-600 border-amber-200"
                     }`}>
                       {p.status}
+                    </span>
+                  </td>
+                  <td className="py-4 px-6 text-right font-black text-slate-900">
+                    {currency} {p.amount.toLocaleString()}
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+      {/* Advance Collections Section */}
+      <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-none print:mt-8">
+        <div className="p-5 border-b border-slate-100 flex items-center justify-between">
+          <div>
+            <h2 className="text-sm font-bold text-indigo-600">Advance Collections</h2>
+            <p className="text-xs text-slate-500 font-medium mt-0.5">List of tenants who paid for future months.</p>
+          </div>
+          <Badge className="bg-indigo-50 text-indigo-600 border-indigo-100 uppercase text-[10px]">
+            {metrics.advancePayments.length} Records
+          </Badge>
+        </div>
+        <table className="w-full text-left">
+          <thead className="bg-slate-50/50 text-[10px] text-slate-400 font-bold uppercase tracking-widest border-b border-slate-200">
+            <tr>
+              <th className="py-4 px-6">Tenant</th>
+              <th className="py-4 px-6">Property / Unit</th>
+              <th className="py-4 px-6">Months Covered</th>
+              <th className="py-4 px-6 text-right">Amount</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100 text-sm">
+            {metrics.advancePayments.length === 0 ? (
+              <tr>
+                <td colSpan={4} className="py-12 text-center text-slate-500 font-medium">No advance payments recorded in this period.</td>
+              </tr>
+            ) : (
+              metrics.advancePayments.map(p => (
+                <tr key={p.id} className="hover:bg-slate-50/50 transition-colors">
+                  <td className="py-4 px-6">
+                    <p className="font-bold text-slate-900">{p.tenantName}</p>
+                    <p className="text-[10px] text-slate-400 font-medium">{formatSystemDate(new Date(p.date), calendarType)}</p>
+                  </td>
+                  <td className="py-4 px-6">
+                    <p className="text-xs font-semibold text-slate-700">{p.propertyName}</p>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase">Unit {p.unitNumber}</p>
+                  </td>
+                  <td className="py-4 px-6">
+                    <span className="text-[10px] font-black text-indigo-600 uppercase bg-indigo-50 px-2 py-1 rounded-lg border border-indigo-100">
+                      {p.advanceUntil 
+                        ? `Covers until ${formatSystemDate(new Date(p.advanceUntil), calendarType)}` 
+                        : "Next Month Only"}
                     </span>
                   </td>
                   <td className="py-4 px-6 text-right font-black text-slate-900">

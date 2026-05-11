@@ -69,6 +69,7 @@ model Lease {
   createdAt         DateTime    @default(now())
   updatedAt         DateTime    @updatedAt
   leaseAgreementUrl String?
+  advanceBalance    Float       @default(0)
   tenant            User        @relation("TenantLeases", fields: [tenantId], references: [id])
   unit              Unit        @relation(fields: [unitId], references: [id])
   payments          Payment[]
@@ -90,6 +91,7 @@ model Payment {
   receiptUrl    String?
   senderName    String?
   transactionId String?
+  penalty       Float?        @default(0)
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
   lease         Lease         @relation(fields: [leaseId], references: [id])

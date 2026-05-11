@@ -26,16 +26,22 @@ export async function approvePayment(paymentId: string, penaltyAmountReceived?: 
     const monthlyRent = currentPayment.lease.unit.rentAmount;
     const isAdvance = currentPayment.type === "ADVANCE" && currentPayment.advanceUntil;
     
+    // For MONTHLY payments that might cover multiple months of arrears, we calculate how many months are being paid
+    const monthCount = currentPayment.type === "PENALTY" ? 0 : Math.max(1, Math.floor(currentPayment.amount / monthlyRent));
+
     // FIX #3: For ADVANCE payments, expected rent = monthlyRent * months covered
-    // We calculate the number of months from dueDate to advanceUntil
     let expectedRent = monthlyRent;
-    if (isAdvance && currentPayment.advanceUntil) {
+    if (currentPayment.type === "PENALTY") {
+      expectedRent = 0;
+    } else if (isAdvance && currentPayment.advanceUntil) {
       const dueMonth = new Date(currentPayment.dueDate).getMonth();
       const dueYear = new Date(currentPayment.dueDate).getFullYear();
       const untilMonth = new Date(currentPayment.advanceUntil).getMonth();
       const untilYear = new Date(currentPayment.advanceUntil).getFullYear();
       const monthsDiff = (untilYear - dueYear) * 12 + (untilMonth - dueMonth) + 1;
       expectedRent = monthlyRent * Math.max(1, monthsDiff);
+    } else {
+      expectedRent = monthlyRent * monthCount;
     }
 
     // FIX #2 & #3: Auto-detect penalty only if the payment exceeds expected rent
@@ -46,67 +52,105 @@ export async function approvePayment(paymentId: string, penaltyAmountReceived?: 
 
     const rentFinal = currentPayment.amount - actualPenalty;
 
-    const payment = await prisma.payment.update({
-      where: { id: paymentId },
-      data: { 
-        status: "APPROVED",
-        amount: rentFinal,
-        paidAt: new Date(),
-        approver: { connect: { id: session.user.id } },
-      },
-    });
-
-    // FIX #2 (Ghost Arrears): If there are existing UNPAID penalties, settle them first
-    // before creating new ones. This ensures old UNPAID records don't haunt the tenant.
-    if (actualPenalty > 0) {
-      const unpaidPenalties = currentPayment.lease.penalties;
-      let remainingPenalty = actualPenalty;
-
-      // Oldest-first settlement
-      for (const unpaidRecord of unpaidPenalties) {
-        if (remainingPenalty <= 0) break;
-        const outstanding = unpaidRecord.amount - unpaidRecord.paidAmount;
-        const toSettle = Math.min(outstanding, remainingPenalty);
-
-        await prisma.penalty.update({
-          where: { id: unpaidRecord.id },
-          data: {
-            paidAmount: unpaidRecord.paidAmount + toSettle,
-            status: (unpaidRecord.paidAmount + toSettle) >= unpaidRecord.amount ? "PAID" : "PARTIAL",
-            paidAt: new Date()
-          }
-        });
-        remainingPenalty -= toSettle;
-      }
-
-      // If there's still a remaining penalty amount beyond existing records, create a new PAID entry
-      if (remainingPenalty > 0) {
-        await prisma.penalty.create({
-          data: {
-            leaseId: payment.leaseId,
-            tenantId: payment.tenantId,
-            amount: remainingPenalty,
-            paidAmount: remainingPenalty,
-            status: "PAID",
-            dueDate: currentPayment.dueDate,
-            paidAt: new Date()
-          }
-        });
-      }
+    // Calculate advanceUntil if not already set or if it's a multi-month payment
+    let advanceUntilUpdate = currentPayment.advanceUntil;
+    if (monthCount > 1 && !advanceUntilUpdate) {
+      advanceUntilUpdate = new Date(new Date(currentPayment.dueDate).setMonth(new Date(currentPayment.dueDate).getMonth() + (monthCount - 1)));
     }
 
-    // Create Audit Log
-    await prisma.auditLog.create({
-      data: {
-        userId: session.user.id,
-        action: `Approved payment of ${rentFinal} (penalty: ${actualPenalty})`,
-        metadata: JSON.stringify({ paymentId, rentFinal, actualPenalty })
+    // ── Execute Transaction ────────────────────────────────────────────────
+    await prisma.$transaction(async (tx) => {
+      // 1. Update Payment Status
+      await tx.payment.update({
+        where: { id: paymentId },
+        data: { 
+          status: "APPROVED",
+          amount: rentFinal,
+          penalty: actualPenalty,
+          paidAt: new Date(),
+          approver: { connect: { id: session.user.id } },
+        },
+      });
+
+      // 2. Settle Penalties
+      if (actualPenalty > 0) {
+        const unpaidPenalties = currentPayment.lease.penalties;
+        let remainingPenalty = actualPenalty;
+
+        for (const unpaidRecord of unpaidPenalties) {
+          if (remainingPenalty <= 0) break;
+          const outstanding = unpaidRecord.amount - unpaidRecord.paidAmount;
+          const toSettle = Math.min(outstanding, remainingPenalty);
+
+          await tx.penalty.update({
+            where: { id: unpaidRecord.id },
+            data: {
+              paidAmount: unpaidRecord.paidAmount + toSettle,
+              status: (unpaidRecord.paidAmount + toSettle) >= unpaidRecord.amount ? "PAID" : "PARTIAL",
+              paidAt: new Date()
+            }
+          });
+          remainingPenalty -= toSettle;
+        }
+
+        if (remainingPenalty > 0) {
+          await tx.penalty.create({
+            data: {
+              leaseId: currentPayment.leaseId,
+              tenantId: currentPayment.tenantId,
+              amount: remainingPenalty,
+              paidAmount: remainingPenalty,
+              status: "PAID",
+              dueDate: currentPayment.dueDate,
+              paidAt: new Date()
+            }
+          });
+        }
       }
+
+      // 3. Handle Advance Balance & Coverage Extension
+      const totalPool = rentFinal + (currentPayment.lease as any).advanceBalance;
+      const monthsToAdd = Math.floor(totalPool / monthlyRent);
+      const newAdvanceBalance = totalPool % monthlyRent;
+
+      let finalAdvanceUntil = currentPayment.advanceUntil;
+      if (monthsToAdd > 1) {
+        finalAdvanceUntil = new Date(new Date(currentPayment.dueDate).setMonth(new Date(currentPayment.dueDate).getMonth() + (monthsToAdd - 1)));
+      }
+
+      await tx.payment.update({
+        where: { id: paymentId },
+        data: { advanceUntil: finalAdvanceUntil }
+      });
+
+      await tx.lease.update({
+        where: { id: currentPayment.leaseId },
+        data: { 
+          advanceBalance: newAdvanceBalance,
+          status: "ACTIVE" // Ensure active
+        }
+      });
+
+      // Update Unit status if it was vacant
+      await tx.unit.update({
+        where: { id: currentPayment.lease.unitId },
+        data: { status: "OCCUPIED" }
+      });
+
+      // 4. Audit Log
+      await tx.auditLog.create({
+        data: {
+          userId: session.user.id,
+          action: `Approved payment of ${rentFinal} (penalty: ${actualPenalty}). New balance: ${newAdvanceBalance}`,
+          metadata: JSON.stringify({ paymentId, rentFinal, actualPenalty, newAdvanceBalance })
+        }
+      });
     });
 
-    if (payment.leaseId) {
+    // ── STEP 5: Final Revalidation & Notifications ─────────────────────────
+    try {
       const lease = await prisma.lease.findUnique({ 
-        where: { id: payment.leaseId },
+        where: { id: currentPayment.leaseId },
         include: { unit: true, tenant: true }
       });
       if (lease && lease.status === "PENDING") {
@@ -122,32 +166,19 @@ export async function approvePayment(paymentId: string, penaltyAmountReceived?: 
             unit_number: lease.unit.unitNumber
           });
         }
-
-        await prisma.auditLog.create({
-          data: {
-            userId: session.user.id,
-            action: `Activated lease for payment ${paymentId}`,
-            metadata: JSON.stringify({ leaseId: payment.leaseId })
-          }
-        });
       }
 
       // Notify Payment Approved
-      const fullPayment = await prisma.payment.findUnique({
-        where: { id: paymentId },
-        include: { 
-          tenant: true,
-          lease: { include: { unit: true } }
-        }
-      });
-      if (fullPayment?.tenant?.phoneNumber) {
+      if (lease?.tenant?.phoneNumber) {
         const { sendSMS } = await import("@/lib/sms");
-        await sendSMS(fullPayment.tenant.phoneNumber, "payment-approved", {
-          tenant_name: fullPayment.tenant.name || "Tenant",
-          unit_number: fullPayment.lease?.unit?.unitNumber || "N/A",
-          amount: fullPayment.amount.toLocaleString()
+        await sendSMS(lease.tenant.phoneNumber, "payment-approved", {
+          tenant_name: lease.tenant.name || "Tenant",
+          unit_number: lease.unit.unitNumber || "N/A",
+          amount: rentFinal.toLocaleString()
         });
       }
+    } catch (notificationError) {
+      console.error("Post-approval notification error (non-fatal):", notificationError);
     }
 
     revalidatePath("/admin/payments");

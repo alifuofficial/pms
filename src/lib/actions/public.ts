@@ -58,12 +58,31 @@ export async function reportPublicPayment(formData: FormData) {
       }
     }
 
-    // Calculate advanceUntil date for ADVANCE payments
-    // This is critical so approvePayment knows it's not a penalty overpayment
+    // We will calculate advanceUntil after determining nextDue
     let advanceUntil: Date | null = null;
-    if (paymentType === "ADVANCE" && advanceMonths > 1) {
-      const baseDate = new Date();
-      advanceUntil = new Date(baseDate.setMonth(baseDate.getMonth() + advanceMonths - 1));
+
+    // ── Calculate Target Due Date & Coverage ────────────────────────────────
+    // 1. Determine the first unpaid month (nextDue)
+    const latestPayment = await prisma.payment.findFirst({
+      where: { leaseId: lease.id, status: "APPROVED" },
+      orderBy: { dueDate: "desc" }
+    });
+
+    let nextDue = new Date();
+    if (latestPayment) {
+      const baseDate = latestPayment.type === "ADVANCE" && latestPayment.advanceUntil
+        ? new Date(latestPayment.advanceUntil)
+        : new Date(latestPayment.dueDate);
+
+      nextDue = new Date(new Date(baseDate).setMonth(new Date(baseDate).getMonth() + 1));
+    } else {
+      // If no approved payments, start from lease start date
+      nextDue = new Date(lease.startDate);
+    }
+
+    // 2. Calculate coverage (advanceUntil) if paying for multiple months
+    if (advanceMonths > 1) {
+      advanceUntil = new Date(new Date(nextDue).setMonth(new Date(nextDue).getMonth() + (advanceMonths - 1)));
     }
 
     if (pendingPayment) {
@@ -75,27 +94,13 @@ export async function reportPublicPayment(formData: FormData) {
           transactionId,
           receiptUrl,
           amount: reportedAmount,
+          dueDate: nextDue, // Ensure the oldest unpaid month is always the primary reference
           type: paymentType as any,
           advanceUntil: advanceUntil,
           status: "PENDING",
         }
       });
     } else {
-      // Calculate next due date based on latest APPROVED payment
-      const latestPayment = await prisma.payment.findFirst({
-        where: { leaseId: lease.id, status: "APPROVED" },
-        orderBy: { dueDate: "desc" }
-      });
-
-      let nextDue = new Date();
-      if (latestPayment) {
-        const baseDate = latestPayment.type === "ADVANCE" && latestPayment.advanceUntil
-          ? new Date(latestPayment.advanceUntil)
-          : new Date(latestPayment.dueDate);
-
-        nextDue = new Date(new Date(baseDate).setMonth(new Date(baseDate).getMonth() + 1));
-      }
-
       await prisma.payment.create({
         data: {
           leaseId: lease.id,

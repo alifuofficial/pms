@@ -89,18 +89,36 @@ export function getEthiopianMonthEnd(date: Date): Date {
 }
 
 /**
- * Returns the number of days PAST the Ethiopian month-end due date.
- * - Negative  → days remaining before the due date
- * - 0-5       → within 5-day grace period (no penalty)
- * - 6-35      → tier 1 penalty applies
- * - >35       → tier 2 (final warning) penalty applies
+ * Returns the number of days passed since the BEGINNING (Day 1) of the 
+ * Ethiopian month containing the given date.
+ * Used for Penalty triggers (starts on Day 6).
  */
-export function getDaysFromEthiopianDue(dueDate: Date): number {
+export function getDaysIntoEthiopianMonth(date: Date): number {
   const now = new Date();
-  const monthEnd = getEthiopianMonthEnd(dueDate);
-  // Strip time component for clean day comparison
+  const etDate = new Kenat(date).getEthiopian();
+  // Get Gregorian date for Day 1 of this Ethiopian month
+  const monthStartEt = new Kenat({ year: etDate.year, month: etDate.month, day: 1 });
+  const gregStart = monthStartEt.getGregorian();
+  
   const nowDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const dueDay = new Date(monthEnd.getFullYear(), monthEnd.getMonth(), monthEnd.getDate());
-  const diffMs = nowDay.getTime() - dueDay.getTime();
+  const startDay = new Date(gregStart.year, gregStart.month - 1, gregStart.day);
+  
+  const diffMs = nowDay.getTime() - startDay.getTime();
   return Math.floor(diffMs / (1000 * 60 * 60 * 24));
+}
+
+/**
+ * Returns the number of days remaining until the END of the Ethiopian month.
+ * - Positive -> Days remaining for prepaid coverage.
+ * - Negative -> Days past due since coverage expired.
+ */
+export function getDaysUntilEthiopianExpiry(expiryDate: Date): number {
+  const now = new Date();
+  const monthEnd = getEthiopianMonthEnd(expiryDate);
+  
+  const nowDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const endDay = new Date(monthEnd.getFullYear(), monthEnd.getMonth(), monthEnd.getDate());
+  
+  const diffMs = endDay.getTime() - nowDay.getTime();
+  return Math.ceil(diffMs / (1000 * 60 * 60 * 24));
 }

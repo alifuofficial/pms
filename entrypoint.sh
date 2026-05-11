@@ -8,21 +8,34 @@ fi
 echo "--- STARTING DEPLOYMENT STEPS ---"
 echo "DATABASE_URL: $DATABASE_URL"
 
+# Extract path from file: URL for verification
+DB_PATH=$(echo $DATABASE_URL | sed 's/file://')
+echo "Resolved DB Path: $DB_PATH"
+
 echo "Verifying database permissions..."
 mkdir -p /app/data/uploads
 chown -R root:root /app/data
 chmod -R 777 /app/data
 
-echo "Running database synchronization..."
-# Use global prisma for reliability. Avoid --force-reset in production.
-prisma db push --url "$DATABASE_URL"
-
-echo "Verifying database file..."
+echo "Current database files in /app/data/:"
 ls -lh /app/data/
 
-echo "Seeding initial data..."
+if [ -f "$DB_PATH" ]; then
+  echo "Found existing database file at $DB_PATH ($(du -h "$DB_PATH" | cut -f1))"
+else
+  echo "No database file found at $DB_PATH. A new one will be created."
+fi
+
+echo "Running database synchronization..."
+# Use global prisma for reliability. db push is non-destructive for schema additions.
+prisma db push --url "$DATABASE_URL" --skip-generate
+
+echo "Seeding/Updating initial data..."
+# Run seeding (upsert logic ensures no duplicates)
 node prisma/seed.js
 
 echo "--- DEPLOYMENT STEPS COMPLETED ---"
 echo "Starting application..."
+# Start the Next.js standalone server
 node server.js
+

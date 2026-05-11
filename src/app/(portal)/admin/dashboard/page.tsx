@@ -15,11 +15,11 @@ import {
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { RevenueChart, OccupancyChart } from "@/components/shared/dashboard-charts";
+import { RevenueChart, OccupancyChart, PaymentTypeChart } from "@/components/shared/dashboard-charts";
 import { PenaltyList } from "@/components/shared/penalty-list";
 import { Badge } from "@/components/ui/badge";
 import { getSystemToday } from "@/lib/calendar";
-import { getRevenueAnalytics, getOccupancyAnalytics, getRecentAuditLogs } from "@/lib/actions/analytics";
+import { getRevenueAnalytics, getOccupancyAnalytics, getRecentAuditLogs, getPaymentTypeBreakdown } from "@/lib/actions/analytics";
 import { formatDistanceToNow } from "date-fns";
 import Link from "next/link";
 
@@ -29,11 +29,13 @@ export default async function AdminDashboard() {
   const [
     revenueData,
     occupancyData,
+    paymentBreakdown,
     auditLogs,
     stats
   ] = await Promise.all([
     getRevenueAnalytics(),
     getOccupancyAnalytics(),
+    getPaymentTypeBreakdown(),
     getRecentAuditLogs(10),
     (async () => ({
       totalProperties: await prisma.property.count(),
@@ -121,22 +123,23 @@ export default async function AdminDashboard() {
       {/* Analytics & Penalty Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Card className="border border-slate-200 shadow-none bg-white rounded-xl">
-              <CardHeader className="p-5 flex flex-row items-center justify-between space-y-0 border-b border-slate-50">
-                <div className="space-y-0.5">
-                  <CardTitle className="text-sm font-semibold">Revenue Trend</CardTitle>
-                  <p className="text-[10px] text-slate-400 font-medium uppercase tracking-wider">Monthly Collections</p>
-                </div>
-                <div className="text-emerald-600 font-bold text-xs bg-emerald-50 px-2 py-0.5 rounded">
-                  LIVE
-                </div>
-              </CardHeader>
-              <CardContent className="p-5">
-                <RevenueChart data={revenueData} />
-              </CardContent>
-            </Card>
+          {/* Main Revenue Chart - Full Width of this column */}
+          <Card className="border border-slate-200 shadow-none bg-white rounded-xl">
+            <CardHeader className="p-5 flex flex-row items-center justify-between space-y-0 border-b border-slate-50">
+              <div className="space-y-0.5">
+                <CardTitle className="text-sm font-semibold">Revenue Trend</CardTitle>
+                <p className="text-[10px] text-slate-400 font-medium uppercase tracking-wider">Monthly Collections</p>
+              </div>
+              <div className="text-emerald-600 font-bold text-xs bg-emerald-50 px-2 py-0.5 rounded">
+                LIVE
+              </div>
+            </CardHeader>
+            <CardContent className="p-5">
+              <RevenueChart data={revenueData} />
+            </CardContent>
+          </Card>
 
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <Card className="border border-slate-200 shadow-none bg-white rounded-xl">
               <CardHeader className="p-5 flex flex-row items-center justify-between space-y-0 border-b border-slate-50">
                 <div className="space-y-0.5">
@@ -147,6 +150,19 @@ export default async function AdminDashboard() {
               </CardHeader>
               <CardContent className="p-5">
                 <OccupancyChart data={occupancyData} />
+              </CardContent>
+            </Card>
+
+            <Card className="border border-slate-200 shadow-none bg-white rounded-xl">
+              <CardHeader className="p-5 flex flex-row items-center justify-between space-y-0 border-b border-slate-50">
+                <div className="space-y-0.5">
+                  <CardTitle className="text-sm font-semibold">Payment Breakdown</CardTitle>
+                  <p className="text-[10px] text-slate-400 font-medium uppercase tracking-wider">Distribution</p>
+                </div>
+                <Badge variant="outline" className="text-indigo-600 border-indigo-100 bg-indigo-50 font-bold text-[10px] uppercase">Type</Badge>
+              </CardHeader>
+              <CardContent className="p-5">
+                <PaymentTypeChart data={paymentBreakdown} />
               </CardContent>
             </Card>
           </div>

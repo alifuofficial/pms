@@ -157,6 +157,18 @@ export default async function InvoicePrintPage({ params }: { params: Promise<{ i
                   {settings.currency} {payment.amount.toLocaleString()}
                 </td>
               </tr>
+              {(payment.penalty ?? 0) > 0 && (
+                <tr className="border-b border-slate-100 bg-amber-50/20">
+                  <td className="py-4">
+                    <p className="font-bold text-slate-700 italic">Penalty / Late Fee</p>
+                    <p className="text-[10px] font-medium text-slate-400 mt-0.5">Automated penalty for overdue month</p>
+                  </td>
+                  <td className="py-4 text-center font-bold text-slate-400">—</td>
+                  <td className="py-4 text-right font-black text-amber-600">
+                    {settings.currency} {payment.penalty.toLocaleString()}
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -165,16 +177,24 @@ export default async function InvoicePrintPage({ params }: { params: Promise<{ i
         <div className="p-12 flex justify-end">
           <div className="w-1/2 space-y-4">
             <div className="flex justify-between items-center text-sm font-medium text-slate-500">
-              <span>Subtotal</span>
+              <span>Rent Subtotal</span>
               <span>{settings.currency} {payment.amount.toLocaleString()}</span>
             </div>
+            {(payment.penalty ?? 0) > 0 && (
+              <div className="flex justify-between items-center text-sm font-medium text-amber-600">
+                <span>Total Penalties</span>
+                <span>{settings.currency} {payment.penalty.toLocaleString()}</span>
+              </div>
+            )}
             <div className="flex justify-between items-center text-sm font-medium text-slate-500">
               <span>Tax / VAT (0%)</span>
               <span>{settings.currency} 0.00</span>
             </div>
             <div className="pt-4 border-t-2 border-slate-900 flex justify-between items-center">
               <span className="text-xl font-black text-slate-900">Total Due</span>
-              <span className="text-2xl font-black text-slate-900">{settings.currency} {payment.amount.toLocaleString()}</span>
+              <span className="text-2xl font-black text-slate-900">
+                {settings.currency} {((payment.amount || 0) + (payment.penalty || 0)).toLocaleString()}
+              </span>
             </div>
           </div>
         </div>

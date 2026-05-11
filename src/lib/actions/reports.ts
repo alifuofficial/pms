@@ -77,6 +77,30 @@ export async function getReportMetrics(startDate: Date, endDate: Date) {
     take: 50
   });
 
+  // 6. Advance Payments List
+  const advancePaymentsRaw = await prisma.payment.findMany({
+    where: {
+      type: "ADVANCE",
+      status: "APPROVED",
+      paidAt: { gte: startDate, lte: endDate }
+    },
+    include: {
+      tenant: { select: { name: true } },
+      lease: { include: { unit: { include: { property: { select: { name: true } } } } } }
+    },
+    orderBy: { paidAt: "desc" }
+  });
+
+  const advancePayments = advancePaymentsRaw.map(p => ({
+    id: p.id,
+    tenantName: p.tenant.name,
+    propertyName: p.lease.unit.property.name,
+    unitNumber: p.lease.unit.unitNumber,
+    amount: p.amount,
+    date: p.paidAt,
+    advanceUntil: p.advanceUntil
+  }));
+
   return {
     collectedRevenue,
     expectedRevenue,
@@ -86,6 +110,7 @@ export async function getReportMetrics(startDate: Date, endDate: Date) {
     occupancyRate,
     totalUnits,
     occupiedUnits,
-    recentPayments
+    recentPayments,
+    advancePayments
   };
 }
