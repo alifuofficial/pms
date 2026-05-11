@@ -165,7 +165,7 @@ export default async function InvoicePrintPage({ params }: { params: Promise<{ i
                   </td>
                   <td className="py-4 text-center font-bold text-slate-400">—</td>
                   <td className="py-4 text-right font-black text-amber-600">
-                    {settings.currency} {payment.penalty.toLocaleString()}
+                    {settings.currency} {(payment.penalty ?? 0).toLocaleString()}
                   </td>
                 </tr>
               )}
@@ -183,7 +183,7 @@ export default async function InvoicePrintPage({ params }: { params: Promise<{ i
             {(payment.penalty ?? 0) > 0 && (
               <div className="flex justify-between items-center text-sm font-medium text-amber-600">
                 <span>Total Penalties</span>
-                <span>{settings.currency} {payment.penalty.toLocaleString()}</span>
+                <span>{settings.currency} {(payment.penalty ?? 0).toLocaleString()}</span>
               </div>
             )}
             <div className="flex justify-between items-center text-sm font-medium text-slate-500">
