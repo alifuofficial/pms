@@ -4,12 +4,11 @@ const Database = require("better-sqlite3");
 try { require('dotenv').config(); } catch (e) {}
 
 const url = process.env.DATABASE_URL || "file:./dev.db";
-const dbPath = url.startsWith("file:") ? url.replace("file:", "") : url;
-const sqlite = new Database(dbPath);
 
 const prisma = new PrismaClient({
-  adapter: new PrismaBetterSqlite3(sqlite),
+  adapter: new PrismaBetterSqlite3({ url }),
 });
+
 
 
 async function main() {

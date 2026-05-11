@@ -7,12 +7,12 @@ async function check() {
   const url = process.env.DATABASE_URL || "file:./dev.db";
   const dbPath = url.startsWith("file:") ? url.replace("file:", "") : url;
   
-  console.log(`Connecting to database at: ${dbPath}`);
+  console.log(`Connecting to database at: ${url}`);
   
-  const sqlite = new Database(dbPath);
   const prisma = new PrismaClient({
-    adapter: new PrismaBetterSqlite3(sqlite),
+    adapter: new PrismaBetterSqlite3({ url }),
   });
+
 
   try {
     console.log("Checking database tables...");

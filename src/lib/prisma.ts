@@ -8,9 +8,7 @@ const globalForPrisma = globalThis as unknown as {
 
 const getAdapter = () => {
   const url = process.env.DATABASE_URL || "file:./dev.db";
-  let dbPath = url.startsWith("file:") ? url.replace("file:", "") : url;
-  
-  return new PrismaBetterSqlite3({ url: dbPath });
+  return new PrismaBetterSqlite3({ url });
 };
 
 export const prisma =

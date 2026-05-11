@@ -28,7 +28,8 @@ fi
 
 echo "Running database synchronization..."
 # Use global prisma for reliability. db push is non-destructive for schema additions.
-prisma db push --url "$DATABASE_URL" --skip-generate
+prisma db push --url "$DATABASE_URL" --accept-data-loss
+
 
 echo "Seeding/Updating initial data..."
 # Run seeding (upsert logic ensures no duplicates)
