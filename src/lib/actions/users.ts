@@ -226,7 +226,10 @@ export async function registerTenant(data: {
     if (error.code === "P2002") {
       return { success: false, error: "Email or Phone already registered." };
     }
-    return { success: false, error: `Registration failed: ${error.message || error}` };
+    return { 
+      success: false, 
+      error: `Registration failed: ${error.message || error} (Resolved Session User: ${JSON.stringify(sessionUser)})` 
+    };
   }
 }
 
