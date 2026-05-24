@@ -140,7 +140,7 @@ export async function getPublicUnitStatus(slug: string) {
     const settings = await prisma.systemSettings.findUnique({ where: { id: "global" } });
     const bankAccounts = await prisma.bankAccount.findMany({ orderBy: { createdAt: "desc" } });
 
-    const activeLease = unit.leases.find(l => l.status === "ACTIVE") || unit.leases[0];
+    const activeLease = unit.leases.find(l => l.status === "ACTIVE" || l.status === "PENDING");
     const payments = activeLease?.payments || [];
     const penalties = activeLease?.penalties || [];
 
