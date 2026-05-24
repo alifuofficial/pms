@@ -158,14 +158,15 @@ export async function deleteBankAccount(id: string) {
   }
 }
 
-export async function testSms(phone: string) {
+export async function testSms(phone: string, apiKey?: string) {
   try {
     const { sendSMS } = await import("@/lib/sms");
     const result = await sendSMS(
       phone,
       "This is a test message from Soreti PMS. If you received this, your SMS Ethiopia integration is working correctly.",
       undefined,
-      "settings-test"
+      "settings-test",
+      apiKey
     );
     return result;
   } catch (error: any) {

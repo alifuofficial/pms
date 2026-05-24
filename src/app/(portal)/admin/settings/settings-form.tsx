@@ -265,7 +265,7 @@ export function SettingsForm({
     if (!testPhone) { toast.error("Enter a phone number to test."); return; }
     if (!formData.smsEthiopiaKey) { toast.error("Enter your API key first."); return; }
     setIsTestingSms(true);
-    const result = await testSms(testPhone);
+    const result = await testSms(testPhone, formData.smsEthiopiaKey);
     setIsTestingSms(false);
     if (result.success) {
       toast.success(`Test SMS sent to ${testPhone}!`);

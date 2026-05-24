@@ -1,10 +1,14 @@
 import { prisma } from "@/lib/prisma";
 
-/** Normalize Ethiopian phone numbers: 09xx → 2519xx, 9xx (9-digit) → 2519xx */
+/** Normalize Ethiopian phone numbers: 09xx/07xx → 2519xx/2517xx, 9xx/7xx (9-digit) → 2519xx/2517xx */
 function normalizePhone(raw: string): string {
   const digits = raw.replace(/\D/g, "");
-  if (digits.startsWith("09")) return "251" + digits.slice(1);
-  if (digits.startsWith("9") && digits.length === 9) return "251" + digits;
+  if (digits.startsWith("09") || digits.startsWith("07")) {
+    return "251" + digits.slice(1);
+  }
+  if ((digits.startsWith("9") || digits.startsWith("7")) && digits.length === 9) {
+    return "251" + digits;
+  }
   return digits;
 }
 
@@ -12,12 +16,13 @@ export async function sendSMS(
   msisdn: string,
   textOrTemplate: string,
   variables?: Record<string, string>,
-  source?: string
+  source?: string,
+  apiKey?: string
 ) {
   let finalMessage = textOrTemplate;
   let logStatus = "FAILED";
   let logResponse = "";
-  msisdn = normalizePhone(msisdn); // auto-convert 09xx → 2519xx
+  msisdn = normalizePhone(msisdn); // auto-convert 09xx/07xx → 2519xx/2517xx
 
   try {
     const settings = await prisma.systemSettings.findUnique({ where: { id: "global" } });
@@ -31,7 +36,9 @@ export async function sendSMS(
       return { success: true, skipped: true };
     }
 
-    if (!settings.smsEthiopiaKey) {
+    const activeKey = apiKey || settings?.smsEthiopiaKey;
+
+    if (!activeKey) {
       console.warn("[SMS] API Key is not configured.");
       await prisma.smsLog.create({
         data: { msisdn, message: textOrTemplate, status: "FAILED", source: source || "system", response: "API key not configured" }
@@ -71,7 +78,7 @@ export async function sendSMS(
     // ── Send via SMS Ethiopia API ─────────────────────────────
     const response = await fetch("https://smsethiopia.et/api/sms/send", {
       method: "POST",
-      headers: { "Content-Type": "application/json", "KEY": settings.smsEthiopiaKey },
+      headers: { "Content-Type": "application/json", "KEY": activeKey },
       body: JSON.stringify({ msisdn, text: finalMessage })
     });
 
@@ -84,11 +91,12 @@ export async function sendSMS(
     const isSuccessful =
       response.ok ||
       data?.success === true ||
+      data?.sent === true ||
       data?.status?.toLowerCase() === "success" ||
       data?.status?.toLowerCase() === "accepted" ||
       data?.status?.toLowerCase() === "sent" ||
       data?.code === 200 ||
-      !!data?.id;
+      data?.id !== undefined;
 
     logStatus = isSuccessful ? "SUCCESS" : "FAILED";
 
