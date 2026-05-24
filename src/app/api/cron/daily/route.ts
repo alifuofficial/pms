@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { processLateFees, processDailyAlerts } from "@/lib/actions/notifications";
+import { runDailyQrBackup } from "@/lib/actions/import-export";
 
 export async function GET(request: Request) {
   // Simple auth check to ensure only the cron job runner can trigger this
@@ -13,11 +14,13 @@ export async function GET(request: Request) {
   try {
     const alertsResult = await processDailyAlerts();
     const lateFeesResult = await processLateFees();
+    const backupResult = await runDailyQrBackup();
 
     return NextResponse.json({ 
       success: true, 
       alertsProcessed: alertsResult.success ? alertsResult.processedCount : 0,
-      lateFeesProcessed: lateFeesResult.success ? lateFeesResult.processedCount : 0 
+      lateFeesProcessed: lateFeesResult.success ? lateFeesResult.processedCount : 0,
+      qrBackupProcessed: backupResult.success
     });
   } catch (error) {
     console.error("Cron Job Error:", error);

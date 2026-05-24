@@ -30,7 +30,7 @@ import {
 import { updateSystemSettings, addBankAccount, deleteBankAccount, testSmtp, testFtp, testSms } from "@/lib/actions/settings";
 import { factoryResetSystem, granularResetSystem } from "@/lib/actions/system";
 import { backfillMissingQrSlugs, verifyQrIntegrity } from "@/lib/actions/qr";
-import { exportUnitsCsv, importUnitsCsv } from "@/lib/actions/import-export";
+import { exportUnitsCsv, importUnitsCsv, triggerManualBackup } from "@/lib/actions/import-export";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -56,6 +56,24 @@ export function SettingsForm({
   const [isExportingQr, setIsExportingQr] = useState(false);
   const [isImportingQr, setIsImportingQr] = useState(false);
   const qrFileInputRef = useRef<HTMLInputElement>(null);
+  const [isTriggeringBackup, setIsTriggeringBackup] = useState(false);
+
+  const handleTriggerManualBackup = async () => {
+    setIsTriggeringBackup(true);
+    const toastId = toast.loading("Processing automated backup (FTP sync & Emailing)...");
+    try {
+      const result = await triggerManualBackup();
+      if (result.success) {
+        toast.success(result.message || "Manual backup processed successfully!", { id: toastId, duration: 8000 });
+      } else {
+        toast.error(result.error || "Backup failed.", { id: toastId });
+      }
+    } catch (err: any) {
+      toast.error(err.message || "An unexpected error occurred.", { id: toastId });
+    } finally {
+      setIsTriggeringBackup(false);
+    }
+  };
 
   const handleBackfillQr = async () => {
     setIsBackfilling(true);
@@ -1191,11 +1209,49 @@ export function SettingsForm({
                       </div>
                     )}
 
+                    {/* Automated Backups Config */}
+                    <div className="p-5 border border-slate-200 rounded-xl bg-slate-50/50 space-y-4">
+                      <div className="space-y-1">
+                        <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                          <Mail size={16} className="text-slate-800" /> Automated Daily Backups
+                        </h3>
+                        <p className="text-xs text-slate-500 leading-relaxed">
+                          Synchronizes a units CSV backup to your FTP storage server and emails a copy daily. Defaults to <code className="bg-slate-100 px-1 py-0.5 rounded font-semibold text-slate-700 font-mono">alifuhaji@gmail.com</code>.
+                        </p>
+                      </div>
+
+                      <div className="space-y-3 pt-2 border-t border-slate-100">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
+                          <div className="md:col-span-2 space-y-1.5">
+                            <Label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Backup Recipient Email</Label>
+                            <Input 
+                              type="email"
+                              placeholder="alifuhaji@gmail.com"
+                              value={formData.qrBackupEmail || ""}
+                              onChange={(e) => setFormData({ ...formData, qrBackupEmail: e.target.value })}
+                              className="h-10 rounded-lg border-slate-200 text-sm bg-white"
+                            />
+                          </div>
+                          <div>
+                            <Button
+                              type="button"
+                              disabled={isTriggeringBackup}
+                              onClick={handleTriggerManualBackup}
+                              className="w-full bg-slate-900 hover:bg-slate-800 text-white h-10 rounded-lg text-xs font-semibold shadow-none flex justify-center cursor-pointer"
+                            >
+                              {isTriggeringBackup ? <Loader2 size={14} className="mr-2 animate-spin" /> : <Save size={14} className="mr-2" />}
+                              Trigger Backup Now
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
                     {/* Failsafe Backup & Restore Section */}
                     <div className="p-5 border border-slate-200 rounded-xl bg-slate-50/50 space-y-4">
                       <div className="space-y-1">
                         <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                          <QrCode size={16} className="text-slate-800" /> Failsafe Backup & Restoration Hub
+                          <QrCode size={16} className="text-slate-800" /> Manual Backup & Restoration Hub
                         </h3>
                         <p className="text-xs text-slate-500 leading-relaxed">
                           Export your units database with their precise printed QR mappings, and restore them instantly onto new/empty server redeployments with single-click zero configuration.

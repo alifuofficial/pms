@@ -173,6 +173,7 @@ model SystemSettings {
   smsEnabled        Boolean  @default(true)
   maintenanceMode   Boolean  @default(false)
   maintenanceMessage String? @default("We are currently performing scheduled maintenance. Please check back shortly.")
+  qrBackupEmail     String?
   updatedAt         DateTime @updatedAt
 }
 
