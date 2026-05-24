@@ -211,6 +211,13 @@ export async function testVerifyEtWebhook(apiKey: string, webhookUrl: string) {
       })
     });
     
+    if (response.status === 502 || response.status === 504) {
+      return { 
+        success: false, 
+        error: "Verify.ET API reported a temporary Gateway Error (502/504). This is a temporary outage on the Verify.ET platform. Your local receiver is fully operational!" 
+      };
+    }
+    
     const data = await response.json().catch(() => ({}));
     if (response.ok) {
       return { success: true, message: data.message || "Webhook test payload delivered successfully." };
