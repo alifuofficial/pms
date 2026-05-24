@@ -27,7 +27,7 @@ import {
   QrCode,
   Download
 } from "lucide-react";
-import { updateSystemSettings, addBankAccount, deleteBankAccount, testSmtp, testFtp, testSms } from "@/lib/actions/settings";
+import { updateSystemSettings, addBankAccount, deleteBankAccount, testSmtp, testFtp, testSms, testVerifyEtConnection, testVerifyEtWebhook } from "@/lib/actions/settings";
 import { factoryResetSystem, granularResetSystem } from "@/lib/actions/system";
 import { backfillMissingQrSlugs, verifyQrIntegrity } from "@/lib/actions/qr";
 import { exportUnitsCsv, importUnitsCsv, triggerManualBackup } from "@/lib/actions/import-export";
@@ -57,6 +57,11 @@ export function SettingsForm({
   const [isImportingQr, setIsImportingQr] = useState(false);
   const qrFileInputRef = useRef<HTMLInputElement>(null);
   const [isTriggeringBackup, setIsTriggeringBackup] = useState(false);
+
+  // Verify.ET States
+  const [isTestingVerifyEt, setIsTestingVerifyEt] = useState(false);
+  const [isTestingVerifyEtWebhook, setIsTestingVerifyEtWebhook] = useState(false);
+  const [verifyEtTestWebhookUrl, setVerifyEtTestWebhookUrl] = useState("");
 
   const handleTriggerManualBackup = async () => {
     setIsTriggeringBackup(true);
@@ -274,6 +279,35 @@ export function SettingsForm({
     }
   };
 
+  const handleTestVerifyEtConnection = async () => {
+    if (!formData.verifyEtApiKey) { toast.error("Enter your API key first."); return; }
+    setIsTestingVerifyEt(true);
+    const result = await testVerifyEtConnection(formData.verifyEtApiKey);
+    setIsTestingVerifyEt(false);
+    if (result.success) {
+      toast.success("Verify.ET API Key Verified successfully!", {
+        description: "Authenticated successfully with Verify.ET platform."
+      });
+    } else {
+      toast.error(`Verify.ET Error: ${result.error}`);
+    }
+  };
+
+  const handleTestVerifyEtWebhook = async () => {
+    if (!formData.verifyEtApiKey) { toast.error("Enter your API key first."); return; }
+    if (!verifyEtTestWebhookUrl) { toast.error("Enter your test webhook URL."); return; }
+    setIsTestingVerifyEtWebhook(true);
+    const result = await testVerifyEtWebhook(formData.verifyEtApiKey, verifyEtTestWebhookUrl);
+    setIsTestingVerifyEtWebhook(false);
+    if (result.success) {
+      toast.success("Test Webhook Dispatched!", {
+        description: result.message
+      });
+    } else {
+      toast.error(`Webhook Dispatch Error: ${result.error}`);
+    }
+  };
+
   const handleAddBank = async () => {
     if (!newBank.bankName || !newBank.accountName || !newBank.accountNumber) {
       toast.error("Please fill in all bank details");
@@ -389,6 +423,7 @@ export function SettingsForm({
     { id: "ftp", label: "Storage (FTP)", icon: Server },
     { id: "payment", label: "Payment Methods", icon: CreditCard },
     { id: "sms", label: "SMS Ethiopia", icon: Smartphone },
+    { id: "verify-et", label: "Payment Verification", icon: ShieldCheck },
     { id: "late-fee", label: "Late Fees", icon: CreditCard },
     { id: "regional", label: "Regional", icon: Database },
     { id: "qr-security", label: "QR Security & Recovery", icon: QrCode },
@@ -938,6 +973,108 @@ export function SettingsForm({
                     <p className="text-[10px] text-slate-400 font-medium">
                       Numbers starting with <span className="font-bold text-slate-600">09</span> are auto-converted to <span className="font-bold text-slate-600">2519</span> format. Results appear in SMS Logs.
                     </p>
+                  </div>
+                </div>
+              )}
+
+              {activeTab === "verify-et" && (
+                <div className="p-6 space-y-6">
+                  <div className="space-y-1">
+                    <h2 className="text-base font-semibold text-slate-900">Verify.ET Payment Verification</h2>
+                    <p className="text-xs text-slate-500">Configure Verify.ET API to automatically match and verify bank transfer receipts.</p>
+                  </div>
+
+                  {/* Enable/Disable Toggle */}
+                  <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-100">
+                    <div className="space-y-0.5">
+                      <p className="text-sm font-semibold text-slate-900">Enable Automated Verification</p>
+                      <p className="text-[10px] text-slate-500 font-medium">When enabled, the system will verify reported payments automatically using the Verify.ET platform.</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setFormData({ ...formData, verifyEtEnabled: !formData.verifyEtEnabled })}
+                      className={cn(
+                        "relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none",
+                        formData.verifyEtEnabled ? "bg-emerald-500" : "bg-slate-200"
+                      )}
+                    >
+                      <span className={cn(
+                        "inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform",
+                        formData.verifyEtEnabled ? "translate-x-6" : "translate-x-1"
+                      )} />
+                    </button>
+                  </div>
+
+                  {/* API Key */}
+                  <div className="grid grid-cols-1 gap-4 pt-2 border-t border-slate-50">
+                    <div className="space-y-1.5">
+                      <Label className="text-[10px] font-semibold uppercase text-slate-400">API Key (x-api-key)</Label>
+                      <Input 
+                        type="password"
+                        placeholder="VERIFY_BANK_ET_your_key_here"
+                        value={formData.verifyEtApiKey || ""}
+                        onChange={(e) => setFormData({ ...formData, verifyEtApiKey: e.target.value })}
+                        className="h-10 rounded-lg border-slate-200 text-sm"
+                      />
+                      <p className="text-[10px] text-slate-400 font-medium">Keep your API key secure. Authenticates server-to-server calls to Verify.ET.</p>
+                    </div>
+                  </div>
+
+                  {/* Webhook Secret */}
+                  <div className="grid grid-cols-1 gap-4 pt-2 border-t border-slate-50">
+                    <div className="space-y-1.5">
+                      <Label className="text-[10px] font-semibold uppercase text-slate-400">Webhook Secret</Label>
+                      <Input 
+                        type="password"
+                        placeholder="Enter your Verify.ET webhook signing secret"
+                        value={formData.verifyEtWebhookSecret || ""}
+                        onChange={(e) => setFormData({ ...formData, verifyEtWebhookSecret: e.target.value })}
+                        className="h-10 rounded-lg border-slate-200 text-sm"
+                      />
+                      <p className="text-[10px] text-slate-400 font-medium">Verify webhook HMAC signatures with this secret to guarantee authenticity.</p>
+                    </div>
+                  </div>
+
+                  {/* Test API Key */}
+                  <div className="pt-2 border-t border-slate-50 space-y-3">
+                    <div className="space-y-1">
+                      <p className="text-sm font-semibold text-slate-900">Verify API Key Connection</p>
+                      <p className="text-xs text-slate-500">Test if your configured API key can authenticate successfully with the Verify.ET API.</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        type="button"
+                        onClick={handleTestVerifyEtConnection}
+                        disabled={isTestingVerifyEt || !formData.verifyEtApiKey}
+                        className="h-10 px-4 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-lg shadow-none"
+                      >
+                        {isTestingVerifyEt ? <Loader2 size={14} className="animate-spin" /> : "Test API Key"}
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Test Webhook */}
+                  <div className="pt-2 border-t border-slate-50 space-y-3">
+                    <div className="space-y-1">
+                      <p className="text-sm font-semibold text-slate-900">Test Webhook Delivery</p>
+                      <p className="text-xs text-slate-500">Sends a sample webhook payload to validate your endpoint before live usage.</p>
+                    </div>
+                    <div className="flex gap-2">
+                      <Input 
+                        placeholder="https://your-domain.com/api/webhooks/verify"
+                        value={verifyEtTestWebhookUrl}
+                        onChange={(e) => setVerifyEtTestWebhookUrl(e.target.value)}
+                        className="h-10 rounded-lg border-slate-200 text-sm flex-1"
+                      />
+                      <Button
+                        type="button"
+                        onClick={handleTestVerifyEtWebhook}
+                        disabled={isTestingVerifyEtWebhook || !formData.verifyEtApiKey || !verifyEtTestWebhookUrl}
+                        className="h-10 px-4 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-lg shadow-none"
+                      >
+                        {isTestingVerifyEtWebhook ? <Loader2 size={14} className="animate-spin" /> : "Test Webhook"}
+                      </Button>
+                    </div>
                   </div>
                 </div>
               )}

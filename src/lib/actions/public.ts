@@ -86,6 +86,8 @@ export async function reportPublicPayment(formData: FormData) {
       advanceUntil = addEthiopianMonths(new Date(nextDue), advanceMonths - 1);
     }
 
+    let targetPaymentId = "";
+
     if (pendingPayment) {
       // Update existing pending payment
       await prisma.payment.update({
@@ -101,8 +103,9 @@ export async function reportPublicPayment(formData: FormData) {
           status: "PENDING",
         }
       });
+      targetPaymentId = pendingPayment.id;
     } else {
-      await prisma.payment.create({
+      const newPayment = await prisma.payment.create({
         data: {
           leaseId: lease.id,
           tenantId: lease.tenantId,
@@ -116,6 +119,12 @@ export async function reportPublicPayment(formData: FormData) {
           receiptUrl,
         }
       });
+      targetPaymentId = newPayment.id;
+    }
+
+    if (transactionId && targetPaymentId) {
+      const { checkAndVerifyPaymentVerifyEt } = await import("@/lib/verify-et");
+      checkAndVerifyPaymentVerifyEt(targetPaymentId, transactionId).catch(console.error);
     }
 
     revalidatePath(`/u/${unit.qrSlug}`);

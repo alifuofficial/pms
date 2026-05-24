@@ -173,3 +173,51 @@ export async function testSms(phone: string, apiKey?: string) {
     return { success: false, error: error?.message || "Test SMS failed" };
   }
 }
+
+export async function testVerifyEtConnection(apiKey: string) {
+  try {
+    const response = await fetch("https://verify.et/api/verify/test-webhook", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": apiKey
+      },
+      body: JSON.stringify({
+        webhookUrl: "https://verify.et/api/examples", // valid placeholder to test key
+        scenario: "success"
+      })
+    });
+    
+    if (response.status === 401) {
+      return { success: false, error: "Invalid API Key (Unauthorized)" };
+    }
+    return { success: true };
+  } catch (error: any) {
+    return { success: false, error: error?.message || "Connection test failed." };
+  }
+}
+
+export async function testVerifyEtWebhook(apiKey: string, webhookUrl: string) {
+  try {
+    const response = await fetch("https://verify.et/api/verify/test-webhook", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": apiKey
+      },
+      body: JSON.stringify({
+        webhookUrl,
+        scenario: "success"
+      })
+    });
+    
+    const data = await response.json().catch(() => ({}));
+    if (response.ok) {
+      return { success: true, message: data.message || "Webhook test payload delivered successfully." };
+    } else {
+      return { success: false, error: data.message || "Failed to deliver test webhook payload." };
+    }
+  } catch (error: any) {
+    return { success: false, error: error?.message || "Webhook test failed." };
+  }
+}
