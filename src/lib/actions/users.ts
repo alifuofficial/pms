@@ -7,6 +7,32 @@ import { hash } from "bcryptjs";
 import { sendSMS } from "@/lib/sms";
 import { normalizePhoneNumber } from "@/lib/phone";
 
+/**
+ * Defensively resolves the current user's ID and Role.
+ * NextAuth sessions can sometimes omit custom token fields (like id and role) during refreshes.
+ * If this happens, we resolve them securely from the database using the session's verified email.
+ */
+async function resolveSessionUser(session: any) {
+  if (!session?.user) return null;
+  
+  let id = session.user.id;
+  let role = session.user.role;
+  const email = session.user.email;
+  
+  if ((!id || !role) && email) {
+    const dbUser = await prisma.user.findUnique({
+      where: { email },
+      select: { id: true, role: true }
+    });
+    if (dbUser) {
+      id = dbUser.id;
+      role = dbUser.role;
+    }
+  }
+  
+  return { id, role, email };
+}
+
 export async function createUser(data: {
   name: string;
   email: string;
@@ -14,7 +40,8 @@ export async function createUser(data: {
   role: "ADMIN" | "MANAGER" | "ACCOUNTANT" | "TENANT";
 }) {
   const session = await auth();
-  if (!session?.user || session.user.role !== "ADMIN") return { success: false, error: "Unauthorized" };
+  const sessionUser = await resolveSessionUser(session);
+  if (!sessionUser || sessionUser.role !== "ADMIN") return { success: false, error: "Unauthorized" };
 
   try {
     const tempPassword = await hash("Soreti123!", 10);
@@ -29,7 +56,7 @@ export async function createUser(data: {
 
     await prisma.auditLog.create({
       data: {
-        userId: session.user.id,
+        userId: sessionUser.id,
         action: `Created user ${data.name} with role ${data.role}`,
         actionType: "USER_CREATION",
         newValue: JSON.stringify({ name: data.name, email: data.email, role: data.role }),
@@ -56,7 +83,8 @@ export async function updateUser(id: string, data: {
   password?: string;
 }) {
   const session = await auth();
-  if (!session?.user || session.user.role !== "ADMIN") return { success: false, error: "Unauthorized" };
+  const sessionUser = await resolveSessionUser(session);
+  if (!sessionUser || sessionUser.role !== "ADMIN") return { success: false, error: "Unauthorized" };
 
   try {
     const oldUser = await prisma.user.findUnique({ where: { id } });
@@ -83,7 +111,7 @@ export async function updateUser(id: string, data: {
 
     await prisma.auditLog.create({
       data: {
-        userId: session.user.id,
+        userId: sessionUser.id,
         action: `Updated user ${user.name}`,
         actionType: "USER_UPDATE",
         oldValue: JSON.stringify({ name: oldUser?.name, email: oldUser?.email, role: oldUser?.role }),
@@ -102,10 +130,11 @@ export async function updateUser(id: string, data: {
 
 export async function deleteUser(id: string) {
   const session = await auth();
-  if (!session?.user || session.user.role !== "ADMIN") return { success: false, error: "Unauthorized" };
+  const sessionUser = await resolveSessionUser(session);
+  if (!sessionUser || sessionUser.role !== "ADMIN") return { success: false, error: "Unauthorized" };
 
   // Prevent self-deletion
-  if (session.user.id === id) {
+  if (sessionUser.id === id) {
     return { success: false, error: "You cannot delete your own account." };
   }
 
@@ -118,7 +147,7 @@ export async function deleteUser(id: string) {
 
     await prisma.auditLog.create({
       data: {
-        userId: session.user.id,
+        userId: sessionUser.id,
         action: `Deleted user ${oldUser?.name || id}`,
         actionType: "USER_DELETION",
         oldValue: JSON.stringify({ name: oldUser?.name, email: oldUser?.email, role: oldUser?.role }),
@@ -133,6 +162,7 @@ export async function deleteUser(id: string) {
     return { success: false, error: "Failed to delete user." };
   }
 }
+
 export async function registerTenant(data: {
   name: string;
   email?: string;
@@ -149,7 +179,8 @@ export async function registerTenant(data: {
   };
 }) {
   const session = await auth();
-  if (!session?.user || (session.user.role !== "ADMIN" && session.user.role !== "MANAGER")) {
+  const sessionUser = await resolveSessionUser(session);
+  if (!sessionUser || (sessionUser.role !== "ADMIN" && sessionUser.role !== "MANAGER")) {
     return { success: false, error: "Unauthorized" };
   }
 
@@ -204,7 +235,7 @@ export async function registerTenant(data: {
       // 5. Audit Log
       await tx.auditLog.create({
         data: {
-          userId: session.user.id,
+          userId: sessionUser.id,
           action: `Registered tenant ${data.name} for unit ${data.unitId}`,
           actionType: "TENANT_REGISTRATION",
           newValue: JSON.stringify({ name: data.name, phoneNumber: data.phoneNumber, unitId: data.unitId }),
@@ -243,7 +274,8 @@ export async function assignUnitToTenant(data: {
   };
 }) {
   const session = await auth();
-  if (!session?.user || (session.user.role !== "ADMIN" && session.user.role !== "MANAGER")) {
+  const sessionUser = await resolveSessionUser(session);
+  if (!sessionUser || (sessionUser.role !== "ADMIN" && sessionUser.role !== "MANAGER")) {
     return { success: false, error: "Unauthorized" };
   }
 
@@ -284,7 +316,7 @@ export async function assignUnitToTenant(data: {
       // 4. Audit Log
       await tx.auditLog.create({
         data: {
-          userId: session.user.id,
+          userId: sessionUser.id,
           action: `Assigned unit ${data.unitId} to tenant ${data.tenantId}`,
           actionType: "UNIT_ASSIGNMENT",
           newValue: JSON.stringify({ tenantId: data.tenantId, unitId: data.unitId }),
@@ -311,10 +343,11 @@ export async function updateUserProfile(data: {
   calendarType?: string;
 }) {
   const session = await auth();
-  if (!session?.user) return { success: false, error: "Unauthorized" };
+  const sessionUser = await resolveSessionUser(session);
+  if (!sessionUser) return { success: false, error: "Unauthorized" };
 
   try {
-    const oldUser = await prisma.user.findUnique({ where: { id: session.user.id } });
+    const oldUser = await prisma.user.findUnique({ where: { id: sessionUser.id } });
 
     const updateData: any = {};
     if (data.password) {
@@ -325,18 +358,18 @@ export async function updateUserProfile(data: {
     }
 
     await prisma.user.update({
-      where: { id: session.user.id },
+      where: { id: sessionUser.id },
       data: updateData,
     });
 
     await prisma.auditLog.create({
       data: {
-        userId: session.user.id,
+        userId: sessionUser.id,
         action: `Updated user profile (calendarType: ${data.calendarType || oldUser?.calendarType})`,
         actionType: "PROFILE_UPDATE",
         oldValue: JSON.stringify({ calendarType: oldUser?.calendarType }),
         newValue: JSON.stringify({ calendarType: data.calendarType || oldUser?.calendarType }),
-        metadata: JSON.stringify({ userId: session.user.id })
+        metadata: JSON.stringify({ userId: sessionUser.id })
       }
     });
 
