@@ -153,10 +153,50 @@ export function getDaysUntilEthiopianExpiry(expiryDate: Date): number {
   const endDay = new Date(monthEnd.getFullYear(), monthEnd.getMonth(), monthEnd.getDate());
   
   const diffMs = endDay.getTime() - nowDay.getTime();
-  return Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+  const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+  
+  // If endDay >= nowDay, we have prepaid days left (including today, so we add 1)
+  if (diffDays >= 0) {
+    return diffDays + 1;
+  }
+  return diffDays;
+}
+
+/**
+ * Calculates how many days have passed since the prepaid coverage ended (which is at the end of Month End).
+ * - 0 or negative -> Coverage is still active.
+ * - 1 to 5 -> Grace period (Day 1 to Day 5 past due).
+ * - >= 6 -> Overdue period (penalty applies on Day 6 onwards).
+ */
+export function getDaysPastEthiopianExpiry(expiryDate: Date): number {
+  const now = getNowInAddisAbaba();
+  const monthEnd = getEthiopianMonthEnd(expiryDate);
+  
+  const nowDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const endDay = new Date(monthEnd.getFullYear(), monthEnd.getMonth(), monthEnd.getDate());
+  
+  const diffMs = nowDay.getTime() - endDay.getTime();
+  return Math.floor(diffMs / (1000 * 60 * 60 * 24));
 }
 
 export function toEthiopian(date: Date) {
   const addisDate = new Date(date.toLocaleString("en-US", { timeZone: "Africa/Addis_Ababa" }));
   return new Kenat(addisDate).getEthiopian();
+}
+
+export function hasLatePenalty(dueDate: Date, settings: any): boolean {
+  if (!settings?.lateFeeEnabled) return false;
+
+  const now = getNowInAddisAbaba();
+  const nowEt = toEthiopian(now);
+  const dueEt = toEthiopian(dueDate);
+
+  if (nowEt.year > dueEt.year) return true;
+  if (nowEt.year === dueEt.year) {
+    if (nowEt.month > dueEt.month) return true;
+    if (nowEt.month === dueEt.month) {
+      return nowEt.day >= 6;
+    }
+  }
+  return false;
 }

@@ -127,53 +127,36 @@ export default async function PublicUnitPage({ params }: { params: Promise<{ slu
     const ethiopianDue = nextPayment?.ethiopianDueDate 
       ? new Date(nextPayment.ethiopianDueDate) 
       : nextPayment ? new Date(nextPayment.dueDate) : null;
-    // daysFromDue: negative = days remaining until month end, positive = days past month end
-    const daysFromDue: number = nextPayment?.daysFromDue ?? (ethiopianDue ? Math.floor((now.getTime() - ethiopianDue.getTime()) / 86400000) : 0);
-    daysLeft = -daysFromDue; // flip sign: positive = days remaining for the UI
+    // Days remaining of prepaid coverage
+    const daysLeftVal = lease ? lease.daysLeft : 0;
+    daysLeft = daysLeftVal;
     
-    if (nextPayment) {
-        if (nextPayment.receiptUrl) {
-            // Payment submitted, waiting for accountant review
-            status = "PENDING";
-            statusColor = "text-blue-600 bg-blue-50 border-blue-100";
-            themeColor = "bg-slate-900";
-            accentColor = "text-slate-900";
-            statusIcon = <Loader2 size={14} className="animate-spin" />;
-            statusLabel = "UNDER REVIEW";
-        } else if (daysFromDue > 5) {
-            // Past grace period — truly overdue
-            status = "OVERDUE";
-            statusColor = "text-rose-600 bg-rose-50 border-rose-100";
-            themeColor = "bg-rose-600";
-            accentColor = "text-rose-600";
-            statusIcon = <AlertCircle size={14} />;
-            statusLabel = "OVERDUE";
-        } else if (daysFromDue > 0) {
-            // Within 5-day grace period — warn but no penalty yet
-            status = "DUE";
-            statusColor = "text-amber-600 bg-amber-50 border-amber-100";
-            themeColor = "bg-amber-500";
-            accentColor = "text-amber-500";
-            statusIcon = <Clock size={14} />;
-            statusLabel = "GRACE PERIOD";
-        } else if (daysLeft <= 10) {
-            // 10 days or less remaining in the month
-            status = "DUE";
-            statusColor = "text-amber-600 bg-amber-50 border-amber-100";
-            themeColor = "bg-amber-500";
-            accentColor = "text-amber-500";
-            statusIcon = <Clock size={14} />;
-            statusLabel = "PAY NOW";
-        } else {
-            // Plenty of time — all good
-            status = "PAID";
-            statusColor = "text-emerald-600 bg-emerald-50 border-emerald-100";
-            themeColor = "bg-emerald-600";
-            accentColor = "text-emerald-600";
-            statusIcon = <CheckCircle2 size={14} />;
-            statusLabel = "PAID";
-        }
-    } else if (lease?.latestApprovedPayment) {
+    if (nextPayment && nextPayment.receiptUrl) {
+        // Payment submitted, waiting for accountant review
+        status = "PENDING";
+        statusColor = "text-blue-600 bg-blue-50 border-blue-100";
+        themeColor = "bg-slate-900";
+        accentColor = "text-slate-900";
+        statusIcon = <Loader2 size={14} className="animate-spin" />;
+        statusLabel = "UNDER REVIEW";
+    } else if (daysLeftVal < 0) {
+        // Prepaid expired / overdue
+        status = "OVERDUE";
+        statusColor = "text-rose-600 bg-rose-50 border-rose-100";
+        themeColor = "bg-rose-600";
+        accentColor = "text-rose-600";
+        statusIcon = <AlertCircle size={14} />;
+        statusLabel = "OVERDUE";
+    } else if (daysLeftVal <= 5) {
+        // 5 days or less remaining in coverage (yellow)
+        status = "DUE";
+        statusColor = "text-amber-600 bg-amber-50 border-amber-100";
+        themeColor = "bg-amber-500";
+        accentColor = "text-amber-500";
+        statusIcon = <Clock size={14} />;
+        statusLabel = "PAY NOW";
+    } else {
+        // Standard paid active coverage (green)
         status = "PAID";
         statusColor = "text-emerald-600 bg-emerald-50 border-emerald-100";
         themeColor = "bg-emerald-600";
@@ -284,71 +267,38 @@ export default async function PublicUnitPage({ params }: { params: Promise<{ slu
                       )}
                    </div>
                    <div className={cn(
-                     "p-5 rounded-[2rem] border space-y-2",
-                     lease.daysLeft > 0 ? "bg-emerald-50/50 border-emerald-100" : "bg-amber-50 border-amber-100"
-                   )}>
-                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Countdown</p>
-                      <div className="flex items-baseline gap-1">
-                        <p className={cn(
-                          "text-2xl font-black tracking-tighter transition-colors duration-500",
-                          lease.daysLeft > 0 ? "text-emerald-600" : "text-amber-600"
-                        )}>
-                          {Math.abs(lease.daysLeft)}
-                        </p>
-                        <span className="text-[10px] font-black text-slate-400 uppercase">
-                          {lease.daysLeft < 0 ? "Days Past" : "Days Left"}
-                        </span>
-                      </div>
-                      {lease.daysLeft < 0 && (
-                        <p className="text-[9px] font-black text-amber-500 uppercase tracking-wider">Prepaid Expired</p>
-                      )}
-                      {lease.daysLeft === 0 && (
-                        <p className="text-[9px] font-black text-amber-500 uppercase tracking-wider">Expires Today</p>
-                      )}
-                      {lease.daysLeft > 0 && (
-                        <p className="text-[9px] font-black text-emerald-500 uppercase tracking-wider">Plan Active</p>
-                      )}
-                   </div>
-                </div>
-
-                <div className="grid grid-cols-1 gap-4">
-                  <div className="bg-slate-50/50 p-5 rounded-[2rem] border border-slate-100/80 flex items-center justify-between">
-                    <div>
-                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Advance Credit</p>
-                      <p className="text-sm font-black text-slate-900 tracking-tight">
-                        {settings.currency} {lease.advanceBalance.toLocaleString()}
-                      </p>
-                      {lease.advanceBalance > 0 && (
-                        <p className="text-[9px] font-bold text-indigo-500 uppercase mt-0.5">
-                          {Math.round((lease.advanceBalance / unit.rentAmount) * 100)}% of Next Month
-                        </p>
-                      )}
+                      "p-5 rounded-[2rem] border space-y-2 transition-colors duration-500",
+                      lease.daysLeft > 5 ? "bg-emerald-50/50 border-emerald-100" :
+                      lease.daysLeft >= 0 ? "bg-amber-50 border-amber-100" :
+                      "bg-rose-50 border-rose-100"
+                    )}>
+                       <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Countdown</p>
+                       <div className="flex items-baseline gap-1">
+                         <p className={cn(
+                           "text-2xl font-black tracking-tighter transition-colors duration-500",
+                           lease.daysLeft > 5 ? "text-emerald-600" :
+                           lease.daysLeft >= 0 ? "text-amber-600" :
+                           "text-rose-600"
+                         )}>
+                           {Math.abs(lease.daysLeft)}
+                         </p>
+                         <span className="text-[10px] font-black text-slate-400 uppercase">
+                           {lease.daysLeft < 0 ? "Days Past" : "Days Left"}
+                         </span>
+                       </div>
+                       {lease.daysLeft < 0 && (
+                         <p className="text-[9px] font-black text-rose-500 uppercase tracking-wider animate-pulse">Prepaid Expired</p>
+                       )}
+                       {lease.daysLeft === 0 && (
+                         <p className="text-[9px] font-black text-amber-500 uppercase tracking-wider">Expires Today</p>
+                       )}
+                       {lease.daysLeft > 0 && lease.daysLeft <= 5 && (
+                         <p className="text-[9px] font-black text-amber-500 uppercase tracking-wider animate-pulse">Expires Soon</p>
+                       )}
+                       {lease.daysLeft > 5 && (
+                         <p className="text-[9px] font-black text-emerald-500 uppercase tracking-wider">Plan Active</p>
+                       )}
                     </div>
-                    {lease.pendingAmount > 0 ? (
-                      <div className="text-right">
-                        <p className="text-[9px] font-black text-amber-500 uppercase tracking-widest leading-none mb-1 animate-pulse">Verification In Progress</p>
-                        <p className="text-[11px] font-black text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-100">
-                          + {settings.currency} {lease.pendingAmount.toLocaleString()}
-                        </p>
-                      </div>
-                    ) : (
-                      <div className="text-right">
-                        {lease.advanceBalance > 0 ? (
-                          <>
-                            <p className="text-[9px] font-black text-indigo-500 uppercase tracking-widest leading-none mb-1">Remaining</p>
-                            <p className="text-[10px] font-black text-indigo-600 bg-indigo-50 px-2 py-1 rounded-lg border border-indigo-100">
-                              - {settings.currency} {(unit.rentAmount - lease.advanceBalance).toLocaleString()}
-                            </p>
-                          </>
-                        ) : (
-                          <>
-                            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Status</p>
-                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-tight">No Advance</p>
-                          </>
-                        )}
-                      </div>
-                    )}
-                  </div>
                 </div>
 
                 {status === "DUE" && statusLabel === "GRACE PERIOD" && (
@@ -365,7 +315,7 @@ export default async function PublicUnitPage({ params }: { params: Promise<{ slu
                    </div>
                 )}
 
-                {lease.nextDuePayment?.penalty && lease.nextDuePayment.penalty > 0 && (
+                {typeof lease.nextDuePayment?.penalty === "number" && lease.nextDuePayment.penalty > 0 && (
                   <div className={cn(
                     "p-5 rounded-3xl border animate-pulse",
                     lease.nextDuePayment.penaltyTier === 2 ? "bg-rose-600 text-white border-rose-700" : "bg-amber-50 text-amber-900 border-amber-200"
@@ -422,6 +372,11 @@ export default async function PublicUnitPage({ params }: { params: Promise<{ slu
                             {m.penalty > 0 && (
                               <p className="text-[9px] font-bold text-amber-600 uppercase mt-0.5">
                                 + {settings.currency} {m.penalty.toLocaleString()} penalty ({m.penaltyTier === 2 ? '10%' : '5%'})
+                              </p>
+                            )}
+                            {m.advanceDeduction > 0 && (
+                              <p className="text-[9px] font-bold text-emerald-600 uppercase mt-0.5">
+                                - {settings.currency} {m.advanceDeduction.toLocaleString()} advance applied
                               </p>
                             )}
                           </div>
@@ -559,35 +514,6 @@ export default async function PublicUnitPage({ params }: { params: Promise<{ slu
                     </div>
                   </div>
                 </div>
-
-                {/* Bank Engine */}
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between px-1">
-                    <div className="flex items-center gap-2">
-                       <Banknote size={14} className="text-slate-400" />
-                       <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Bank Instructions</p>
-                    </div>
-                  </div>
-
-                  <div className="space-y-3">
-                    {settings.bankAccounts.map((account) => (
-                      <div key={account.id} className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm flex items-center justify-between group hover:shadow-md transition-all duration-300">
-                        <div className="flex items-center gap-4">
-                           <div className="w-10 h-10 bg-slate-900 text-white rounded-xl flex items-center justify-center shadow-lg shadow-slate-900/10">
-                              <p className="text-xs font-black">{account.bankName.slice(0, 2).toUpperCase()}</p>
-                           </div>
-                           <div>
-                              <p className="text-[11px] font-black text-slate-900 leading-none mb-1.5">{account.bankName}</p>
-                              <p className="text-xs font-bold text-slate-500 tabular-nums">{account.accountNumber}</p>
-                           </div>
-                        </div>
-                        <div className="text-right">
-                           <p className="text-[9px] font-black text-slate-300 uppercase tracking-tighter">{account.accountName}</p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
               </div>
             ) : (
               <div className="p-12 text-center space-y-4 bg-slate-50 rounded-[2.5rem] border border-dashed border-slate-200">
@@ -672,6 +598,7 @@ export default async function PublicUnitPage({ params }: { params: Promise<{ slu
                   currency={settings.currency}
                   grandTotal={lease.grandTotal || 0}
                   arrearsCount={lease.arrearsCount || 0}
+                  bankAccounts={settings.bankAccounts || []}
                 />
               </div>
             );

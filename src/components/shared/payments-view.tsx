@@ -91,7 +91,14 @@ export async function PaymentsView({
                       </div>
                       <div>
                         <p className="text-sm font-semibold text-slate-900">{p.tenant.name}</p>
-                        <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-tight">INV-{p.id.slice(0, 8).toUpperCase()}</p>
+                        <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-tight flex items-center gap-1.5 flex-wrap">
+                          <span>INV-{p.id.slice(0, 8).toUpperCase()}</span>
+                          {p.lease?.advanceBalance > 0 && (
+                            <span className="text-[9px] font-black bg-emerald-50 text-emerald-600 px-1.5 py-0.5 rounded border border-emerald-100/50">
+                              ADVANCE: {settings.currency} {p.lease.advanceBalance.toLocaleString()}
+                            </span>
+                          )}
+                        </p>
                       </div>
                     </div>
                   </td>
@@ -113,16 +120,23 @@ export async function PaymentsView({
                     <p className="text-sm font-semibold text-slate-900">{settings.currency} {p.amount.toLocaleString()}</p>
                   </td>
                   <td className="py-3 px-6 text-center">
-                    <span className={cn(
-                      "px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-tight border",
-                      p.status === "APPROVED" 
-                        ? "bg-emerald-50 text-emerald-600 border-emerald-100" 
-                        : p.status === "PENDING"
-                        ? "bg-amber-50 text-amber-600 border-amber-100"
-                        : "bg-red-50 text-red-600 border-red-100"
-                    )}>
-                      {p.status.toLowerCase()}
-                    </span>
+                    <div className="flex flex-col items-center gap-1">
+                      <span className={cn(
+                        "px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-tight border",
+                        p.status === "APPROVED" 
+                          ? "bg-emerald-50 text-emerald-600 border-emerald-100" 
+                          : p.status === "PENDING"
+                          ? "bg-amber-50 text-amber-600 border-amber-100"
+                          : "bg-red-50 text-red-600 border-red-100"
+                      )}>
+                        {p.status.toLowerCase()}
+                      </span>
+                      {p.status === "APPROVED" && p.lease?.advanceBalance > 0 && (
+                        <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-tight bg-sky-50 text-sky-600 border border-sky-100">
+                          Partial / Advance Applied
+                        </span>
+                      )}
+                    </div>
                   </td>
                   <td className="py-3 px-6 text-right">
                     {role === "TENANT" ? (

@@ -19,13 +19,24 @@ export async function createUser(data: {
   try {
     const tempPassword = await hash("Soreti123!", 10);
     
-    await prisma.user.create({
+    const user = await prisma.user.create({
       data: {
         ...data,
         phoneNumber: data.phoneNumber ? normalizePhoneNumber(data.phoneNumber) : undefined,
         passwordHash: tempPassword,
       },
     });
+
+    await prisma.auditLog.create({
+      data: {
+        userId: session.user.id,
+        action: `Created user ${data.name} with role ${data.role}`,
+        actionType: "USER_CREATION",
+        newValue: JSON.stringify({ name: data.name, email: data.email, role: data.role }),
+        metadata: JSON.stringify({ userId: user.id })
+      }
+    });
+
     revalidatePath("/admin/users");
     return { success: true };
   } catch (error: any) {
@@ -48,6 +59,8 @@ export async function updateUser(id: string, data: {
   if (!session?.user || session.user.role !== "ADMIN") return { success: false, error: "Unauthorized" };
 
   try {
+    const oldUser = await prisma.user.findUnique({ where: { id } });
+
     const updateData: any = {
       name: data.name,
       email: data.email,
@@ -68,6 +81,17 @@ export async function updateUser(id: string, data: {
       await sendSMS(user.phoneNumber, "Your Soreti PMS password has been changed by an administrator. If you did not authorize this, please contact IT Support immediately.");
     }
 
+    await prisma.auditLog.create({
+      data: {
+        userId: session.user.id,
+        action: `Updated user ${user.name}`,
+        actionType: "USER_UPDATE",
+        oldValue: JSON.stringify({ name: oldUser?.name, email: oldUser?.email, role: oldUser?.role }),
+        newValue: JSON.stringify({ name: user.name, email: user.email, role: user.role }),
+        metadata: JSON.stringify({ userId: id })
+      }
+    });
+
     revalidatePath("/admin/users");
     return { success: true };
   } catch (error) {
@@ -86,9 +110,22 @@ export async function deleteUser(id: string) {
   }
 
   try {
+    const oldUser = await prisma.user.findUnique({ where: { id } });
+
     await prisma.user.delete({
       where: { id },
     });
+
+    await prisma.auditLog.create({
+      data: {
+        userId: session.user.id,
+        action: `Deleted user ${oldUser?.name || id}`,
+        actionType: "USER_DELETION",
+        oldValue: JSON.stringify({ name: oldUser?.name, email: oldUser?.email, role: oldUser?.role }),
+        metadata: JSON.stringify({ userId: id })
+      }
+    });
+
     revalidatePath("/admin/users");
     return { success: true };
   } catch (error) {
@@ -164,6 +201,17 @@ export async function registerTenant(data: {
         data: { status: "OCCUPIED" },
       });
 
+      // 5. Audit Log
+      await tx.auditLog.create({
+        data: {
+          userId: session.user.id,
+          action: `Registered tenant ${data.name} for unit ${data.unitId}`,
+          actionType: "TENANT_REGISTRATION",
+          newValue: JSON.stringify({ name: data.name, phoneNumber: data.phoneNumber, unitId: data.unitId }),
+          metadata: JSON.stringify({ name: data.name, unitId: data.unitId, email: data.email })
+        }
+      });
+
       return user;
     });
 
@@ -233,6 +281,17 @@ export async function assignUnitToTenant(data: {
         data: { status: "OCCUPIED" },
       });
 
+      // 4. Audit Log
+      await tx.auditLog.create({
+        data: {
+          userId: session.user.id,
+          action: `Assigned unit ${data.unitId} to tenant ${data.tenantId}`,
+          actionType: "UNIT_ASSIGNMENT",
+          newValue: JSON.stringify({ tenantId: data.tenantId, unitId: data.unitId }),
+          metadata: JSON.stringify({ tenantId: data.tenantId, unitId: data.unitId })
+        }
+      });
+
       return lease;
     });
 
@@ -255,6 +314,8 @@ export async function updateUserProfile(data: {
   if (!session?.user) return { success: false, error: "Unauthorized" };
 
   try {
+    const oldUser = await prisma.user.findUnique({ where: { id: session.user.id } });
+
     const updateData: any = {};
     if (data.password) {
       updateData.passwordHash = await hash(data.password, 10);
@@ -266,6 +327,17 @@ export async function updateUserProfile(data: {
     await prisma.user.update({
       where: { id: session.user.id },
       data: updateData,
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        userId: session.user.id,
+        action: `Updated user profile (calendarType: ${data.calendarType || oldUser?.calendarType})`,
+        actionType: "PROFILE_UPDATE",
+        oldValue: JSON.stringify({ calendarType: oldUser?.calendarType }),
+        newValue: JSON.stringify({ calendarType: data.calendarType || oldUser?.calendarType }),
+        metadata: JSON.stringify({ userId: session.user.id })
+      }
     });
 
     revalidatePath("/", "layout"); // Revalidate entire app since calendar affects everywhere

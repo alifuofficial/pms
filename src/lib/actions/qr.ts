@@ -2,7 +2,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
-import { getDaysIntoEthiopianMonth, getDaysUntilEthiopianExpiry, getEthiopianMonthEnd, addEthiopianMonths, toEthiopian } from "@/lib/calendar";
+import { getDaysPastEthiopianExpiry, getDaysUntilEthiopianExpiry, getEthiopianMonthEnd, addEthiopianMonths, toEthiopian, hasLatePenalty } from "@/lib/calendar";
 import Kenat from "kenat";
 
 function generateSlug(length = 10) {
@@ -44,16 +44,21 @@ export async function generateUnitQrSlug(unitId: string) {
   }
 }
 
-/** Calculates penalty amount and tier for a given due date based on Ethiopian calendar. */
-function calcMonthPenalty(dueDate: Date, rentAmount: number, settings: any) {
-  const diffDays = getDaysIntoEthiopianMonth(dueDate);
-  // Grace period: Day 1 to Day 5 (diffDays 0 to 4). Penalty starts on Day 6 (diffDays >= 5).
-  if (!settings?.lateFeeEnabled || diffDays < 5) return { penalty: 0, penaltyTier: 0, diffDays };
+/** Calculates penalty amount and tier for a given due date based on Ethiopian calendar, checking against existing database record if provided. */
+function calcMonthPenalty(dueDate: Date, rentAmount: number, settings: any, dbPenalty?: any) {
+  const diffDays = getDaysPastEthiopianExpiry(dueDate);
   
-  if (diffDays >= 35) {
-    const penaltyAmount = rentAmount * ((settings.warningFeePercentage || 10) / 100);
-    return { penalty: penaltyAmount, penaltyTier: 2, diffDays };
+  if (dbPenalty) {
+    const penaltyAmount = Math.max(0, dbPenalty.amount - dbPenalty.paidAmount);
+    return {
+      penalty: penaltyAmount,
+      penaltyTier: dbPenalty.paidAmount >= dbPenalty.amount ? 0 : 1,
+      diffDays
+    };
   }
+  
+  const hasPenalty = hasLatePenalty(dueDate, settings);
+  if (!hasPenalty) return { penalty: 0, penaltyTier: 0, diffDays };
   
   // Rule: Flat 5% penalty fee. Non-compounding.
   const penaltyAmount = rentAmount * ((settings.lateFeePercentage || 5) / 100);
@@ -124,7 +129,7 @@ export async function getPublicUnitStatus(slug: string) {
           include: {
             tenant: { select: { name: true } },
             payments: { orderBy: { dueDate: "asc" } },
-            penalties: { where: { status: "UNPAID" }, orderBy: { dueDate: "asc" } }
+            penalties: { orderBy: { dueDate: "asc" } }
           }
         }
       }
@@ -153,7 +158,13 @@ export async function getPublicUnitStatus(slug: string) {
     const now = new Date();
     
     const coverageUntil = latestApprovedPayment?.advanceUntil || latestApprovedPayment?.dueDate || null;
-    const daysLeft = coverageUntil ? getDaysUntilEthiopianExpiry(new Date(coverageUntil)) : 0;
+    const daysLeftVal = coverageUntil ? getDaysUntilEthiopianExpiry(new Date(coverageUntil)) : 0;
+
+    // Adjust countdown based on the lease's advanceBalance
+    const monthlyRent = unit.rentAmount;
+    const advanceBalance = activeLease?.advanceBalance || 0;
+    const partialDays = monthlyRent > 0 ? Math.floor((advanceBalance / monthlyRent) * 30) : 0;
+    const daysLeft = daysLeftVal + partialDays;
 
     // ── STEP 2: Calculate Arrears (Gap Months) ─────────────────────────────
     const pendingPayments = payments
@@ -171,9 +182,17 @@ export async function getPublicUnitStatus(slug: string) {
       ? getArrearMonths(new Date(activeLease.startDate), payments) 
       : [];
 
-    const arrearsMonths = [
+    const dbPenaltyMap = new Map<string, any>();
+    for (const p of penalties) {
+      const d = new Date(p.dueDate);
+      dbPenaltyMap.set(`${d.getFullYear()}-${d.getMonth()}`, p);
+    }
+
+    const rawArrearsMonths = [
       ...pendingPayments.map(p => {
-        const { penalty, penaltyTier, diffDays } = calcMonthPenalty(new Date(p.dueDate), unit.rentAmount, settings);
+        const d = new Date(p.dueDate);
+        const dbPenalty = dbPenaltyMap.get(`${d.getFullYear()}-${d.getMonth()}`);
+        const { penalty, penaltyTier, diffDays } = calcMonthPenalty(new Date(p.dueDate), unit.rentAmount, settings, dbPenalty);
         return {
           id: p.id,
           dueDate: p.dueDate,
@@ -186,10 +205,12 @@ export async function getPublicUnitStatus(slug: string) {
           status: p.status as string,
           receiptUrl: p.receiptUrl || null,
           isGap: false,
+          advanceDeduction: 0,
         };
       }),
       ...gapMonthDates.filter(gd => !pendingDueDates.has(`${gd.getFullYear()}-${gd.getMonth()}`)).map(gd => {
-        const { penalty, penaltyTier, diffDays } = calcMonthPenalty(gd, unit.rentAmount, settings);
+        const dbPenalty = dbPenaltyMap.get(`${gd.getFullYear()}-${gd.getMonth()}`);
+        const { penalty, penaltyTier, diffDays } = calcMonthPenalty(gd, unit.rentAmount, settings, dbPenalty);
         return {
           id: `gap-${gd.getFullYear()}-${gd.getMonth()}`,
           dueDate: gd,
@@ -202,13 +223,38 @@ export async function getPublicUnitStatus(slug: string) {
           status: "UNRECORDED",
           receiptUrl: null,
           isGap: true,
+          advanceDeduction: 0,
         };
       })
     ].sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
 
+    // Deduct advanceBalance chronologically from rawArrearsMonths
+    let remainingAdvance = advanceBalance;
+    const arrearsMonths = rawArrearsMonths.map(m => {
+      const deduction = Math.min(m.totalAmount, remainingAdvance);
+      const updatedTotalAmount = m.totalAmount - deduction;
+      remainingAdvance -= deduction;
+      return {
+        ...m,
+        advanceDeduction: deduction,
+        totalAmount: updatedTotalAmount
+      };
+    });
+
     // ── STEP 3: Penalties and Totals ───────────────────────────────────────
+    const arrearsMonthKeys = new Set(
+      arrearsMonths.map(m => {
+        const d = new Date(m.dueDate);
+        return `${d.getFullYear()}-${d.getMonth()}`;
+      })
+    );
+
     const unpaidPenalties = penalties
       .filter(p => p.amount - p.paidAmount > 0)
+      .filter(p => {
+        const d = new Date(p.dueDate);
+        return !arrearsMonthKeys.has(`${d.getFullYear()}-${d.getMonth()}`);
+      })
       .map(p => ({
         id: p.id,
         amount: p.amount - p.paidAmount,
@@ -221,7 +267,8 @@ export async function getPublicUnitStatus(slug: string) {
     const primaryMonth = arrearsMonths[0] || null;
     const estimatedNext = !primaryMonth && latestApprovedPayment ? (() => {
       const nextDate = addEthiopianMonths(new Date(latestApprovedPayment.advanceUntil || latestApprovedPayment.dueDate), 1);
-      const { penalty, penaltyTier, diffDays } = calcMonthPenalty(nextDate, unit.rentAmount, settings);
+      const dbPenalty = dbPenaltyMap.get(`${nextDate.getFullYear()}-${nextDate.getMonth()}`);
+      const { penalty, penaltyTier, diffDays } = calcMonthPenalty(nextDate, unit.rentAmount, settings, dbPenalty);
       return {
         id: "estimated",
         dueDate: nextDate,
@@ -233,6 +280,7 @@ export async function getPublicUnitStatus(slug: string) {
         totalAmount: unit.rentAmount + penalty,
         status: "ESTIMATED",
         isGap: false,
+        advanceDeduction: 0,
       };
     })() : null;
 

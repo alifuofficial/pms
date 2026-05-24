@@ -3,6 +3,7 @@
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 import { uploadFile } from "./storage";
+import { addEthiopianMonths } from "@/lib/calendar";
 
 export async function reportPublicPayment(formData: FormData) {
   try {
@@ -70,11 +71,11 @@ export async function reportPublicPayment(formData: FormData) {
 
     let nextDue = new Date();
     if (latestPayment) {
-      const baseDate = latestPayment.type === "ADVANCE" && latestPayment.advanceUntil
+      const baseDate = latestPayment.advanceUntil
         ? new Date(latestPayment.advanceUntil)
         : new Date(latestPayment.dueDate);
 
-      nextDue = new Date(new Date(baseDate).setMonth(new Date(baseDate).getMonth() + 1));
+      nextDue = addEthiopianMonths(new Date(baseDate), 1);
     } else {
       // If no approved payments, start from lease start date
       nextDue = new Date(lease.startDate);
@@ -82,7 +83,7 @@ export async function reportPublicPayment(formData: FormData) {
 
     // 2. Calculate coverage (advanceUntil) if paying for multiple months
     if (advanceMonths > 1) {
-      advanceUntil = new Date(new Date(nextDue).setMonth(new Date(nextDue).getMonth() + (advanceMonths - 1)));
+      advanceUntil = addEthiopianMonths(new Date(nextDue), advanceMonths - 1);
     }
 
     if (pendingPayment) {

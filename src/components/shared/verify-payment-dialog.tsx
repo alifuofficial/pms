@@ -38,6 +38,7 @@ interface VerifyPaymentDialogProps {
 export function VerifyPaymentDialog({ payment, currency }: VerifyPaymentDialogProps) {
   const [open, setOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [actualAmount, setActualAmount] = useState(payment.amount);
 
   const isPDF = payment.receiptUrl?.toLowerCase().endsWith(".pdf");
   const isImage = /\.(jpg|jpeg|png|gif|webp)$/i.test(payment.receiptUrl || "");
@@ -47,7 +48,7 @@ export function VerifyPaymentDialog({ payment, currency }: VerifyPaymentDialogPr
     const penaltyInput = document.getElementById("penalty-received-input") as HTMLInputElement;
     const penaltyReceived = penaltyInput ? parseFloat(penaltyInput.value) : undefined;
     
-    const result = await approvePayment(payment.id, penaltyReceived);
+    const result = await approvePayment(payment.id, penaltyReceived, actualAmount);
     setIsLoading(false);
     if (result.success) {
       toast.success("Payment approved and verified.");
@@ -156,6 +157,19 @@ export function VerifyPaymentDialog({ payment, currency }: VerifyPaymentDialogPr
 
                 <div className="grid grid-cols-2 gap-3">
                    <div className="space-y-2">
+                      <label className="text-[9px] font-black text-slate-400 uppercase tracking-tight">Actual Amount Received</label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">{currency}</span>
+                        <input 
+                          type="number"
+                          value={actualAmount}
+                          onChange={(e) => setActualAmount(parseFloat(e.target.value) || 0)}
+                          className="w-full h-10 pl-10 pr-3 bg-white border-blue-200 rounded-xl font-mono text-xs font-black focus:ring-2 focus:ring-blue-500 transition-all"
+                          placeholder="Amount..."
+                        />
+                      </div>
+                   </div>
+                   <div className="space-y-2">
                       <label className="text-[9px] font-black text-slate-400 uppercase tracking-tight">Penalty Portion</label>
                       <div className="relative">
                         <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">{currency}</span>
@@ -175,12 +189,6 @@ export function VerifyPaymentDialog({ payment, currency }: VerifyPaymentDialogPr
                           className="w-full h-10 pl-10 pr-3 bg-white border-amber-100 rounded-xl font-mono text-xs font-black focus:ring-2 focus:ring-amber-500 transition-all"
                           placeholder="Fines..."
                         />
-                      </div>
-                   </div>
-                   <div className="space-y-2">
-                      <label className="text-[9px] font-black text-slate-400 uppercase tracking-tight">Rent Allocation</label>
-                      <div className="h-10 px-4 flex items-center bg-slate-100/50 border border-slate-100 rounded-xl">
-                        <p className="text-xs font-black text-slate-500 uppercase tracking-tighter">Automatic</p>
                       </div>
                    </div>
                 </div>

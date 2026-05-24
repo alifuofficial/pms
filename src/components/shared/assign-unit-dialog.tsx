@@ -22,7 +22,8 @@ import {
   ChevronRight, 
   ChevronLeft,
   Upload,
-  CheckCircle2
+  CheckCircle2,
+  Sparkles
 } from "lucide-react";
 import { assignUnitToTenant } from "@/lib/actions/users";
 import { getAvailableUnits, getProperties } from "@/lib/actions/properties";
@@ -70,6 +71,7 @@ export function AssignUnitDialog({
   const [ethStart, setEthStart] = useState({ year: todayEt.year, month: todayEt.month, day: todayEt.day });
   const [ethEnd, setEthEnd] = useState({ year: todayEt.year + 1, month: todayEt.month, day: todayEt.day });
   const [ethAdvance, setEthAdvance] = useState({ year: todayEt.year, month: todayEt.month, day: todayEt.day });
+  const [advanceMonths, setAdvanceMonths] = useState("");
 
   const [formData, setFormData] = useState({
     propertyId: "",
@@ -180,14 +182,14 @@ export function AssignUnitDialog({
       }
 
       // Validation: Advance Duration
-      if (formData.paymentType === "ADVANCE" && finalAdvanceUntil) {
-        const diffMonths = (finalAdvanceUntil.getFullYear() - finalStartDate.getFullYear()) * 12 + (finalAdvanceUntil.getMonth() - finalStartDate.getMonth());
-        if (diffMonths < 2) {
+      if (formData.paymentType === "ADVANCE") {
+        const numMonths = parseInt(advanceMonths) || 0;
+        if (numMonths < 2) {
           toast.error("Advance payment must be for at least 2 months.");
           setIsLoading(false);
           return;
         }
-        if (finalAdvanceUntil > finalEndDate) {
+        if (finalAdvanceUntil && finalAdvanceUntil > finalEndDate) {
           toast.error("Advance payment cannot exceed lease end date.");
           setIsLoading(false);
           return;
@@ -237,6 +239,7 @@ export function AssignUnitDialog({
     });
     setLeaseFile(null);
     setReceiptFile(null);
+    setAdvanceMonths("");
     setStep(1);
   };
 
@@ -447,7 +450,16 @@ export function AssignUnitDialog({
                   <select 
                     className="w-full rounded-xl border border-slate-200 bg-white h-11 px-4 text-sm font-medium outline-none shadow-sm focus:ring-2 focus:ring-slate-100"
                     value={formData.paymentType}
-                    onChange={(e) => setFormData({ ...formData, paymentType: e.target.value as any })}
+                    onChange={(e) => {
+                      const newType = e.target.value as "MONTHLY" | "ADVANCE";
+                      if (newType === "MONTHLY") {
+                        const unit = filteredUnits.find(u => u.id === formData.unitId);
+                        setFormData({ ...formData, paymentType: newType, amount: unit?.rentAmount?.toString() || formData.amount });
+                        setAdvanceMonths("");
+                      } else {
+                        setFormData({ ...formData, paymentType: newType });
+                      }
+                    }}
                   >
                     <option value="MONTHLY">Monthly Rent</option>
                     <option value="ADVANCE">Advance Payment</option>
@@ -456,33 +468,56 @@ export function AssignUnitDialog({
               </div>
 
               {formData.paymentType === "ADVANCE" && (
-                <div className="space-y-1.5 p-4 bg-slate-50 rounded-xl border border-slate-100">
-                  <Label className="text-[9px] font-bold text-slate-500 uppercase">Advance Until (Ethiopian) *</Label>
-                  <div className="flex gap-1">
-                    <select 
-                      value={ethAdvance.year} 
-                      onChange={e => setEthAdvance({...ethAdvance, year: parseInt(e.target.value)})}
-                      className="w-1/3 rounded-lg border border-slate-200 bg-white h-10 px-1 text-xs outline-none"
-                    >
-                      {getEthiopianYearRange().map(y => <option key={y} value={y}>{y}</option>)}
-                    </select>
-                    <select 
-                      value={ethAdvance.month} 
-                      onChange={e => setEthAdvance({...ethAdvance, month: parseInt(e.target.value)})}
-                      className="w-1/3 rounded-lg border border-slate-200 bg-white h-10 px-1 text-xs outline-none"
-                    >
-                      {getEthiopianMonths().map(m => <option key={m.id} value={m.id}>{m.name.split(' ')[0]}</option>)}
-                    </select>
-                    <select 
-                      value={ethAdvance.day} 
-                      onChange={e => setEthAdvance({...ethAdvance, day: parseInt(e.target.value)})}
-                      className="w-1/3 rounded-lg border border-slate-200 bg-white h-10 px-1 text-xs outline-none"
-                    >
-                      {Array.from({length: getDaysInEthiopianMonth(ethAdvance.year, ethAdvance.month)}).map((_, i) => (
-                        <option key={i+1} value={i+1}>{i+1}</option>
-                      ))}
-                    </select>
+                <div className="space-y-3 p-4 bg-slate-50 rounded-xl border border-slate-100">
+                  <div className="space-y-1.5">
+                    <Label className="text-[9px] font-bold text-slate-500 uppercase">Number of Months *</Label>
+                    <Input
+                      type="number"
+                      min="2"
+                      placeholder="Enter months (minimum 2)"
+                      value={advanceMonths}
+                      onChange={(e) => {
+                        const months = e.target.value;
+                        setAdvanceMonths(months);
+                        const numMonths = parseInt(months) || 0;
+                        if (numMonths >= 2) {
+                          const unit = filteredUnits.find(u => u.id === formData.unitId);
+                          const rentAmount = unit?.rentAmount || 0;
+                          setFormData(prev => ({ ...prev, amount: (rentAmount * numMonths).toString() }));
+                          let newMonth = ethStart.month + numMonths;
+                          let newYear = ethStart.year;
+                          while (newMonth > 13) {
+                            newMonth -= 13;
+                            newYear++;
+                          }
+                          const maxDay = getDaysInEthiopianMonth(newYear, newMonth);
+                          const newDay = Math.min(ethStart.day, maxDay);
+                          setEthAdvance({ year: newYear, month: newMonth, day: newDay });
+                        } else {
+                          setFormData(prev => ({ ...prev, amount: "" }));
+                        }
+                      }}
+                      className="rounded-lg border-slate-200 h-10 text-sm font-medium shadow-sm"
+                    />
                   </div>
+                  {advanceMonths && parseInt(advanceMonths) >= 2 && (() => {
+                    const unit = filteredUnits.find(u => u.id === formData.unitId);
+                    const rentAmount = unit?.rentAmount || 0;
+                    const totalAmount = rentAmount * parseInt(advanceMonths);
+                    const advMonthName = getEthiopianMonths().find(m => m.id === ethAdvance.month)?.name.split(' ')[0];
+                    return (
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2 text-[10px] text-slate-700 font-semibold bg-slate-100 rounded-lg px-3 py-2">
+                          <Sparkles size={14} />
+                          <span>{parseInt(advanceMonths)} months &times; {currency} {rentAmount.toLocaleString()} = {currency} {totalAmount.toLocaleString()}</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-[10px] text-slate-600 font-medium">
+                          <Calendar size={14} />
+                          <span>Valid until: {advMonthName} {ethAdvance.day}, {ethAdvance.year}</span>
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
 
