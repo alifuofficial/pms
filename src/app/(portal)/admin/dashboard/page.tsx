@@ -88,15 +88,15 @@ export default async function AdminDashboard() {
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="relative group">
+        <div className="flex items-center gap-2 w-full md:w-auto">
+          <div className="relative flex-1 md:flex-none">
             <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400" />
             <Input 
               placeholder="Search data..." 
-              className="pl-9 h-9 w-48 bg-white border-slate-200 rounded-lg text-sm" 
+              className="pl-9 h-9 w-full md:w-48 bg-white border-slate-200 rounded-lg text-sm" 
             />
           </div>
-          <Button size="sm" className="h-9 rounded-lg bg-slate-900 hover:bg-slate-800 text-white shadow-none font-medium">
+          <Button size="sm" className="h-9 rounded-lg bg-slate-900 hover:bg-slate-800 text-white shadow-none font-medium shrink-0">
             <Plus className="mr-2 h-3.5 w-3.5" /> Action
           </Button>
         </div>
@@ -182,40 +182,42 @@ export default async function AdminDashboard() {
               </Button>
            </div>
            <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-              <table className="w-full text-left">
-                 <thead className="bg-slate-50/50 text-[10px] text-slate-400 font-semibold uppercase tracking-wider border-b border-slate-200">
-                   <tr>
-                     <th className="py-3 px-5">User</th>
-                     <th className="py-3 px-5">Role</th>
-                     <th className="py-3 px-5 text-right">Status</th>
-                   </tr>
-                 </thead>
-                 <tbody className="divide-y divide-slate-100">
-                   {recentUsers.map((user) => (
-                     <tr key={user.id} className="hover:bg-slate-50/50 transition-colors">
-                       <td className="py-4 px-5">
-                         <div className="flex items-center gap-3">
-                           <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center font-semibold text-slate-600 text-xs">
-                             {user.name?.[0] || "U"}
-                           </div>
-                           <div>
-                             <p className="text-sm font-semibold text-slate-900">{user.name}</p>
-                             <p className="text-[10px] text-slate-400 font-medium">{user.email}</p>
-                           </div>
-                         </div>
-                       </td>
-                       <td className="py-4 px-5">
-                         <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-widest px-2 py-0.5 bg-slate-50 rounded border border-slate-100">
-                           {user.role}
-                         </span>
-                       </td>
-                       <td className="py-4 px-5 text-right">
-                         <span className="text-[10px] font-semibold text-emerald-600 uppercase">Active</span>
-                       </td>
-                     </tr>
-                   ))}
-                 </tbody>
-              </table>
+             <div className="overflow-x-auto w-full">
+               <table className="min-w-[550px] md:min-w-full w-full text-left">
+                  <thead className="bg-slate-50/50 text-[10px] text-slate-400 font-semibold uppercase tracking-wider border-b border-slate-200">
+                    <tr>
+                      <th className="py-3 px-5">User</th>
+                      <th className="py-3 px-5">Role</th>
+                      <th className="py-3 px-5 text-right">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {recentUsers.map((user) => (
+                      <tr key={user.id} className="hover:bg-slate-50/50 transition-colors">
+                        <td className="py-4 px-5">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center font-semibold text-slate-600 text-xs">
+                              {user.name?.[0] || "U"}
+                            </div>
+                            <div>
+                              <p className="text-sm font-semibold text-slate-900">{user.name}</p>
+                              <p className="text-[10px] text-slate-400 font-medium">{user.email}</p>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="py-4 px-5">
+                          <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-widest px-2 py-0.5 bg-slate-50 rounded border border-slate-100">
+                            {user.role}
+                          </span>
+                        </td>
+                        <td className="py-4 px-5 text-right">
+                          <span className="text-[10px] font-semibold text-emerald-600 uppercase">Active</span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+               </table>
+             </div>
            </div>
         </div>
 
