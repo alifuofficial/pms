@@ -28,7 +28,7 @@ import {
   Download
 } from "lucide-react";
 import { updateSystemSettings, addBankAccount, deleteBankAccount, testSmtp, testFtp, testSms } from "@/lib/actions/settings";
-import { factoryResetSystem } from "@/lib/actions/system";
+import { factoryResetSystem, granularResetSystem } from "@/lib/actions/system";
 import { backfillMissingQrSlugs, verifyQrIntegrity } from "@/lib/actions/qr";
 import { exportUnitsCsv, importUnitsCsv } from "@/lib/actions/import-export";
 import { toast } from "sonner";
@@ -178,6 +178,13 @@ export function SettingsForm({
   // Factory Reset State
   const [resetConfirmation, setResetConfirmation] = useState("");
   const [isResetting, setIsResetting] = useState(false);
+  const [resetOptions, setResetOptions] = useState({
+    tenants: false,
+    unitsProperties: false,
+    financials: false,
+    settings: false,
+    all: false
+  });
 
   // Bank Accounts State
   const [bankAccounts, setBankAccounts] = useState<any[]>(initialBankAccounts);
@@ -311,20 +318,49 @@ export function SettingsForm({
     }
   };
 
+  const getRequiredConfirmation = () => {
+    if (resetOptions.all || (resetOptions.tenants && resetOptions.unitsProperties && resetOptions.financials && resetOptions.settings)) {
+      return "RESET SYSTEM";
+    }
+    return "CONFIRM GRANULAR RESET";
+  };
+
   const handleFactoryReset = async () => {
-    if (resetConfirmation !== "RESET SYSTEM") return;
+    const requiredConfirmation = getRequiredConfirmation();
+    if (resetConfirmation !== requiredConfirmation) {
+      toast.error(`Confirmation mismatch. Please type exactly "${requiredConfirmation}"`);
+      return;
+    }
+    
+    // Ensure at least one reset option is selected
+    const selectedCount = Object.values(resetOptions).filter(Boolean).length;
+    if (selectedCount === 0) {
+      toast.error("Please select at least one system component to reset.");
+      return;
+    }
     
     setIsResetting(true);
-    const result = await factoryResetSystem();
-    setIsResetting(false);
-    
-    if (result.success) {
-      toast.success("System has been factory reset.");
-      setResetConfirmation("");
-      // Optionally reload the page to get fresh data
-      window.location.reload();
-    } else {
-      toast.error(result.error);
+    const toastId = toast.loading("Executing requested reset operation...");
+    try {
+      const result = await granularResetSystem(resetOptions);
+      if (result.success) {
+        toast.success("Successfully completed reset operations!", { id: toastId });
+        setResetConfirmation("");
+        setResetOptions({
+          tenants: false,
+          unitsProperties: false,
+          financials: false,
+          settings: false,
+          all: false
+        });
+        window.location.reload();
+      } else {
+        toast.error(result.error || "Reset failed.", { id: toastId });
+      }
+    } catch (err: any) {
+      toast.error(err.message || "An unexpected error occurred.", { id: toastId });
+    } finally {
+      setIsResetting(false);
     }
   };
 
@@ -1211,37 +1247,146 @@ export function SettingsForm({
                 <div className="p-6 space-y-6">
                   <div className="space-y-1">
                     <h2 className="text-base font-semibold text-red-600">Danger Zone</h2>
-                    <p className="text-xs text-slate-500">Irreversible, destructive system operations.</p>
+                    <p className="text-xs text-slate-500">Perform selective database wipes or full factory resets. Select only what you wish to clear.</p>
                   </div>
                   <div className="pt-4 border-t border-slate-50 space-y-4">
-                    <div className="p-5 border border-red-200 bg-red-50 rounded-xl space-y-4">
-                      <div className="space-y-1">
-                        <h3 className="text-sm font-bold text-red-900">Factory Reset System</h3>
-                        <p className="text-xs font-medium text-red-700 leading-relaxed">
-                          This will completely wipe all tenants, properties, units, leases, payments, audit logs, and system configurations. 
-                          Only Admin, Accountant, and Manager accounts will be preserved. This action CANNOT be undone.
-                        </p>
-                      </div>
+                    <div className="p-5 border border-red-200 bg-red-50/50 rounded-xl space-y-5">
                       
-                      <div className="space-y-2 pt-2 border-t border-red-200/50">
-                        <Label className="text-[10px] font-bold text-red-800 uppercase tracking-wider">Type "RESET SYSTEM" to confirm</Label>
-                        <Input 
-                          placeholder="RESET SYSTEM"
-                          value={resetConfirmation}
-                          onChange={(e) => setResetConfirmation(e.target.value)}
-                          className="h-10 bg-white border-red-200 focus-visible:ring-red-500 text-sm font-bold placeholder:font-normal placeholder:text-slate-300"
-                        />
+                      {/* Checkbox Options Grid */}
+                      <div className="space-y-3">
+                        <Label className="text-[10px] font-bold text-red-800 uppercase tracking-wider">Select Database Components to Reset</Label>
+                        <div className="grid grid-cols-1 gap-2.5">
+                          {/* Tenants */}
+                          <label className="flex items-start gap-3 p-3 bg-white border border-red-100 rounded-lg cursor-pointer hover:bg-red-50/30 transition-all select-none">
+                            <input
+                              type="checkbox"
+                              checked={resetOptions.all || resetOptions.tenants}
+                              disabled={resetOptions.all}
+                              onChange={(e) => setResetOptions({ ...resetOptions, tenants: e.target.checked })}
+                              className="mt-0.5 rounded border-red-200 text-red-600 focus:ring-red-500 h-4 w-4"
+                            />
+                            <div className="space-y-0.5">
+                              <span className="text-xs font-semibold text-red-950">Reset Tenant Directory</span>
+                              <p className="text-[10px] text-slate-500 leading-normal">
+                                Deletes all tenants and their active leases, payments, penalties, and history. Retains properties and vacant units.
+                              </p>
+                            </div>
+                          </label>
+
+                          {/* Units & Properties */}
+                          <label className="flex items-start gap-3 p-3 bg-white border border-red-100 rounded-lg cursor-pointer hover:bg-red-50/30 transition-all select-none">
+                            <input
+                              type="checkbox"
+                              checked={resetOptions.all || resetOptions.unitsProperties}
+                              disabled={resetOptions.all}
+                              onChange={(e) => setResetOptions({ ...resetOptions, unitsProperties: e.target.checked })}
+                              className="mt-0.5 rounded border-red-200 text-red-600 focus:ring-red-500 h-4 w-4"
+                            />
+                            <div className="space-y-0.5">
+                              <span className="text-xs font-semibold text-red-950">Reset Units & Properties</span>
+                              <p className="text-[10px] text-slate-500 leading-normal">
+                                Wipes all properties, units, leases, and related bills/receipts. Preserves tenant accounts.
+                              </p>
+                            </div>
+                          </label>
+
+                          {/* Financials */}
+                          <label className="flex items-start gap-3 p-3 bg-white border border-red-100 rounded-lg cursor-pointer hover:bg-red-50/30 transition-all select-none">
+                            <input
+                              type="checkbox"
+                              checked={resetOptions.all || resetOptions.financials}
+                              disabled={resetOptions.all}
+                              onChange={(e) => setResetOptions({ ...resetOptions, financials: e.target.checked })}
+                              className="mt-0.5 rounded border-red-200 text-red-600 focus:ring-red-500 h-4 w-4"
+                            />
+                            <div className="space-y-0.5">
+                              <span className="text-xs font-semibold text-red-950">Reset Financial Records & Statements</span>
+                              <p className="text-[10px] text-slate-500 leading-normal">
+                                Clears all payments, warning fees, historical penalties, and refunds. Preserves properties, units, tenants, and active leases.
+                              </p>
+                            </div>
+                          </label>
+
+                          {/* Settings */}
+                          <label className="flex items-start gap-3 p-3 bg-white border border-red-100 rounded-lg cursor-pointer hover:bg-red-50/30 transition-all select-none">
+                            <input
+                              type="checkbox"
+                              checked={resetOptions.all || resetOptions.settings}
+                              disabled={resetOptions.all}
+                              onChange={(e) => setResetOptions({ ...resetOptions, settings: e.target.checked })}
+                              className="mt-0.5 rounded border-red-200 text-red-600 focus:ring-red-500 h-4 w-4"
+                            />
+                            <div className="space-y-0.5">
+                              <span className="text-xs font-semibold text-red-950">Reset System Configurations & Bank Channels</span>
+                              <p className="text-[10px] text-slate-500 leading-normal">
+                                Resets organization profile, system settings, late-fee schedule, and deletes all linked bank accounts.
+                              </p>
+                            </div>
+                          </label>
+
+                          {/* Full System Reset */}
+                          <label className="flex items-start gap-3 p-3 bg-red-100/50 border border-red-200 rounded-lg cursor-pointer hover:bg-red-100/70 transition-all select-none">
+                            <input
+                              type="checkbox"
+                              checked={resetOptions.all}
+                              onChange={(e) => {
+                                const val = e.target.checked;
+                                setResetOptions({
+                                  tenants: val,
+                                  unitsProperties: val,
+                                  financials: val,
+                                  settings: val,
+                                  all: val
+                                });
+                              }}
+                              className="mt-0.5 rounded border-red-300 text-red-600 focus:ring-red-600 h-4 w-4"
+                            />
+                            <div className="space-y-0.5">
+                              <span className="text-xs font-bold text-red-950">Reset Everything (Whole System Factory Reset)</span>
+                              <p className="text-[10px] text-red-800 leading-normal font-medium">
+                                Wipes the entire database to factory defaults, preserving only Admin, Accountant, and Manager profiles.
+                              </p>
+                            </div>
+                          </label>
+                        </div>
                       </div>
+
+                      {/* Confirmation input wrapper */}
+                      {Object.values(resetOptions).some(Boolean) && (
+                        <div className="space-y-2 pt-3 border-t border-red-200/50 animate-in fade-in duration-300">
+                          <Label className="text-[10px] font-bold text-red-800 uppercase tracking-wider flex justify-between">
+                            <span>To confirm, type exactly:</span>
+                            <span className="font-extrabold font-mono text-red-600 bg-red-100/80 px-1.5 py-0.5 rounded">
+                              {getRequiredConfirmation()}
+                            </span>
+                          </Label>
+                          <Input 
+                            placeholder={getRequiredConfirmation()}
+                            value={resetConfirmation}
+                            onChange={(e) => setResetConfirmation(e.target.value)}
+                            className="h-10 bg-white border-red-200 focus-visible:ring-red-500 text-sm font-bold placeholder:font-normal placeholder:text-slate-300"
+                          />
+                        </div>
+                      )}
                       
-                      <div className="flex justify-end pt-2">
+                      <div className="flex justify-end pt-1">
                         <Button
                           type="button"
-                          disabled={isResetting || resetConfirmation !== "RESET SYSTEM"}
+                          disabled={
+                            isResetting || 
+                            !Object.values(resetOptions).some(Boolean) || 
+                            resetConfirmation !== getRequiredConfirmation()
+                          }
                           onClick={handleFactoryReset}
-                          className="bg-red-600 hover:bg-red-700 text-white font-bold h-10 px-6 rounded-lg text-xs shadow-none cursor-pointer"
+                          className={cn(
+                            "text-white font-bold h-10 px-6 rounded-lg text-xs shadow-none cursor-pointer transition-all flex justify-center",
+                            Object.values(resetOptions).some(Boolean) && resetConfirmation === getRequiredConfirmation()
+                              ? "bg-red-600 hover:bg-red-700"
+                              : "bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed hover:bg-slate-100"
+                          )}
                         >
                           {isResetting ? <Loader2 size={14} className="mr-2 animate-spin" /> : <Trash2 size={14} className="mr-2" />}
-                          Permanently Erase Data
+                          Execute Reset Operations
                         </Button>
                       </div>
                     </div>
