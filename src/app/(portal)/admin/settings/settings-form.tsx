@@ -46,14 +46,14 @@ export function SettingsForm({ initialData, initialBankAccounts = [] }: { initia
   const [testPhone, setTestPhone] = useState("");
 
   const handleTestSmtp = async () => {
-    if (!formData.smtpHost || !formData.smtpPort || !formData.smtpUser || !formData.smtpPass) {
-      toast.error("Please fill in all SMTP settings before testing");
+    if (!formData.smtpHost || !formData.smtpUser || !formData.smtpPass) {
+      toast.error("Please fill in SMTP Host, Username, and Password before testing");
       return;
     }
     setIsTestingSmtp(true);
     const result = await testSmtp({
       host: formData.smtpHost,
-      port: formData.smtpPort,
+      port: formData.smtpPort || 587,
       user: formData.smtpUser,
       pass: formData.smtpPass,
     });
@@ -66,14 +66,14 @@ export function SettingsForm({ initialData, initialBankAccounts = [] }: { initia
   };
 
   const handleTestFtp = async () => {
-    if (!formData.ftpHost || !formData.ftpPort || !formData.ftpUser || !formData.ftpPass) {
-      toast.error("Please fill in all FTP settings before testing");
+    if (!formData.ftpHost || !formData.ftpUser || !formData.ftpPass) {
+      toast.error("Please fill in FTP Host, Username, and Password before testing");
       return;
     }
     setIsTestingFtp(true);
     const result = await testFtp({
       host: formData.ftpHost,
-      port: formData.ftpPort,
+      port: formData.ftpPort || 21,
       user: formData.ftpUser,
       pass: formData.ftpPass,
       baseUrl: formData.ftpBaseUrl,
