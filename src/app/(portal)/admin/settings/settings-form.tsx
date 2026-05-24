@@ -76,10 +76,18 @@ export function SettingsForm({ initialData, initialBankAccounts = [] }: { initia
       port: formData.ftpPort,
       user: formData.ftpUser,
       pass: formData.ftpPass,
+      baseUrl: formData.ftpBaseUrl,
     });
     setIsTestingFtp(false);
     if (result.success) {
-      toast.success("FTP connection successful!");
+      toast.success("FTP Connection Successful!", {
+        description: "A test text file has been uploaded to your FTP server.",
+        action: {
+          label: "Open Test File",
+          onClick: () => window.open((result as any).testFileUrl, "_blank"),
+        },
+        duration: 10000,
+      });
     } else {
       toast.error(`FTP Error: ${result.error}`);
     }

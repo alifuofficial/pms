@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
-import { writeFile, mkdir } from "fs/promises";
-import { join, extname } from "path";
 import { auth } from "@/auth";
+import { uploadFile } from "@/lib/actions/storage";
 
 export async function POST(request: Request) {
   const session = await auth();
@@ -27,20 +26,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "File too large. Max 2 MB." }, { status: 400 });
     }
 
-    const bytes = await file.arrayBuffer();
-    const buffer = Buffer.from(bytes);
+    const uploadResult = await uploadFile(file);
+    
+    if (!uploadResult.success) {
+      return NextResponse.json({ error: uploadResult.error || "Upload failed" }, { status: 500 });
+    }
 
-    // Sanitize: keep only the extension, give the file a clean name
-    const ext = extname(file.name).toLowerCase() || ".png";
-    const safeName = `logo-${Date.now()}${ext}`;          // e.g. logo-1746699123456.png
-
-    const uploadDir = join(process.cwd(), "public", "uploads");
-    await mkdir(uploadDir, { recursive: true });
-
-    const filePath = join(uploadDir, safeName);
-    await writeFile(filePath, buffer);
-
-    return NextResponse.json({ url: `/uploads/${safeName}` });
+    return NextResponse.json({ url: uploadResult.url });
   } catch (error) {
     console.error("Logo upload error:", error);
     return NextResponse.json({ error: "Upload failed" }, { status: 500 });

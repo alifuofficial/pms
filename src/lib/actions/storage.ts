@@ -14,7 +14,9 @@ export async function uploadFile(file: File) {
     const filename = `${crypto.randomUUID()}-${file.name.replace(/\s+/g, "_")}`;
 
     if (settings.ftpEnabled && settings.ftpHost) {
-      const client = new ftp.Client();
+      const client = new ftp.Client(15000); // 15s timeout
+      client.ftp.ipFamily = 4; // Explicitly IPv4
+      client.ftp.verbose = true; // Verbose socket logs for debugging
       try {
         await client.access({
           host: settings.ftpHost,

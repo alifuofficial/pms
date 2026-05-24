@@ -6,6 +6,7 @@ import { auth } from "@/auth";
 import { cache } from "react";
 import nodemailer from "nodemailer";
 import * as ftp from "basic-ftp";
+import { Readable } from "stream";
 
 export async function testSmtp(data: { host: string; port: number; user: string; pass: string }) {
   try {
@@ -27,9 +28,10 @@ export async function testSmtp(data: { host: string; port: number; user: string;
   }
 }
 
-export async function testFtp(data: { host: string; port: number; user: string; pass: string }) {
-  const client = new ftp.Client();
-  client.ftp.verbose = false;
+export async function testFtp(data: { host: string; port: number; user: string; pass: string; baseUrl?: string }) {
+  const client = new ftp.Client(15000); // 15s timeout
+  client.ftp.ipFamily = 4; // Explicitly IPv4
+  client.ftp.verbose = true; // Verbose socket logs for debugging
   try {
     await client.access({
       host: data.host,
@@ -37,8 +39,17 @@ export async function testFtp(data: { host: string; port: number; user: string; 
       user: data.user,
       password: data.pass,
     });
-    await client.list(); // Test listing files
-    return { success: true };
+    
+    // Upload a test connection file
+    const content = `FTP Connection Test Successful!\nTimestamp: ${new Date().toISOString()}\nUploaded by: Soreti Property Rental Admin Settings\nStatus: OK`;
+    const filename = "ftp-test-connection.txt";
+    await client.uploadFrom(Readable.from(Buffer.from(content)), filename);
+    
+    const baseUrl = data.baseUrl 
+      ? (data.baseUrl.endsWith("/") ? data.baseUrl : `${data.baseUrl}/`)
+      : "https://storage.soretiinternational.com/upload/";
+      
+    return { success: true, testFileUrl: `${baseUrl}${filename}` };
   } catch (error: any) {
     console.error("FTP Test Error:", error);
     return { success: false, error: error.message || "Failed to connect to FTP server." };
