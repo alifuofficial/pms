@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 import { getDaysPastEthiopianExpiry, getDaysUntilEthiopianExpiry, getEthiopianMonthEnd, addEthiopianMonths, toEthiopian, hasLatePenalty } from "@/lib/calendar";
 import Kenat from "kenat";
+import { auth } from "@/auth";
 
 function generateSlug(length = 10) {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -333,5 +334,139 @@ export async function getPublicUnitStatus(slug: string) {
   } catch (error) {
     console.error("Fetch Public Unit Error:", error);
     return { success: false, error: "Failed to load unit status." };
+  }
+}
+
+export async function backfillMissingQrSlugs() {
+  const session = await auth();
+  if (!session?.user) return { success: false, error: "Unauthorized" };
+
+  try {
+    const units = await prisma.unit.findMany({
+      where: {
+        OR: [
+          { qrSlug: null },
+          { qrSlug: "" }
+        ]
+      }
+    });
+
+    let updatedCount = 0;
+    for (const unit of units) {
+      let slug = "";
+      let attempts = 0;
+      while (attempts < 10) {
+        const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+        let tempSlug = "";
+        for (let i = 0; i < 10; i++) {
+          tempSlug += chars.charAt(Math.floor(Math.random() * chars.length));
+        }
+        
+        // Ensure uniqueness
+        const duplicate = await prisma.unit.findUnique({ where: { qrSlug: tempSlug } });
+        if (!duplicate) {
+          slug = tempSlug;
+          break;
+        }
+        attempts++;
+      }
+
+      if (slug) {
+        await prisma.unit.update({
+          where: { id: unit.id },
+          data: { qrSlug: slug }
+        });
+        updatedCount++;
+      }
+    }
+
+    revalidatePath("/admin/settings");
+    revalidatePath("/admin/units");
+    return { success: true, updatedCount };
+  } catch (error: any) {
+    console.error("Backfill QR Slugs Error:", error);
+    return { success: false, error: error.message || "Failed to backfill QR codes." };
+  }
+}
+
+export async function verifyQrIntegrity() {
+  const session = await auth();
+  if (!session?.user) return { success: false, error: "Unauthorized" };
+
+  try {
+    const units = await prisma.unit.findMany({
+      select: {
+        id: true,
+        unitNumber: true,
+        qrSlug: true,
+        property: { select: { name: true } }
+      }
+    });
+
+    const totalUnits = units.length;
+    const missingSlugs: any[] = [];
+    const duplicates = new Map<string, string[]>();
+    const malformedSlugs: any[] = [];
+    const validSlugs = new Set<string>();
+
+    const pattern = /^[A-Z2-9]{10}$/; // Our high-entropy standard
+
+    for (const u of units) {
+      if (!u.qrSlug) {
+        missingSlugs.push({
+          unitNumber: u.unitNumber,
+          propertyName: u.property.name
+        });
+        continue;
+      }
+
+      // Check duplicates
+      if (validSlugs.has(u.qrSlug)) {
+        const list = duplicates.get(u.qrSlug) || [];
+        if (list.length === 0) {
+          // Find the original unit that used this slug
+          const original = units.find(item => item.id !== u.id && item.qrSlug === u.qrSlug);
+          if (original) list.push(`${original.property.name} - ${original.unitNumber}`);
+        }
+        list.push(`${u.property.name} - ${u.unitNumber}`);
+        duplicates.set(u.qrSlug, list);
+      } else {
+        validSlugs.add(u.qrSlug);
+      }
+
+      // Check malformed or predictable patterns (non 10-char alphanumeric standard)
+      if (!pattern.test(u.qrSlug)) {
+        malformedSlugs.push({
+          unitNumber: u.unitNumber,
+          propertyName: u.property.name,
+          slug: u.qrSlug
+        });
+      }
+    }
+
+    const duplicatesList: any[] = [];
+    duplicates.forEach((unitsList, slug) => {
+      duplicatesList.push({ slug, units: unitsList });
+    });
+
+    const isHealthy = missingSlugs.length === 0 && duplicatesList.length === 0 && malformedSlugs.length === 0;
+
+    return {
+      success: true,
+      report: {
+        isHealthy,
+        totalUnits,
+        securedCount: validSlugs.size,
+        missingCount: missingSlugs.length,
+        missingSlugs,
+        duplicateCount: duplicatesList.length,
+        duplicatesList,
+        malformedCount: malformedSlugs.length,
+        malformedSlugs
+      }
+    };
+  } catch (error: any) {
+    console.error("Verify QR Integrity Error:", error);
+    return { success: false, error: error.message || "Failed to verify integrity." };
   }
 }

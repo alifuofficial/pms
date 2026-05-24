@@ -92,10 +92,28 @@ export async function createUnit(propertyId: string, data: {
       return { success: false, error: `Unit ${data.unitNumber} already exists in this property.` };
     }
 
+    // Generate secure, unique qrSlug
+    let qrSlug = "";
+    let attempts = 0;
+    while (attempts < 10) {
+      const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+      let tempSlug = "";
+      for (let i = 0; i < 10; i++) {
+        tempSlug += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+      const duplicate = await prisma.unit.findUnique({ where: { qrSlug: tempSlug } });
+      if (!duplicate) {
+        qrSlug = tempSlug;
+        break;
+      }
+      attempts++;
+    }
+
     await prisma.unit.create({
       data: {
         ...data,
         propertyId,
+        qrSlug: qrSlug || null,
       },
     });
     revalidatePath("/admin/properties");

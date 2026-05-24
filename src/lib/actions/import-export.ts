@@ -3,6 +3,7 @@
 import { prisma } from "@/lib/prisma";
 import { parseCSV, generateCSV } from "@/lib/csv";
 import { revalidatePath } from "next/cache";
+import { auth } from "@/auth";
 
 // Hardcoded hash for "Soreti123!" for faster bulk imports
 const DEFAULT_PASSWORD_HASH = "$2b$10$a3.FY.YBlSI85Ms9ZalA1O3EyBmSojB0M3Nwz1Kq6QfyzG0MqMuzC";
@@ -91,14 +92,15 @@ export async function exportUnitsCsv() {
       orderBy: [{ property: { name: 'asc' } }, { unitNumber: 'asc' }]
     });
 
-    const headers = ["PropertyName", "UnitNumber", "Type", "Floor", "Size", "RentAmount"];
+    const headers = ["PropertyName", "UnitNumber", "Type", "Floor", "Size", "RentAmount", "QrSlug"];
     const data = units.map(u => ({
       PropertyName: u.property.name,
       UnitNumber: u.unitNumber,
       Type: u.type,
       Floor: u.floor?.toString() || "",
       Size: u.size?.toString() || "",
-      RentAmount: u.rentAmount.toString()
+      RentAmount: u.rentAmount.toString(),
+      QrSlug: u.qrSlug || ""
     }));
 
     const csvString = generateCSV(data, headers);
@@ -133,20 +135,51 @@ export async function importUnitsCsv(csvString: string) {
         continue;
       }
 
-      // Find property ID
+      // Find or auto-create property ID
       let propertyId = propertiesCache[propName];
       if (!propertyId) {
-        const prop = await prisma.property.findFirst({
+        let prop = await prisma.property.findFirst({
           where: { name: { equals: propName } }
         });
-        if (prop) {
-          propertyId = prop.id;
-          propertiesCache[propName] = prop.id;
-        } else {
-          // Property not found, skip unit
-          errorCount++;
-          continue;
+        
+        if (!prop) {
+          // Auto-create property if it doesn't exist
+          const session = await auth();
+          let managerId = session?.user?.id;
+          
+          if (!managerId) {
+            // Find first ADMIN or MANAGER user in the system
+            const fallbackUser = await prisma.user.findFirst({
+              where: { role: { in: ["ADMIN", "MANAGER"] } }
+            }) || await prisma.user.findFirst();
+            managerId = fallbackUser?.id;
+          }
+          
+          if (!managerId) {
+            // Create a default system administrator user if the DB is completely empty
+            const sysManager = await prisma.user.create({
+              data: {
+                name: "System Administrator",
+                email: "admin@soreti.com",
+                role: "ADMIN",
+                passwordHash: DEFAULT_PASSWORD_HASH
+              }
+            });
+            managerId = sysManager.id;
+          }
+          
+          prop = await prisma.property.create({
+            data: {
+              name: propName,
+              address: `${propName} Address`,
+              type: "RESIDENTIAL",
+              managerId: managerId!,
+            }
+          });
         }
+        
+        propertyId = prop.id;
+        propertiesCache[propName] = prop.id;
       }
 
       // Check if unit exists
@@ -159,9 +192,43 @@ export async function importUnitsCsv(csvString: string) {
         }
       });
 
+      const qrSlugInput = row["QrSlug"]?.trim();
+
       if (existingUnit) {
-        skippedCount++;
+        // If the unit exists, but has a different QrSlug in the CSV backup, restore it!
+        if (qrSlugInput && existingUnit.qrSlug !== qrSlugInput) {
+          await prisma.unit.update({
+            where: { id: existingUnit.id },
+            data: { qrSlug: qrSlugInput }
+          });
+          importedCount++;
+        } else {
+          skippedCount++;
+        }
       } else {
+        // Generate secure cryptographically random 10-character qrSlug if not provided
+        let qrSlug = qrSlugInput;
+        if (!qrSlug) {
+          let attempts = 0;
+          while (attempts < 5) {
+            const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+            let tempSlug = "";
+            for (let i = 0; i < 10; i++) {
+              tempSlug += chars.charAt(Math.floor(Math.random() * chars.length));
+            }
+            const duplicate = await prisma.unit.findUnique({ where: { qrSlug: tempSlug } });
+            if (!duplicate) {
+              qrSlug = tempSlug;
+              break;
+            }
+            attempts++;
+          }
+          // Ultimate safe fallback
+          if (!qrSlug) {
+            qrSlug = `${propertyId.slice(-4)}-${unitNumber}-${Date.now().toString().slice(-4)}`;
+          }
+        }
+
         await prisma.unit.create({
           data: {
             propertyId: propertyId,
@@ -171,8 +238,7 @@ export async function importUnitsCsv(csvString: string) {
             size: row["Size"] ? parseFloat(row["Size"]) : null,
             rentAmount: rentAmount,
             status: "AVAILABLE",
-            // Generate a simple qrSlug placeholder, though real system uses random strings
-            qrSlug: `${propertyId.slice(-4)}-${unitNumber}-${Date.now().toString().slice(-4)}`
+            qrSlug: qrSlug
           }
         });
         importedCount++;
@@ -182,7 +248,7 @@ export async function importUnitsCsv(csvString: string) {
     revalidatePath("/admin/units");
     return { 
       success: true, 
-      message: `Imported ${importedCount} units. Skipped ${skippedCount}. Errors: ${errorCount}.` 
+      message: `Imported/Restored ${importedCount} units. Skipped ${skippedCount}. Errors: ${errorCount}.` 
     };
   } catch (error: any) {
     console.error("Import Units Error:", error);

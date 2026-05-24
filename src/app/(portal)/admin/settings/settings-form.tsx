@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -19,18 +19,161 @@ import {
   Smartphone,
   CreditCard,
   Trash2,
-  Plus
+  Plus,
+  CheckCircle2,
+  AlertTriangle,
+  ShieldCheck,
+  Shield,
+  QrCode,
+  Download
 } from "lucide-react";
 import { updateSystemSettings, addBankAccount, deleteBankAccount, testSmtp, testFtp, testSms } from "@/lib/actions/settings";
 import { factoryResetSystem } from "@/lib/actions/system";
+import { backfillMissingQrSlugs, verifyQrIntegrity } from "@/lib/actions/qr";
+import { exportUnitsCsv, importUnitsCsv } from "@/lib/actions/import-export";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
-export function SettingsForm({ initialData, initialBankAccounts = [] }: { initialData: any, initialBankAccounts?: any[] }) {
+export function SettingsForm({ 
+  initialData, 
+  initialBankAccounts = [], 
+  qrStats: initialQrStats = { totalUnits: 0, unitsWithQr: 0, unitsWithoutQr: 0 }
+}: { 
+  initialData: any, 
+  initialBankAccounts?: any[],
+  qrStats?: { totalUnits: number, unitsWithQr: number, unitsWithoutQr: number }
+}) {
   const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState(initialData);
   const [activeTab, setActiveTab] = useState("general");
   const [isUploading, setIsUploading] = useState(false);
+  
+  // QR Code States
+  const [qrStats, setQrStats] = useState(initialQrStats);
+  const [isBackfilling, setIsBackfilling] = useState(false);
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [verificationReport, setVerificationReport] = useState<any>(null);
+  const [isExportingQr, setIsExportingQr] = useState(false);
+  const [isImportingQr, setIsImportingQr] = useState(false);
+  const qrFileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleBackfillQr = async () => {
+    setIsBackfilling(true);
+    const toastId = toast.loading("Backfilling missing QR codes...");
+    try {
+      const res = await backfillMissingQrSlugs();
+      if (res.success) {
+        const updated = res.updatedCount || 0;
+        toast.success(`Success! Backfilled ${updated} units with secure QR codes.`, { id: toastId });
+        setQrStats({
+          ...qrStats,
+          unitsWithQr: qrStats.unitsWithQr + updated,
+          unitsWithoutQr: Math.max(0, qrStats.unitsWithoutQr - updated)
+        });
+        setVerificationReport(null);
+      } else {
+        toast.error(res.error || "Failed to backfill QR slugs.", { id: toastId });
+      }
+    } catch (err: any) {
+      toast.error(err.message || "An error occurred.", { id: toastId });
+    } finally {
+      setIsBackfilling(false);
+    }
+  };
+
+  const handleVerifyQr = async () => {
+    setIsVerifying(true);
+    const toastId = toast.loading("Verifying QR code integrity...");
+    try {
+      const res = await verifyQrIntegrity();
+      if (res.success && res.report) {
+        setVerificationReport(res.report);
+        if (res.report.isHealthy) {
+          toast.success("Integrity check passed! All QR codes are healthy and secure.", { id: toastId });
+        } else {
+          toast.warning("Sanity issues found. Check the report below.", { id: toastId });
+        }
+      } else {
+        toast.error(res.error || "Failed to verify QR integrity.", { id: toastId });
+      }
+    } catch (err: any) {
+      toast.error(err.message || "An error occurred.", { id: toastId });
+    } finally {
+      setIsVerifying(false);
+    }
+  };
+
+  const handleExportQr = async () => {
+    setIsExportingQr(true);
+    try {
+      const result = await exportUnitsCsv();
+      if (result.success && result.csv) {
+        const blob = new Blob([result.csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.setAttribute("href", url);
+        link.setAttribute("download", `unit_qr_backup_${new Date().toISOString().slice(0,10)}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        toast.success("QR backup exported successfully.");
+      } else {
+        toast.error(result.error || "Failed to export QR slugs.");
+      }
+    } catch (error) {
+      toast.error("An unexpected error occurred during export.");
+    } finally {
+      setIsExportingQr(false);
+    }
+  };
+
+  const handleImportQrFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.type !== "text/csv" && !file.name.endsWith(".csv")) {
+      toast.error("Please upload a valid CSV file.");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      const csvString = event.target?.result as string;
+      if (csvString) {
+        setIsImportingQr(true);
+        const toastId = toast.loading("Restoring units & QR codes from backup...");
+        try {
+          const result = await importUnitsCsv(csvString);
+          if (result.success) {
+            toast.success(result.message || "Restore completed successfully!", { id: toastId });
+            const verifyRes = await verifyQrIntegrity();
+            if (verifyRes.success && verifyRes.report) {
+              setQrStats({
+                totalUnits: verifyRes.report.totalUnits,
+                unitsWithQr: verifyRes.report.securedCount,
+                unitsWithoutQr: verifyRes.report.missingCount
+              });
+              setVerificationReport(verifyRes.report);
+            } else {
+              window.location.reload();
+            }
+          } else {
+            toast.error(result.error || "Restore failed.", { id: toastId });
+          }
+        } catch (error) {
+          toast.error("An unexpected error occurred during restore.", { id: toastId });
+        } finally {
+          setIsImportingQr(false);
+          if (qrFileInputRef.current) qrFileInputRef.current.value = "";
+        }
+      }
+    };
+    reader.onerror = () => {
+      toast.error("Failed to read the file.");
+      if (qrFileInputRef.current) qrFileInputRef.current.value = "";
+    };
+    reader.readAsText(file);
+  };
   
   // Factory Reset State
   const [resetConfirmation, setResetConfirmation] = useState("");
@@ -194,6 +337,7 @@ export function SettingsForm({ initialData, initialBankAccounts = [] }: { initia
     { id: "sms", label: "SMS Ethiopia", icon: Smartphone },
     { id: "late-fee", label: "Late Fees", icon: CreditCard },
     { id: "regional", label: "Regional", icon: Database },
+    { id: "qr-security", label: "QR Security & Recovery", icon: QrCode },
     { id: "danger", label: "Danger Zone", icon: Trash2 },
   ];
 
@@ -876,6 +1020,193 @@ export function SettingsForm({ initialData, initialBankAccounts = [] }: { initia
                 </div>
               )}
 
+              {activeTab === "qr-security" && (
+                <div className="p-6 space-y-6">
+                  <div className="space-y-1">
+                    <h2 className="text-base font-semibold text-slate-900">QR Security & Failsafe Recovery</h2>
+                    <p className="text-xs text-slate-500">Manage permanent physical QR badges, verify integrity, and perform backups/restores.</p>
+                  </div>
+                  
+                  <div className="pt-4 border-t border-slate-50 space-y-6">
+                    {/* Live Telemetry Display */}
+                    <div className="grid grid-cols-3 gap-4">
+                      <div className="p-4 bg-slate-50 rounded-xl border border-slate-100 space-y-1 text-center">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total Units</span>
+                        <div className="text-xl font-bold text-slate-800">{qrStats.totalUnits}</div>
+                      </div>
+                      <div className="p-4 bg-emerald-50/50 rounded-xl border border-emerald-100/50 space-y-1 text-center">
+                        <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider flex items-center justify-center gap-1">
+                          <ShieldCheck size={10} /> Secured
+                        </span>
+                        <div className="text-xl font-bold text-emerald-700">{qrStats.unitsWithQr}</div>
+                      </div>
+                      <div className="p-4 bg-amber-50/50 rounded-xl border border-amber-100/50 space-y-1 text-center">
+                        <span className="text-[10px] font-bold text-amber-600 uppercase tracking-wider flex items-center justify-center gap-1">
+                          <AlertTriangle size={10} /> Uninitialized
+                        </span>
+                        <div className="text-xl font-bold text-amber-700">{qrStats.unitsWithoutQr}</div>
+                      </div>
+                    </div>
+
+                    {/* How It Works Explainer */}
+                    <div className="p-4 bg-indigo-50/30 border border-indigo-100/40 rounded-xl space-y-3">
+                      <h3 className="text-xs font-bold text-indigo-900 uppercase tracking-wider flex items-center gap-2">
+                        <Shield size={14} className="text-indigo-600" /> Permanent QR Security Model
+                      </h3>
+                      <div className="text-[11px] leading-relaxed text-indigo-955 font-medium space-y-2">
+                        <p>
+                          Each physical unit QR badge maps to a **cryptographically unguessable, high-entropy 10-character slug** (e.g. <code className="bg-indigo-100/60 px-1 py-0.5 rounded font-bold">3JES4MPSL4</code>). 
+                          This prevents scan-snooping or invoice guessing.
+                        </p>
+                        <p>
+                          **Physical Sticker Permanence**: Since these QR codes are printed on durable physical stickers and pasted on doors, the database guarantees their slugs will **never change**. 
+                          Even if the system crashes, is redeployed, or undergoes database resets, uploading your CSV backup will **recreate the parent properties** and map every printed sticker back to its digital unit instantly.
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Action Hub */}
+                    <div className="space-y-3">
+                      <Label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Security Operations</Label>
+                      <div className="grid grid-cols-2 gap-3">
+                        <Button
+                          type="button"
+                          disabled={isVerifying}
+                          onClick={handleVerifyQr}
+                          className="h-10 border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold rounded-lg text-xs bg-white shadow-none justify-center"
+                        >
+                          {isVerifying ? <Loader2 size={14} className="mr-2 animate-spin text-slate-400" /> : <ShieldCheck size={14} className="mr-2 text-emerald-600" />}
+                          Verify QR Integrity
+                        </Button>
+                        <Button
+                          type="button"
+                          disabled={isBackfilling || qrStats.unitsWithoutQr === 0}
+                          onClick={handleBackfillQr}
+                          className={cn(
+                            "h-10 text-white font-semibold rounded-lg text-xs shadow-none justify-center transition-all",
+                            qrStats.unitsWithoutQr > 0
+                              ? "bg-slate-900 hover:bg-slate-800 cursor-pointer"
+                              : "bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed hover:bg-slate-100"
+                          )}
+                        >
+                          {isBackfilling ? <Loader2 size={14} className="mr-2 animate-spin" /> : <Plus size={14} className="mr-2" />}
+                          Backfill Missing Slugs
+                        </Button>
+                      </div>
+                    </div>
+
+                    {/* Sanity Integrity Report Panel */}
+                    {verificationReport && (
+                      <div className={cn(
+                        "p-4 rounded-xl border space-y-3 animate-in slide-in-from-top duration-300",
+                        verificationReport.isHealthy 
+                          ? "bg-emerald-50/30 border-emerald-100/50" 
+                          : "bg-amber-50/30 border-amber-100/50"
+                      )}>
+                        <h3 className="text-xs font-bold uppercase tracking-wider flex items-center gap-2">
+                          {verificationReport.isHealthy ? (
+                            <>
+                              <CheckCircle2 size={14} className="text-emerald-600" />
+                              <span className="text-emerald-800">System Integrity Healthy</span>
+                            </>
+                          ) : (
+                            <>
+                              <AlertTriangle size={14} className="text-amber-600" />
+                              <span className="text-amber-800">System Sanity Discrepancies</span>
+                            </>
+                          )}
+                        </h3>
+                        <div className="text-[11px] font-medium leading-relaxed space-y-1.5">
+                          <div className="flex justify-between text-slate-600">
+                            <span>Secured QR Codes:</span>
+                            <span className="font-bold">{verificationReport.securedCount} / {verificationReport.totalUnits}</span>
+                          </div>
+                          {verificationReport.missingCount > 0 && (
+                            <div className="text-rose-700 font-semibold">
+                              ⚠️ {verificationReport.missingCount} units are completely missing QR slugs (Unprotected!). Click "Backfill Missing Slugs" to secure them.
+                            </div>
+                          )}
+                          {verificationReport.duplicateCount > 0 && (
+                            <div className="text-rose-700 font-semibold space-y-1">
+                              <div>❌ Critical duplication found! Slugs mapped to multiple units:</div>
+                              {verificationReport.duplicatesList.map((d: any, idx: number) => (
+                                <div key={idx} className="pl-3 text-[10px] text-rose-600 font-normal">
+                                  Slug <code className="bg-rose-100 px-1 py-0.5 rounded font-bold font-mono">{d.slug}</code> shared by: {d.units.join(", ")}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          {verificationReport.malformedCount > 0 && (
+                            <div className="text-amber-700 font-semibold space-y-1">
+                              <div>⚠️ Non-standard (legacy or predictable) QR formats detected:</div>
+                              {verificationReport.malformedSlugs.map((m: any, idx: number) => (
+                                <div key={idx} className="pl-3 text-[10px] text-amber-600 font-normal">
+                                  {m.propertyName} - Unit {m.unitNumber} uses: <code className="bg-amber-100 px-1 py-0.5 rounded font-bold font-mono">{m.slug}</code>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          {verificationReport.isHealthy && (
+                            <p className="text-emerald-700 font-semibold">
+                              All QR codes are unique, secure, and conform exactly to the physical high-entropy standard.
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Failsafe Backup & Restore Section */}
+                    <div className="p-5 border border-slate-200 rounded-xl bg-slate-50/50 space-y-4">
+                      <div className="space-y-1">
+                        <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                          <QrCode size={16} className="text-slate-800" /> Failsafe Backup & Restoration Hub
+                        </h3>
+                        <p className="text-xs text-slate-500 leading-relaxed">
+                          Export your units database with their precise printed QR mappings, and restore them instantly onto new/empty server redeployments with single-click zero configuration.
+                        </p>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-100">
+                        {/* Export Action */}
+                        <div className="space-y-2">
+                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Save Slugs</p>
+                          <Button
+                            type="button"
+                            disabled={isExportingQr}
+                            onClick={handleExportQr}
+                            className="w-full bg-white hover:bg-slate-50 text-slate-800 border border-slate-200 h-10 px-4 rounded-lg text-xs font-semibold shadow-none flex justify-center cursor-pointer"
+                          >
+                            {isExportingQr ? <Loader2 size={14} className="mr-2 animate-spin text-slate-400" /> : <Download size={14} className="mr-2 text-slate-500" />}
+                            Export QR Backup (CSV)
+                          </Button>
+                        </div>
+
+                        {/* Import Action */}
+                        <div className="space-y-2">
+                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Restore Slugs</p>
+                          <input 
+                            type="file" 
+                            accept=".csv" 
+                            ref={qrFileInputRef} 
+                            onChange={handleImportQrFile} 
+                            className="hidden" 
+                          />
+                          <Button
+                            type="button"
+                            disabled={isImportingQr}
+                            onClick={() => qrFileInputRef.current?.click()}
+                            className="w-full bg-slate-900 hover:bg-slate-800 text-white h-10 px-4 rounded-lg text-xs font-semibold shadow-none flex justify-center cursor-pointer"
+                          >
+                            {isImportingQr ? <Loader2 size={14} className="mr-2 animate-spin text-slate-200" /> : <Upload size={14} className="mr-2 text-slate-300" />}
+                            Upload & Restore (CSV)
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {activeTab === "danger" && (
                 <div className="p-6 space-y-6">
                   <div className="space-y-1">
@@ -907,7 +1238,7 @@ export function SettingsForm({ initialData, initialBankAccounts = [] }: { initia
                           type="button"
                           disabled={isResetting || resetConfirmation !== "RESET SYSTEM"}
                           onClick={handleFactoryReset}
-                          className="bg-red-600 hover:bg-red-700 text-white font-bold h-10 px-6 rounded-lg text-xs shadow-none"
+                          className="bg-red-600 hover:bg-red-700 text-white font-bold h-10 px-6 rounded-lg text-xs shadow-none cursor-pointer"
                         >
                           {isResetting ? <Loader2 size={14} className="mr-2 animate-spin" /> : <Trash2 size={14} className="mr-2" />}
                           Permanently Erase Data
@@ -918,16 +1249,18 @@ export function SettingsForm({ initialData, initialBankAccounts = [] }: { initia
                 </div>
               )}
             </CardContent>
-            <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-end">
-              <Button 
-                type="submit" 
-                disabled={isLoading}
-                className="h-9 rounded-lg px-6 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold shadow-none"
-              >
-                {isLoading ? <Loader2 size={14} className="mr-2 animate-spin" /> : <Save size={14} className="mr-2" />}
-                Save Changes
-              </Button>
-            </div>
+            {activeTab !== "qr-security" && (
+              <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-end">
+                <Button 
+                  type="submit" 
+                  disabled={isLoading}
+                  className="h-9 rounded-lg px-6 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold shadow-none cursor-pointer"
+                >
+                  {isLoading ? <Loader2 size={14} className="mr-2 animate-spin" /> : <Save size={14} className="mr-2" />}
+                  Save Changes
+                </Button>
+              </div>
+            )}
           </Card>
         </form>
       </div>
