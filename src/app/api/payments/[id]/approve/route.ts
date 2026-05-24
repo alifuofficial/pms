@@ -1,4 +1,4 @@
-import { auth } from "@/auth";
+import { resolveSessionUser } from "@/lib/actions/auth-helper";
 import { prisma } from "@/lib/prisma";
 import { NextResponse } from "next/server";
 
@@ -7,8 +7,8 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const session = await auth();
-  if (!session || session.user.role !== "ACCOUNTANT") {
+  const sessionUser = await resolveSessionUser();
+  if (!sessionUser || sessionUser.role !== "ACCOUNTANT") {
     return new NextResponse("Unauthorized", { status: 403 });
   }
 
@@ -18,7 +18,7 @@ export async function POST(
         where: { id },
         data: {
           status: "APPROVED",
-          approvedBy: session.user.id,
+          approvedBy: sessionUser.id,
           paidAt: new Date(),
         },
         include: { lease: true }
@@ -38,7 +38,7 @@ export async function POST(
     // Create a log
     await prisma.auditLog.create({
       data: {
-        userId: session.user.id,
+        userId: sessionUser.id,
         action: `APPROVED_PAYMENT: ${payment.id}`,
         metadata: JSON.stringify({ 
           amount: payment.amount, 

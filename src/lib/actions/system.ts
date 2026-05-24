@@ -2,12 +2,12 @@
 
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
-import { auth } from "@/auth";
+import { resolveSessionUser } from "./auth-helper";
 
 export async function factoryResetSystem() {
   try {
-    const session = await auth();
-    if (!session?.user || session.user.role !== "ADMIN") {
+    const sessionUser = await resolveSessionUser();
+    if (!sessionUser || sessionUser.role !== "ADMIN") {
       return { success: false, error: "Unauthorized. Admin privileges required." };
     }
 

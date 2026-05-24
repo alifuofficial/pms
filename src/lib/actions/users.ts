@@ -2,36 +2,10 @@
 
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
-import { auth } from "@/auth";
 import { hash } from "bcryptjs";
 import { sendSMS } from "@/lib/sms";
 import { normalizePhoneNumber } from "@/lib/phone";
-
-/**
- * Defensively resolves the current user's ID and Role.
- * NextAuth sessions can sometimes omit custom token fields (like id and role) during refreshes.
- * If this happens, we resolve them securely from the database using the session's verified email.
- */
-async function resolveSessionUser(session: any) {
-  if (!session?.user) return null;
-  
-  let id = session.user.id;
-  let role = session.user.role;
-  const email = session.user.email;
-  
-  if ((!id || !role) && email) {
-    const dbUser = await prisma.user.findUnique({
-      where: { email },
-      select: { id: true, role: true }
-    });
-    if (dbUser) {
-      id = dbUser.id;
-      role = dbUser.role;
-    }
-  }
-  
-  return { id, role, email };
-}
+import { resolveSessionUser } from "./auth-helper";
 
 export async function createUser(data: {
   name: string;
@@ -39,8 +13,7 @@ export async function createUser(data: {
   phoneNumber?: string;
   role: "ADMIN" | "MANAGER" | "ACCOUNTANT" | "TENANT";
 }) {
-  const session = await auth();
-  const sessionUser = await resolveSessionUser(session);
+  const sessionUser = await resolveSessionUser();
   if (!sessionUser || sessionUser.role !== "ADMIN") return { success: false, error: "Unauthorized" };
 
   try {
@@ -82,8 +55,7 @@ export async function updateUser(id: string, data: {
   phoneNumber?: string;
   password?: string;
 }) {
-  const session = await auth();
-  const sessionUser = await resolveSessionUser(session);
+  const sessionUser = await resolveSessionUser();
   if (!sessionUser || sessionUser.role !== "ADMIN") return { success: false, error: "Unauthorized" };
 
   try {
@@ -129,8 +101,7 @@ export async function updateUser(id: string, data: {
 }
 
 export async function deleteUser(id: string) {
-  const session = await auth();
-  const sessionUser = await resolveSessionUser(session);
+  const sessionUser = await resolveSessionUser();
   if (!sessionUser || sessionUser.role !== "ADMIN") return { success: false, error: "Unauthorized" };
 
   // Prevent self-deletion
@@ -178,8 +149,7 @@ export async function registerTenant(data: {
     receiptUrl: string;
   };
 }) {
-  const session = await auth();
-  const sessionUser = await resolveSessionUser(session);
+  const sessionUser = await resolveSessionUser();
   if (!sessionUser || (sessionUser.role !== "ADMIN" && sessionUser.role !== "MANAGER")) {
     return { success: false, error: "Unauthorized" };
   }
@@ -273,8 +243,7 @@ export async function assignUnitToTenant(data: {
     receiptUrl: string;
   };
 }) {
-  const session = await auth();
-  const sessionUser = await resolveSessionUser(session);
+  const sessionUser = await resolveSessionUser();
   if (!sessionUser || (sessionUser.role !== "ADMIN" && sessionUser.role !== "MANAGER")) {
     return { success: false, error: "Unauthorized" };
   }
@@ -342,8 +311,7 @@ export async function updateUserProfile(data: {
   password?: string;
   calendarType?: string;
 }) {
-  const session = await auth();
-  const sessionUser = await resolveSessionUser(session);
+  const sessionUser = await resolveSessionUser();
   if (!sessionUser) return { success: false, error: "Unauthorized" };
 
   try {

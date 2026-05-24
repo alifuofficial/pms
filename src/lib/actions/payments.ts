@@ -2,7 +2,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
-import { auth } from "@/auth";
+import { resolveSessionUser } from "./auth-helper";
 import { addEthiopianMonths, toEthiopian, getDaysPastEthiopianExpiry, getEthiopianMonthEnd, hasLatePenalty } from "@/lib/calendar";
 import Kenat from "kenat";
 
@@ -58,10 +58,10 @@ export async function approvePayment(
   actualAmountReceived?: number
 ) {
   try {
-    const session = await auth();
-    if (!session?.user || (session.user.role !== "ACCOUNTANT" && session.user.role !== "ADMIN")) {
-      return { success: false, error: "Unauthorized" };
-    }
+  const sessionUser = await resolveSessionUser();
+  if (!sessionUser || (sessionUser.role !== "ACCOUNTANT" && sessionUser.role !== "ADMIN")) {
+    return { success: false, error: "Unauthorized" };
+  }
 
     const currentPayment = await prisma.payment.findUnique({ 
       where: { id: paymentId },
@@ -200,7 +200,7 @@ export async function approvePayment(
           penalty: actualPenaltyPaid,
           advanceUntil: finalAdvanceUntil,
           paidAt: new Date(),
-          approver: { connect: { id: session.user.id } },
+          approver: { connect: { id: sessionUser.id } },
         },
       });
 
@@ -248,7 +248,7 @@ export async function approvePayment(
       // 4. Audit Log
       await tx.auditLog.create({
         data: {
-          userId: session.user.id,
+          userId: sessionUser.id,
           action: `Approved payment of ${finalAmount} (penalty: ${actualPenaltyPaid}, rent: ${finalAmount - actualPenaltyPaid}). New balance: ${newAdvanceBalance}`,
           actionType: "PAYMENT_APPROVAL",
           oldValue: JSON.stringify({ status: "PENDING", advanceBalance: currentPayment.lease.advanceBalance }),
@@ -308,8 +308,8 @@ export async function approvePayment(
 
 export async function rejectPayment(paymentId: string) {
   try {
-    const session = await auth();
-    if (!session?.user) return { success: false, error: "Unauthorized" };
+    const sessionUser = await resolveSessionUser();
+    if (!sessionUser) return { success: false, error: "Unauthorized" };
 
     const payment = await prisma.payment.update({
       where: { id: paymentId },
@@ -330,7 +330,7 @@ export async function rejectPayment(paymentId: string) {
 
     await prisma.auditLog.create({
       data: {
-        userId: session.user.id,
+        userId: sessionUser.id,
         action: `Rejected payment ${paymentId}`,
         actionType: "PAYMENT_REJECTION",
         oldValue: JSON.stringify({ status: "PENDING" }),
@@ -354,8 +354,8 @@ export async function rejectPayment(paymentId: string) {
 
 export async function submitPaymentReceipt(paymentId: string, receiptUrl: string) {
   try {
-    const session = await auth();
-    if (!session?.user) return { success: false, error: "Unauthorized" };
+    const sessionUser = await resolveSessionUser();
+    if (!sessionUser) return { success: false, error: "Unauthorized" };
 
     await prisma.payment.update({
       where: { id: paymentId },
@@ -368,7 +368,7 @@ export async function submitPaymentReceipt(paymentId: string, receiptUrl: string
 
     await prisma.auditLog.create({
       data: {
-        userId: session.user.id,
+        userId: sessionUser.id,
         action: `Submitted receipt for payment ${paymentId}`,
         actionType: "RECEIPT_SUBMISSION",
         oldValue: JSON.stringify({ status: "PENDING", receiptUrl: null }),
@@ -392,8 +392,8 @@ export async function submitPaymentReceipt(paymentId: string, receiptUrl: string
 
 export async function togglePenaltyPaid(penaltyId: string, paid: boolean) {
   try {
-    const session = await auth();
-    if (!session?.user) return { success: false, error: "Unauthorized" };
+    const sessionUser = await resolveSessionUser();
+    if (!sessionUser) return { success: false, error: "Unauthorized" };
 
     // Now correctly targets the Penalty table
     const penalty = await prisma.penalty.findUnique({ where: { id: penaltyId } });
@@ -410,7 +410,7 @@ export async function togglePenaltyPaid(penaltyId: string, paid: boolean) {
 
     await prisma.auditLog.create({
       data: {
-        userId: session.user.id,
+        userId: sessionUser.id,
         action: `${paid ? "Marked" : "Unmarked"} penalty ${penaltyId} as paid`,
         actionType: "PENALTY_TOGGLE",
         oldValue: JSON.stringify({ status: penalty.status, paidAmount: penalty.paidAmount }),

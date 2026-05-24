@@ -2,7 +2,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
-import { auth } from "@/auth";
+import { resolveSessionUser } from "./auth-helper";
 import { cache } from "react";
 import nodemailer from "nodemailer";
 import * as ftp from "basic-ftp";
@@ -59,10 +59,10 @@ export async function testFtp(data: { host: string; port: number; user: string; 
 }
 
 export const getEffectiveCalendar = cache(async () => {
-  const session = await auth();
-  if (session?.user) {
+  const sessionUser = await resolveSessionUser();
+  if (sessionUser) {
     const user = await prisma.user.findUnique({
-      where: { id: session.user.id },
+      where: { id: sessionUser.id },
       select: { calendarType: true }
     });
     if (user?.calendarType) return user.calendarType;

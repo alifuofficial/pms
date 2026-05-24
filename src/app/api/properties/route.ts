@@ -1,15 +1,15 @@
-import { auth } from "@/auth";
+import { resolveSessionUser } from "@/lib/actions/auth-helper";
 import { prisma } from "@/lib/prisma";
 import { NextResponse } from "next/server";
 
 export async function GET() {
-  const session = await auth();
-  if (!session || (session.user.role !== "MANAGER" && session.user.role !== "ADMIN")) {
+  const sessionUser = await resolveSessionUser();
+  if (!sessionUser || (sessionUser.role !== "MANAGER" && sessionUser.role !== "ADMIN")) {
     return new NextResponse("Unauthorized", { status: 403 });
   }
 
   const properties = await prisma.property.findMany({
-    where: session.user.role === "MANAGER" ? { managerId: session.user.id } : {},
+    where: sessionUser.role === "MANAGER" ? { managerId: sessionUser.id } : {},
     include: { units: true },
   });
 
@@ -17,8 +17,8 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const session = await auth();
-  if (!session || session.user.role !== "MANAGER") {
+  const sessionUser = await resolveSessionUser();
+  if (!sessionUser || sessionUser.role !== "MANAGER") {
     return new NextResponse("Unauthorized", { status: 403 });
   }
 
@@ -30,14 +30,14 @@ export async function POST(req: Request) {
       data: {
         name,
         address,
-        managerId: session.user.id,
+        managerId: sessionUser.id,
       },
     });
 
     // Create a log
     await prisma.auditLog.create({
       data: {
-        userId: session.user.id,
+        userId: sessionUser.id,
         action: `CREATED_PROPERTY: ${property.name}`,
         metadata: JSON.stringify({ propertyId: property.id }),
       },

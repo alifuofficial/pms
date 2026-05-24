@@ -2,7 +2,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
-import { auth } from "@/auth";
+import { resolveSessionUser } from "./auth-helper";
 
 export async function requestRefund(data: {
   leaseId: string;
@@ -11,10 +11,10 @@ export async function requestRefund(data: {
   reason: string;
 }) {
   try {
-    const session = await auth();
+    const sessionUser = await resolveSessionUser();
     // A Manager or Tenant could request a refund, depending on the UI.
     // For now, let's say the Tenant requests it or Manager initiates it.
-    if (!session?.user) return { success: false, error: "Unauthorized" };
+    if (!sessionUser) return { success: false, error: "Unauthorized" };
 
     const refund = await prisma.refund.create({
       data: {
@@ -28,7 +28,7 @@ export async function requestRefund(data: {
 
     await prisma.auditLog.create({
       data: {
-        userId: session.user.id,
+        userId: sessionUser.id,
         action: `Requested refund of ${data.amount} for lease ${data.leaseId}`,
         metadata: JSON.stringify({ refundId: refund.id, amount: data.amount, reason: data.reason })
       }
@@ -45,8 +45,8 @@ export async function requestRefund(data: {
 
 export async function approveRefund(refundId: string) {
   try {
-    const session = await auth();
-    if (!session?.user || (session.user.role !== "MANAGER" && session.user.role !== "ADMIN")) {
+    const sessionUser = await resolveSessionUser();
+    if (!sessionUser || (sessionUser.role !== "MANAGER" && sessionUser.role !== "ADMIN")) {
       return { success: false, error: "Unauthorized: Only Managers can approve refunds." };
     }
 
@@ -63,7 +63,7 @@ export async function approveRefund(refundId: string) {
       where: { id: refundId },
       data: {
         status: "APPROVED",
-        approver: { connect: { id: session.user.id } },
+        approver: { connect: { id: sessionUser.id } },
       }
     });
 
@@ -78,7 +78,7 @@ export async function approveRefund(refundId: string) {
 
     await prisma.auditLog.create({
       data: {
-        userId: session.user.id,
+        userId: sessionUser.id,
         action: `Approved refund of ${refund.amount} (Refund ID: ${refund.id})`,
         metadata: JSON.stringify({ refundId: refund.id, amount: refund.amount, newAdvanceBalance: newAdvance })
       }
@@ -100,8 +100,8 @@ export async function approveRefund(refundId: string) {
 
 export async function rejectRefund(refundId: string, reason: string) {
   try {
-    const session = await auth();
-    if (!session?.user || (session.user.role !== "MANAGER" && session.user.role !== "ADMIN")) {
+    const sessionUser = await resolveSessionUser();
+    if (!sessionUser || (sessionUser.role !== "MANAGER" && sessionUser.role !== "ADMIN")) {
       return { success: false, error: "Unauthorized: Only Managers can reject refunds." };
     }
 
@@ -109,14 +109,14 @@ export async function rejectRefund(refundId: string, reason: string) {
       where: { id: refundId },
       data: {
         status: "REJECTED",
-        approver: { connect: { id: session.user.id } },
+        approver: { connect: { id: sessionUser.id } },
       },
       include: { tenant: true }
     });
 
     await prisma.auditLog.create({
       data: {
-        userId: session.user.id,
+        userId: sessionUser.id,
         action: `Rejected refund of ${refund.amount} (Refund ID: ${refund.id})`,
         metadata: JSON.stringify({ refundId: refund.id, reason })
       }
