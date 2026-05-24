@@ -44,7 +44,7 @@ export async function createUser(data: {
     if (error.code === "P2002") {
       return { success: false, error: "Email already exists." };
     }
-    return { success: false, error: "Failed to create user." };
+    return { success: false, error: `Failed to create user: ${error.message || error}` };
   }
 }
 
@@ -94,9 +94,9 @@ export async function updateUser(id: string, data: {
 
     revalidatePath("/admin/users");
     return { success: true };
-  } catch (error) {
+  } catch (error: any) {
     console.error("Update User Error:", error);
-    return { success: false, error: "Failed to update user." };
+    return { success: false, error: `Failed to update user: ${error.message || error}` };
   }
 }
 
@@ -128,9 +128,9 @@ export async function deleteUser(id: string) {
 
     revalidatePath("/admin/users");
     return { success: true };
-  } catch (error) {
+  } catch (error: any) {
     console.error("Delete User Error:", error);
-    return { success: false, error: "Failed to delete user." };
+    return { success: false, error: `Failed to delete user: ${error.message || error}` };
   }
 }
 
@@ -226,7 +226,7 @@ export async function registerTenant(data: {
     if (error.code === "P2002") {
       return { success: false, error: "Email or Phone already registered." };
     }
-    return { success: false, error: "Registration failed." };
+    return { success: false, error: `Registration failed: ${error.message || error}` };
   }
 }
 
@@ -303,7 +303,7 @@ export async function assignUnitToTenant(data: {
     return { success: true, leaseId: result.id };
   } catch (error: any) {
     console.error("Assign Unit Error:", error);
-    return { success: false, error: "Failed to assign unit." };
+    return { success: false, error: `Failed to assign unit: ${error.message || error}` };
   }
 }
 
@@ -343,8 +343,8 @@ export async function updateUserProfile(data: {
 
     revalidatePath("/", "layout"); // Revalidate entire app since calendar affects everywhere
     return { success: true };
-  } catch (error) {
+  } catch (error: any) {
     console.error("Update Profile Error:", error);
-    return { success: false, error: "Failed to update profile." };
+    return { success: false, error: `Failed to update profile: ${error.message || error}` };
   }
 }
