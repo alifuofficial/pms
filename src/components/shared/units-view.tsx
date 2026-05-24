@@ -1,7 +1,8 @@
 import { Suspense } from "react";
 import { prisma } from "@/lib/prisma";
-import { Button } from "@/components/ui/button";
-import { Plus } from "lucide-react";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { Plus, Printer } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { UnitsBulkTable } from "./units-bulk-table";
 import { AddUnitDialog } from "./add-unit-dialog";
 import { UnitsFilter } from "./units-filter";
@@ -144,6 +145,17 @@ export async function UnitsView({
             onExport={exportUnitsCsv}
             onImport={importUnitsCsv}
           />
+          <a
+            href={searchParams?.propertyId ? `/admin/units/print-all?propertyId=${searchParams.propertyId}` : "/admin/units/print-all"}
+            target="_blank"
+            className={cn(
+              buttonVariants({ variant: "outline", size: "sm" }),
+              "h-9 rounded-lg border-slate-200 text-xs font-semibold flex items-center gap-2 cursor-pointer bg-white shadow-none"
+            )}
+          >
+            <Printer size={14} className="text-slate-500" />
+            Print QRs (A4)
+          </a>
           <AddUnitDialog 
             trigger={
               <Button className="h-9 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold px-4 shadow-none">
