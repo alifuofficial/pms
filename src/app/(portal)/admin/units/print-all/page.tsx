@@ -6,7 +6,14 @@ import { BulkPrintClient } from "./bulk-print-client";
 export default async function PrintAllPage({
   searchParams
 }: {
-  searchParams: Promise<{ propertyId?: string }>
+  searchParams: Promise<{
+    propertyId?: string;
+    status?: string;
+    type?: string;
+    qrPrinted?: string;
+    floor?: string;
+    q?: string;
+  }>
 }) {
   const session = await auth();
   if (!session?.user) {
@@ -15,7 +22,6 @@ export default async function PrintAllPage({
 
   // Resolve search parameters safely
   const params = await searchParams;
-  const propertyId = params?.propertyId;
 
   // Build prisma query
   const where: any = {
@@ -24,9 +30,23 @@ export default async function PrintAllPage({
       { qrSlug: { not: "" } }
     ]
   };
-  if (propertyId) {
-    where.propertyId = propertyId;
+
+  if (params?.propertyId) where.propertyId = params.propertyId;
+  if (params?.status)     where.status     = params.status;
+  if (params?.type)       where.type       = params.type;
+  if (params?.qrPrinted)  where.qrPrinted  = params.qrPrinted === "true";
+  
+  if (params?.q) {
+    where.OR = [
+      { unitNumber: { contains: params.q } },
+      { property:   { name:    { contains: params.q } } }
+    ];
   }
+  
+  const currentFloor = params?.floor !== undefined && params.floor !== ""
+    ? parseInt(params.floor as string)
+    : undefined;
+  if (currentFloor !== undefined) where.floor = currentFloor;
 
   // Fetch all qualified units
   const units = await prisma.unit.findMany({

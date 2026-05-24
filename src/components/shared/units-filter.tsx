@@ -24,6 +24,7 @@ export function UnitsFilter({ properties }: { properties: { id: string, name: st
     type: searchParams.get("type") || "",
     minPrice: searchParams.get("minPrice") || "",
     maxPrice: searchParams.get("maxPrice") || "",
+    qrPrinted: searchParams.get("qrPrinted") || "",
   });
 
   const activeFiltersCount = Object.values(filters).filter(Boolean).length;
@@ -48,6 +49,7 @@ export function UnitsFilter({ properties }: { properties: { id: string, name: st
       type: "",
       minPrice: "",
       maxPrice: "",
+      qrPrinted: "",
     };
     setFilters(reset);
     router.push("?");
@@ -122,6 +124,19 @@ export function UnitsFilter({ properties }: { properties: { id: string, name: st
                 <option value="Retail">Retail</option>
               </select>
             </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-[10px] font-semibold uppercase text-slate-400">QR Sticker Status</Label>
+            <select 
+              className="w-full rounded-lg border border-slate-200 bg-white h-9 px-3 text-xs font-medium outline-none"
+              value={filters.qrPrinted}
+              onChange={(e) => setFilters({ ...filters, qrPrinted: e.target.value })}
+            >
+              <option value="">Any QR Status</option>
+              <option value="false">Pending (Not Printed)</option>
+              <option value="true">Printed</option>
+            </select>
           </div>
 
           <div className="space-y-1.5">

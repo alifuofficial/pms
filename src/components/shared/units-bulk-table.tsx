@@ -16,13 +16,14 @@ const formatFloor = (f: number) => {
   return `${f}${s} Floor`;
 };
 
-type BulkField = "floor" | "status" | "type" | "rentAmount";
+type BulkField = "floor" | "status" | "type" | "rentAmount" | "qrPrinted";
 
 const BULK_FIELDS: { value: BulkField; label: string }[] = [
   { value: "floor",      label: "Floor" },
   { value: "status",     label: "Status" },
   { value: "type",       label: "Unit Type" },
   { value: "rentAmount", label: "Rent Amount" },
+  { value: "qrPrinted",  label: "QR Code Printed Status" },
 ];
 
 export function UnitsBulkTable({ units, currency }: { units: any[]; currency: string }) {
@@ -30,6 +31,17 @@ export function UnitsBulkTable({ units, currency }: { units: any[]; currency: st
   const [bulkField, setBulkField] = useState<BulkField>("floor");
   const [bulkValue, setBulkValue] = useState<string>("0");
   const [isPending, startTransition] = useTransition();
+
+  const handleTogglePrinted = (id: string, currentStatus: boolean) => {
+    startTransition(async () => {
+      const result = await bulkUpdateUnits([id], { qrPrinted: !currentStatus });
+      if (result.success) {
+        toast.success(`Unit marked as ${!currentStatus ? "Printed" : "Pending"}.`);
+      } else {
+        toast.error("Failed to update status.");
+      }
+    });
+  };
 
   const allSelected = units.length > 0 && selected.size === units.length;
   const someSelected = selected.size > 0 && !allSelected;
@@ -53,6 +65,7 @@ export function UnitsBulkTable({ units, currency }: { units: any[]; currency: st
       if (bulkField === "status")      data.status = bulkValue;
       if (bulkField === "type")        data.type = bulkValue;
       if (bulkField === "rentAmount")  data.rentAmount = parseFloat(bulkValue);
+      if (bulkField === "qrPrinted")   data.qrPrinted = bulkValue === "true";
 
       const result = await bulkUpdateUnits(ids, data);
       if (result.success) {
@@ -79,7 +92,15 @@ export function UnitsBulkTable({ units, currency }: { units: any[]; currency: st
             <select
               className="h-8 rounded-lg bg-white/10 border border-white/20 text-white text-xs font-semibold px-2 outline-none"
               value={bulkField}
-              onChange={(e) => { setBulkField(e.target.value as BulkField); setBulkValue("0"); }}
+              onChange={(e) => {
+                const f = e.target.value as BulkField;
+                setBulkField(f);
+                if (f === "floor") setBulkValue("0");
+                else if (f === "status") setBulkValue("AVAILABLE");
+                else if (f === "type") setBulkValue("Studio");
+                else if (f === "rentAmount") setBulkValue("0");
+                else if (f === "qrPrinted") setBulkValue("true");
+              }}
             >
               {BULK_FIELDS.map(f => (
                 <option key={f.value} value={f.value} className="text-slate-900">{f.label}</option>
@@ -136,6 +157,17 @@ export function UnitsBulkTable({ units, currency }: { units: any[]; currency: st
               />
             )}
 
+            {bulkField === "qrPrinted" && (
+              <select
+                className="h-8 rounded-lg bg-white/10 border border-white/20 text-white text-xs font-semibold px-2 outline-none"
+                value={bulkValue}
+                onChange={(e) => setBulkValue(e.target.value)}
+              >
+                <option value="true" className="text-slate-900">Mark as Printed</option>
+                <option value="false" className="text-slate-900">Mark as Pending (Not Printed)</option>
+              </select>
+            )}
+
             <Button
               size="sm"
               onClick={handleBulkApply}
@@ -176,6 +208,7 @@ export function UnitsBulkTable({ units, currency }: { units: any[]; currency: st
               <th className="py-3 px-4">Location</th>
               <th className="py-3 px-4">Specs</th>
               <th className="py-3 px-4">Financials</th>
+              <th className="py-3 px-4 text-center">QR Sticker</th>
               <th className="py-3 px-4 text-center">Status</th>
               <th className="py-3 px-4 text-right">Actions</th>
             </tr>
@@ -241,6 +274,19 @@ export function UnitsBulkTable({ units, currency }: { units: any[]; currency: st
                     </div>
                   </td>
                   <td className="py-3 px-4 text-center">
+                    <span 
+                      className={cn(
+                        "px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border cursor-pointer select-none transition-all duration-200",
+                        unit.qrPrinted
+                          ? "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100/80"
+                          : "bg-slate-50 text-slate-400 border-slate-200 hover:bg-slate-100 hover:text-slate-600"
+                      )}
+                      onClick={() => handleTogglePrinted(unit.id, unit.qrPrinted)}
+                    >
+                      {unit.qrPrinted ? "Printed" : "Pending"}
+                    </span>
+                  </td>
+                  <td className="py-3 px-4 text-center">
                     <span className={cn(
                       "px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-tight border",
                       unit.status === "AVAILABLE"
@@ -260,7 +306,7 @@ export function UnitsBulkTable({ units, currency }: { units: any[]; currency: st
             })}
             {units.length === 0 && (
               <tr>
-                <td colSpan={7} className="py-12 text-center text-xs text-slate-400 font-medium italic">
+                <td colSpan={8} className="py-12 text-center text-xs text-slate-400 font-medium italic">
                   No units found.
                 </td>
               </tr>

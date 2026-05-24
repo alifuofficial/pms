@@ -54,6 +54,7 @@ model Unit {
   floor      Int?
   size       Float?
   qrSlug     String?    @unique
+  qrPrinted  Boolean    @default(false)
   leases     Lease[]
   property   Property   @relation(fields: [propertyId], references: [id], onDelete: Cascade)
 

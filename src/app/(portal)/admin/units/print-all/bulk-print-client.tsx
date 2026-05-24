@@ -5,6 +5,8 @@ import QRCode from "react-qr-code";
 import { useRouter } from "next/navigation";
 import { Printer, X, ShieldAlert, BadgeInfo, CheckCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { bulkUpdateUnits } from "@/lib/actions/properties";
+import { toast } from "sonner";
 
 interface UnitWithProperty {
   id: string;
@@ -22,6 +24,8 @@ interface UnitWithProperty {
 export function BulkPrintClient({ units }: { units: UnitWithProperty[] }) {
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
+  const [showMarkPrompt, setShowMarkPrompt] = useState(false);
+  const [isMarking, setIsMarking] = useState(false);
   const origin = typeof window !== "undefined" ? window.location.origin : "";
 
   useEffect(() => {
@@ -36,6 +40,26 @@ export function BulkPrintClient({ units }: { units: UnitWithProperty[] }) {
 
   const handlePrint = () => {
     window.print();
+    setShowMarkPrompt(true);
+  };
+
+  const handleMarkAsPrinted = async () => {
+    setIsMarking(true);
+    try {
+      const ids = units.map(u => u.id);
+      const result = await bulkUpdateUnits(ids, { qrPrinted: true });
+      if (result.success) {
+        toast.success(`Successfully marked ${units.length} units as printed!`);
+        setShowMarkPrompt(false);
+        router.refresh();
+      } else {
+        toast.error(result.error || "Failed to mark units as printed.");
+      }
+    } catch (err) {
+      toast.error("An error occurred while updating status.");
+    } finally {
+      setIsMarking(false);
+    }
   };
 
   if (units.length === 0) {
@@ -114,19 +138,19 @@ export function BulkPrintClient({ units }: { units: UnitWithProperty[] }) {
                     <div className="space-y-0.5">
                       <p className="text-[7px] font-black text-slate-400 uppercase tracking-widest">Soreti Portal</p>
                       <h3 className="text-xl font-black text-slate-900 tracking-tighter leading-none">
-                        Unit {unit.unitNumber}
+                        {unit.unitNumber}
                       </h3>
                       <p className="text-[8px] font-bold text-slate-500 uppercase tracking-wider max-w-[130px] truncate">
                         {unit.property.name}
                       </p>
                     </div>
                     <div className="text-right space-y-0.5">
-                      <span className="text-[7px] font-bold text-slate-400 uppercase block">Rent Rate</span>
-                      <span className="text-xs font-black text-slate-900">
-                        {unit.rentAmount.toLocaleString()} ETB
+                      <span className="text-[7px] font-bold text-slate-400 uppercase block">SPECIFICATION</span>
+                      <span className="text-xs font-black text-slate-900 uppercase">
+                        {unit.type || "Standard"}
                       </span>
-                      <span className="text-[6px] font-bold text-slate-400 uppercase block leading-none">
-                        {unit.type || "Standard"} • {unit.size ? `${unit.size} sqm` : "Studio"}
+                      <span className="text-[7px] font-bold text-slate-400 uppercase block leading-none">
+                        {unit.size ? `${unit.size} sqm` : "Studio"}
                       </span>
                     </div>
                   </div>
@@ -206,6 +230,43 @@ export function BulkPrintClient({ units }: { units: UnitWithProperty[] }) {
           }
         }
       `}</style>
+
+      {/* Floating Prompt Banner */}
+      {showMarkPrompt && (
+        <div className="no-print fixed bottom-6 left-1/2 -translate-x-1/2 z-50 max-w-lg w-full px-4 animate-in slide-in-from-bottom-5 duration-300">
+          <div className="bg-slate-900 border border-slate-800 text-white rounded-2xl p-4 shadow-2xl flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center shrink-0">
+                <CheckCircle size={18} />
+              </div>
+              <div className="space-y-0.5">
+                <p className="text-xs font-bold text-slate-200">Stickers Sent to Printer!</p>
+                <p className="text-[10px] text-slate-400 font-medium leading-relaxed">
+                  Would you like to mark these {units.length} units as Printed in the database?
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <Button
+                size="sm"
+                disabled={isMarking}
+                onClick={handleMarkAsPrinted}
+                className="bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold h-8 px-3 rounded-lg shadow-none cursor-pointer"
+              >
+                {isMarking ? "Marking..." : "Yes, Mark"}
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setShowMarkPrompt(false)}
+                className="text-slate-400 hover:text-white text-[10px] font-bold h-8 px-3 rounded-lg hover:bg-white/5 shadow-none cursor-pointer"
+              >
+                Dismiss
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

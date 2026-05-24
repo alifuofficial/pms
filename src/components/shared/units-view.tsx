@@ -29,6 +29,7 @@ export async function UnitsView({
   if (searchParams?.propertyId) where.propertyId = searchParams.propertyId;
   if (searchParams?.status)     where.status     = searchParams.status;
   if (searchParams?.type)       where.type       = searchParams.type;
+  if (searchParams?.qrPrinted)  where.qrPrinted  = searchParams.qrPrinted === "true";
   if (searchParams?.minPrice || searchParams?.maxPrice) {
     where.rentAmount = {};
     if (searchParams.minPrice) where.rentAmount.gte = parseFloat(searchParams.minPrice);
@@ -79,6 +80,7 @@ export async function UnitsView({
         if (searchParams?.propertyId) base.propertyId = searchParams.propertyId;
         if (searchParams?.status)     base.status     = searchParams.status;
         if (searchParams?.type)       base.type       = searchParams.type;
+        if (searchParams?.qrPrinted)  base.qrPrinted  = searchParams.qrPrinted === "true";
         if (searchParams?.q) {
           base.OR = [
             { unitNumber: { contains: searchParams.q } },
@@ -99,6 +101,7 @@ export async function UnitsView({
         if (searchParams?.propertyId) base.propertyId = searchParams.propertyId;
         if (searchParams?.status)     base.status     = searchParams.status;
         if (searchParams?.type)       base.type       = searchParams.type;
+        if (searchParams?.qrPrinted)  base.qrPrinted  = searchParams.qrPrinted === "true";
         if (searchParams?.q) {
           base.OR = [
             { unitNumber: { contains: searchParams.q } },
@@ -145,17 +148,29 @@ export async function UnitsView({
             onExport={exportUnitsCsv}
             onImport={importUnitsCsv}
           />
-          <a
-            href={searchParams?.propertyId ? `/admin/units/print-all?propertyId=${searchParams.propertyId}` : "/admin/units/print-all"}
-            target="_blank"
-            className={cn(
-              buttonVariants({ variant: "outline", size: "sm" }),
-              "h-9 rounded-lg border-slate-200 text-xs font-semibold flex items-center gap-2 cursor-pointer bg-white shadow-none"
-            )}
-          >
-            <Printer size={14} className="text-slate-500" />
-            Print QRs (A4)
-          </a>
+          {(() => {
+            const params = new URLSearchParams();
+            if (searchParams?.propertyId) params.set("propertyId", searchParams.propertyId);
+            if (searchParams?.status) params.set("status", searchParams.status);
+            if (searchParams?.type) params.set("type", searchParams.type);
+            if (searchParams?.qrPrinted) params.set("qrPrinted", searchParams.qrPrinted);
+            if (searchParams?.floor !== undefined && searchParams.floor !== "") params.set("floor", String(searchParams.floor));
+            if (searchParams?.q) params.set("q", searchParams.q);
+            const queryString = params.toString();
+            return (
+              <a
+                href={queryString ? `/admin/units/print-all?${queryString}` : "/admin/units/print-all"}
+                target="_blank"
+                className={cn(
+                  buttonVariants({ variant: "outline", size: "sm" }),
+                  "h-9 rounded-lg border-slate-200 text-xs font-semibold flex items-center gap-2 cursor-pointer bg-white shadow-none"
+                )}
+              >
+                <Printer size={14} className="text-slate-500" />
+                Print QRs (A4)
+              </a>
+            );
+          })()}
           <AddUnitDialog 
             trigger={
               <Button className="h-9 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold px-4 shadow-none">

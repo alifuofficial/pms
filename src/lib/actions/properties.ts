@@ -173,6 +173,7 @@ export async function bulkUpdateUnits(ids: string[], data: {
   status?: "AVAILABLE" | "OCCUPIED" | "MAINTENANCE";
   type?: string;
   rentAmount?: number;
+  qrPrinted?: boolean;
 }) {
   const session = await auth();
   if (!session?.user) return { success: false, error: "Unauthorized" };
