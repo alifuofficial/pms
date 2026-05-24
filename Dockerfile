@@ -11,9 +11,8 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN npx prisma generate
-# Initialize a temporary DB so that 'next build' can prerender pages without failing
-ENV DATABASE_URL="file:./build.db"
-RUN npx prisma db push --accept-data-loss
+# Mock Postgres URL for Next.js static compilation / client generation during build phase
+ENV DATABASE_URL="postgresql://postgres:postgres@localhost:5432/postgres"
 RUN npm run build
 
 # Stage 3: Production server
@@ -40,7 +39,7 @@ COPY --from=builder /app/.next/static ./.next/static
 # IMPORTANT: Ensure prisma and seed script dependencies are available for the entrypoint
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/package.json ./package.json
-COPY --from=builder /app/prisma.config.js ./prisma.config.js
+COPY --from=builder /app/prisma.config.ts ./prisma.config.ts
 COPY --from=builder /app/node_modules ./node_modules
 
 COPY entrypoint.sh ./entrypoint.sh
