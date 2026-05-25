@@ -95,6 +95,12 @@ export function PublicReportPayment({
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    
+    if (!screenshotFile) {
+      toast.error("Please upload your payment receipt screenshot.");
+      return;
+    }
+    
     setLoading(true);
     
     const formData = new FormData();
@@ -447,7 +453,7 @@ export function PublicReportPayment({
         {step === 4 && (
           <div className="p-8 space-y-6 animate-in fade-in slide-in-from-right-5 duration-300">
             <div className="space-y-1.5">
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Screenshot / Receipt</label>
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Screenshot / Receipt *</label>
               <div className="relative group">
                 <input 
                   type="file" 
@@ -469,7 +475,7 @@ export function PublicReportPayment({
                   ) : (
                     <>
                       <Camera size={28} className="text-slate-400" />
-                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Attach Receipt Screenshot</span>
+                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Attach Receipt Screenshot *</span>
                     </>
                   )}
                 </div>
