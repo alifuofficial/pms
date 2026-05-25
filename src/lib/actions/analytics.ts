@@ -12,10 +12,9 @@ export async function getRevenueAnalytics(months: number = 6, propertyIds?: stri
     const start = startOfMonth(date);
     const end = endOfMonth(date);
 
-    const rentRevenue = await prisma.payment.aggregate({
+    const expectedRent = await prisma.payment.aggregate({
       where: {
-        status: "APPROVED",
-        paidAt: { gte: start, lte: end },
+        dueDate: { gte: start, lte: end },
         ...(propertyIds && propertyIds.length > 0 ? {
           lease: { unit: { propertyId: { in: propertyIds } } }
         } : {})
@@ -23,20 +22,27 @@ export async function getRevenueAnalytics(months: number = 6, propertyIds?: stri
       _sum: { amount: true },
     });
 
-    const penaltyRevenue = await prisma.penalty.aggregate({
+    const collectedRent = await prisma.payment.aggregate({
       where: {
-        status: "PAID",
-        paidAt: { gte: start, lte: end },
+        status: "APPROVED",
+        dueDate: { gte: start, lte: end },
         ...(propertyIds && propertyIds.length > 0 ? {
           lease: { unit: { propertyId: { in: propertyIds } } }
         } : {})
       },
-      _sum: { paidAmount: true },
+      _sum: { amount: true },
     });
+
+    const expected = expectedRent._sum.amount || 0;
+    const collected = collectedRent._sum.amount || 0;
+    const rate = expected > 0 ? Math.round((collected / expected) * 100) : 0;
 
     result.push({
       name: format(date, "MMM"),
-      revenue: (rentRevenue._sum.amount || 0) + (penaltyRevenue._sum.paidAmount || 0),
+      expected,
+      collected,
+      revenue: collected, // backwards compatibility
+      rate
     });
   }
 

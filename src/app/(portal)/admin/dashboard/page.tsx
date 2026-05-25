@@ -72,6 +72,9 @@ export default async function AdminDashboard() {
     take: 10
   });
 
+  const maxCollection = revenueData.length > 0 ? Math.max(...revenueData.map(d => d.collected || 0)) : 0;
+  const bestMonth = revenueData.find(d => d.collected === maxCollection && d.collected > 0);
+
   return (
     <div className="max-w-[1200px] mx-auto space-y-6 animate-in fade-in duration-500 pb-10">
       {/* Header Section */}
@@ -134,8 +137,22 @@ export default async function AdminDashboard() {
                 LIVE
               </div>
             </CardHeader>
-            <CardContent className="p-5">
+            <CardContent className="p-5 space-y-4">
               <RevenueChart data={revenueData} />
+              
+              {bestMonth && (
+                <div className="p-3 bg-blue-50/50 border border-blue-100 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                  <div className="flex items-center gap-2">
+                    <span className="flex h-2 w-2 rounded-full bg-blue-500 animate-pulse" />
+                    <span className="font-semibold text-slate-700">
+                      Collection Peak Month Comparison: <strong className="text-blue-700 font-bold">{bestMonth.name}</strong> is the highest collecting month, yielding <strong className="text-blue-700 font-bold">{bestMonth.collected?.toLocaleString()} {settings?.currency || 'USD'}</strong> out of {bestMonth.expected?.toLocaleString()} {settings?.currency || 'USD'} expected (<strong className="text-emerald-700 font-bold">{bestMonth.rate}% collected</strong>).
+                    </span>
+                  </div>
+                  <Badge variant="outline" className="text-[9px] font-bold text-blue-600 border-blue-200 bg-blue-50 uppercase whitespace-nowrap self-start sm:self-auto px-2 py-0.5 rounded shadow-none">
+                    Peak Month
+                  </Badge>
+                </div>
+              )}
             </CardContent>
           </Card>
 

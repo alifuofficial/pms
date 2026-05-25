@@ -101,6 +101,45 @@ export async function getReportMetrics(startDate: Date, endDate: Date) {
     advanceUntil: p.advanceUntil
   }));
 
+  // 7. Monthly Breakdown for the selected range (e.g. for reports expected vs collected)
+  const monthlyMetrics = [];
+  let currentMonthStart = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
+  const endLimit = new Date(endDate.getFullYear(), endDate.getMonth(), 1);
+
+  while (currentMonthStart <= endLimit) {
+    const start = new Date(currentMonthStart.getFullYear(), currentMonthStart.getMonth(), 1);
+    const end = new Date(currentMonthStart.getFullYear(), currentMonthStart.getMonth() + 1, 0, 23, 59, 59, 999);
+
+    const expectedRent = await prisma.payment.aggregate({
+      where: {
+        dueDate: { gte: start, lte: end }
+      },
+      _sum: { amount: true }
+    });
+
+    const collectedRent = await prisma.payment.aggregate({
+      where: {
+        status: "APPROVED",
+        dueDate: { gte: start, lte: end }
+      },
+      _sum: { amount: true }
+    });
+
+    const expected = expectedRent._sum.amount || 0;
+    const collected = collectedRent._sum.amount || 0;
+    const rate = expected > 0 ? Math.round((collected / expected) * 100) : 0;
+
+    monthlyMetrics.push({
+      name: start.toLocaleString("default", { month: "short" }),
+      expected,
+      collected,
+      rate
+    });
+
+    // Move to next month safely by modifying currentMonthStart
+    currentMonthStart.setMonth(currentMonthStart.getMonth() + 1);
+  }
+
   return {
     collectedRevenue,
     expectedRevenue,
@@ -111,6 +150,7 @@ export async function getReportMetrics(startDate: Date, endDate: Date) {
     totalUnits,
     occupiedUnits,
     recentPayments,
-    advancePayments
+    advancePayments,
+    monthlyMetrics
   };
 }

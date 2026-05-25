@@ -19,6 +19,7 @@ import { formatSystemDate, formatEthiopianMonthYear } from "@/lib/calendar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import Kenat from "kenat";
 import { Badge } from "@/components/ui/badge";
+import { RevenueChart } from "./dashboard-charts";
 
 interface ReportsViewProps {
   metrics: {
@@ -32,6 +33,7 @@ interface ReportsViewProps {
     occupiedUnits: number;
     recentPayments: any[];
     advancePayments: any[];
+    monthlyMetrics?: any[];
   };
   currency: string;
   calendarType: string;
@@ -167,6 +169,46 @@ export function ReportsView({ metrics, currency, calendarType, startDate, endDat
           </CardContent>
         </Card>
       </div>
+
+      {/* Revenue Trend Chart & Comparison Insights */}
+      {metrics.monthlyMetrics && metrics.monthlyMetrics.length > 0 && (
+        <Card className="border border-slate-200 shadow-none bg-white rounded-xl print:hidden">
+          <CardHeader className="p-5 flex flex-row items-center justify-between space-y-0 border-b border-slate-50">
+            <div className="space-y-0.5">
+              <CardTitle className="text-sm font-semibold">Monthly Collection Analysis (Expected vs Collected)</CardTitle>
+              <p className="text-[10px] text-slate-400 font-medium uppercase tracking-wider">Cohort Billing Cycle Comparisons</p>
+            </div>
+            <div className="text-indigo-600 font-bold text-xs bg-indigo-50 px-2 py-0.5 rounded uppercase tracking-wider">
+              {currentPeriod} Analysis
+            </div>
+          </CardHeader>
+          <CardContent className="p-5 space-y-4">
+            <RevenueChart data={metrics.monthlyMetrics} />
+
+            {(() => {
+              const validMonths = metrics.monthlyMetrics.filter((m: any) => m.expected > 0);
+              if (validMonths.length === 0) return null;
+              const maxCollection = Math.max(...validMonths.map((m: any) => m.collected));
+              const bestMonth = validMonths.find((m: any) => m.collected === maxCollection);
+              if (!bestMonth || bestMonth.collected === 0) return null;
+
+              return (
+                <div className="p-3 bg-indigo-50/50 border border-indigo-100 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                  <div className="flex items-center gap-2">
+                    <span className="flex h-2 w-2 rounded-full bg-indigo-500 animate-pulse" />
+                    <span className="font-semibold text-slate-700">
+                      Collection Performance Comparison: <strong className="text-indigo-700 font-bold">{bestMonth.name}</strong> yielded the highest collections in this period with <strong className="text-indigo-700 font-bold">{bestMonth.collected.toLocaleString()} {currency}</strong> out of {bestMonth.expected.toLocaleString()} {currency} expected (<strong className="text-emerald-700 font-bold">{bestMonth.rate}% collected</strong>).
+                    </span>
+                  </div>
+                  <Badge variant="outline" className="text-[9px] font-bold text-indigo-600 border-indigo-200 bg-indigo-50 uppercase whitespace-nowrap self-start sm:self-auto px-2 py-0.5 rounded shadow-none">
+                    Peak Month
+                  </Badge>
+                </div>
+              );
+            })()}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Transactions / Activity Table */}
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-none print:border-none print:shadow-none">
