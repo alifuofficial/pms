@@ -1,7 +1,7 @@
 import { Suspense } from "react";
 import { prisma } from "@/lib/prisma";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { Plus, Printer } from "lucide-react";
+import { Plus, Printer, Eye, EyeOff } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { UnitsBulkTable } from "./units-bulk-table";
 import { AddUnitDialog } from "./add-unit-dialog";
@@ -149,26 +149,57 @@ export async function UnitsView({
             onImport={importUnitsCsv}
           />
           {(() => {
-            const params = new URLSearchParams();
-            if (searchParams?.propertyId) params.set("propertyId", searchParams.propertyId);
-            if (searchParams?.status) params.set("status", searchParams.status);
-            if (searchParams?.type) params.set("type", searchParams.type);
-            if (searchParams?.qrPrinted) params.set("qrPrinted", searchParams.qrPrinted);
-            if (searchParams?.floor !== undefined && searchParams.floor !== "") params.set("floor", String(searchParams.floor));
-            if (searchParams?.q) params.set("q", searchParams.q);
-            const queryString = params.toString();
+            const isNonPrintedFiltered = searchParams?.qrPrinted === "false";
+            const toggleParams = new URLSearchParams();
+            if (searchParams?.propertyId) toggleParams.set("propertyId", searchParams.propertyId);
+            if (searchParams?.status) toggleParams.set("status", searchParams.status);
+            if (searchParams?.type) toggleParams.set("type", searchParams.type);
+            if (searchParams?.floor !== undefined && searchParams.floor !== "") toggleParams.set("floor", String(searchParams.floor));
+            if (searchParams?.q) toggleParams.set("q", searchParams.q);
+            
+            if (!isNonPrintedFiltered) {
+              toggleParams.set("qrPrinted", "false");
+            }
+            const toggleQueryString = toggleParams.toString();
+            const toggleHref = toggleQueryString ? `?${toggleQueryString}` : "?";
+
+            const printParams = new URLSearchParams();
+            if (searchParams?.propertyId) printParams.set("propertyId", searchParams.propertyId);
+            if (searchParams?.status) printParams.set("status", searchParams.status);
+            if (searchParams?.type) printParams.set("type", searchParams.type);
+            if (searchParams?.qrPrinted) printParams.set("qrPrinted", searchParams.qrPrinted);
+            if (searchParams?.floor !== undefined && searchParams.floor !== "") printParams.set("floor", String(searchParams.floor));
+            if (searchParams?.q) printParams.set("q", searchParams.q);
+            const printQueryString = printParams.toString();
+
             return (
-              <a
-                href={queryString ? `/admin/units/print-all?${queryString}` : "/admin/units/print-all"}
-                target="_blank"
-                className={cn(
-                  buttonVariants({ variant: "outline", size: "sm" }),
-                  "h-9 rounded-lg border-slate-200 text-xs font-semibold flex items-center gap-2 cursor-pointer bg-white shadow-none"
-                )}
-              >
-                <Printer size={14} className="text-slate-500" />
-                Print QRs (A4)
-              </a>
+              <div className="flex items-center gap-2">
+                <a
+                  href={toggleHref}
+                  className={cn(
+                    buttonVariants({ variant: isNonPrintedFiltered ? "default" : "outline", size: "sm" }),
+                    "h-9 rounded-lg text-xs font-semibold flex items-center gap-2 cursor-pointer shadow-none transition-all duration-200",
+                    isNonPrintedFiltered 
+                      ? "bg-amber-600 hover:bg-amber-500 text-white border-amber-600 hover:border-amber-500" 
+                      : "border-slate-200 text-slate-700 bg-white hover:bg-slate-50"
+                  )}
+                >
+                  {isNonPrintedFiltered ? <EyeOff size={14} /> : <Eye size={14} />}
+                  {isNonPrintedFiltered ? "Showing Non-Printed Only" : "Filter Non-Printed"}
+                </a>
+                
+                <a
+                  href={printQueryString ? `/admin/units/print-all?${printQueryString}` : "/admin/units/print-all"}
+                  target="_blank"
+                  className={cn(
+                    buttonVariants({ variant: "outline", size: "sm" }),
+                    "h-9 rounded-lg border-slate-200 text-xs font-semibold flex items-center gap-2 cursor-pointer bg-white shadow-none hover:bg-slate-50 hover:text-slate-900"
+                  )}
+                >
+                  <Printer size={14} className={cn("text-slate-500", isNonPrintedFiltered && "text-amber-500")} />
+                  {isNonPrintedFiltered ? "Print Non-Printed" : "Print QRs (A4)"}
+                </a>
+              </div>
             );
           })()}
           <AddUnitDialog 
