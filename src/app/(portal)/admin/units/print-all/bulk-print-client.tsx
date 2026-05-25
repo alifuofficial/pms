@@ -30,6 +30,14 @@ export function BulkPrintClient({ units }: { units: UnitWithProperty[] }) {
 
   useEffect(() => {
     setMounted(true);
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get("autoPrint") === "true") {
+      const timer = setTimeout(() => {
+        window.print();
+        setShowMarkPrompt(true);
+      }, 800);
+      return () => clearTimeout(timer);
+    }
   }, []);
 
   // Split units into chunks of 8 (since we fit 8 per A4 sheet)
