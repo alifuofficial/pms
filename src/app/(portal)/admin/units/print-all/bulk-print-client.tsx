@@ -121,17 +121,45 @@ export function BulkPrintClient({ units }: { units: UnitWithProperty[] }) {
 
       {/* Pages Container */}
       <div className="flex flex-col items-center gap-8 py-8 print:py-0 print:gap-0 bg-slate-100/60 print:bg-white min-h-[calc(100vh-60px)] print:min-h-0 justify-center">
+        
+        {/* Print Configuration Alert (Non-Printable) */}
+        <div className="no-print w-full max-w-[210mm] px-4 md:px-0">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg flex flex-col md:flex-row gap-4 items-start md:items-center justify-between text-white my-2 animate-in fade-in slide-in-from-top-4 duration-300">
+            <div className="flex gap-3">
+              <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-400 flex items-center justify-center shrink-0">
+                <BadgeInfo size={20} />
+              </div>
+              <div className="space-y-1">
+                <h4 className="text-xs font-black uppercase tracking-wider text-slate-200">Critical Print Settings Required</h4>
+                <p className="text-[10px] text-slate-400 leading-relaxed max-w-2xl">
+                  To ensure all <strong>8 stickers fit perfectly per A4 sheet</strong> and prevent cut-offs, please configure your browser print dialog as follows:
+                </p>
+                <div className="flex flex-wrap gap-x-4 gap-y-1 pt-1.5">
+                  <span className="text-[9px] font-bold text-slate-300 flex items-center gap-1">
+                    🎯 <strong className="text-white">Margins:</strong> None (or Borderless)
+                  </span>
+                  <span className="text-[9px] font-bold text-slate-300 flex items-center gap-1">
+                    🚫 <strong className="text-white">Headers & Footers:</strong> Unchecked (Disabled)
+                  </span>
+                  <span className="text-[9px] font-bold text-slate-300 flex items-center gap-1">
+                    📐 <strong className="text-white">Scale:</strong> 100% (or Default)
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
         {chunks.map((chunk, chunkIdx) => (
           <div 
             key={chunkIdx} 
-            className="a4-sheet w-[210mm] h-[297mm] bg-white p-[10mm] grid grid-cols-2 grid-rows-4 gap-[8mm] shadow-xl rounded-sm print:shadow-none print:rounded-none print:m-0 print:w-[210mm] print:h-[297mm] print:page-break-after-always print:break-after-page relative overflow-hidden"
+            className="a4-sheet w-[210mm] h-[297mm] bg-white p-[8mm_10mm] grid grid-cols-2 grid-rows-4 gap-[8mm] shadow-xl rounded-sm print:shadow-none print:rounded-none print:m-0 print:w-[210mm] print:h-[297mm] print:page-break-after-always print:break-after-page relative overflow-hidden"
           >
             {chunk.map((unit) => {
               const slug = unit.qrSlug || "UNRESOLVED";
               return (
                 <div 
                   key={unit.id} 
-                  className="sticker-badge border-2 border-dashed border-slate-300 rounded-2xl p-4 bg-white flex flex-col justify-between h-[62mm] w-[90mm] relative box-border overflow-hidden group hover:border-slate-400 transition-colors"
+                  className="sticker-badge border-2 border-dashed border-slate-300 rounded-2xl p-4 bg-white flex flex-col justify-between h-[59mm] w-[90mm] relative box-border overflow-hidden group hover:border-slate-400 transition-colors"
                 >
                   {/* Sticker Header */}
                   <div className="flex justify-between items-start">
@@ -208,9 +236,11 @@ export function BulkPrintClient({ units }: { units: UnitWithProperty[] }) {
             box-shadow: none !important;
             border: none !important;
             margin: 0 !important;
-            padding: 10mm 10mm !important;
+            padding: 8mm 10mm !important;
             page-break-after: always !important;
             break-after: page !important;
+            page-break-inside: avoid !important;
+            break-inside: avoid-page !important;
             width: 210mm !important;
             height: 297mm !important;
             display: grid !important;
@@ -221,7 +251,7 @@ export function BulkPrintClient({ units }: { units: UnitWithProperty[] }) {
             overflow: hidden !important;
           }
           .sticker-badge {
-            height: 62mm !important;
+            height: 59mm !important;
             width: 90mm !important;
             border-color: #cbd5e1 !important; /* Keep dashes visible */
             page-break-inside: avoid !important;
