@@ -47,7 +47,7 @@ export async function testFtp(data: { host: string; port: number; user: string; 
     
     const baseUrl = data.baseUrl 
       ? (data.baseUrl.endsWith("/") ? data.baseUrl : `${data.baseUrl}/`)
-      : "https://storage.soretiinternational.com/upload/";
+      : "https://storage.soretiinternational.com/rental/";
       
     return { success: true, testFileUrl: `${baseUrl}${filename}` };
   } catch (error: any) {

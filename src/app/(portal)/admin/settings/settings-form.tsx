@@ -47,6 +47,7 @@ export function SettingsForm({
   const [formData, setFormData] = useState(initialData);
   const [activeTab, setActiveTab] = useState("general");
   const [isUploading, setIsUploading] = useState(false);
+  const [logoError, setLogoError] = useState(false);
   
   // QR Code States
   const [qrStats, setQrStats] = useState(initialQrStats);
@@ -353,6 +354,7 @@ export function SettingsForm({
     if (!file) return;
 
     setIsUploading(true);
+    setLogoError(false);
     const body = new FormData();
     body.append("file", file);
 
@@ -361,6 +363,7 @@ export function SettingsForm({
       const data = await res.json();
       if (data.url) {
         setFormData({ ...formData, logoUrl: data.url });
+        setLogoError(false);
         toast.success("Logo updated.");
       }
     } catch (err) {
@@ -624,18 +627,14 @@ export function SettingsForm({
                   </div>
                   <div className="flex items-center gap-8 pt-4 border-t border-slate-50">
                     <div className="w-24 h-24 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-center overflow-hidden shrink-0">
-                      {formData.logoUrl ? (
+                      {formData.logoUrl && !logoError ? (
                         <img
                           src={formData.logoUrl}
                           alt="Logo"
                           className="w-full h-full object-contain p-2"
-                          onError={(e) => {
-                            (e.target as HTMLImageElement).style.display = "none";
-                            (e.target as HTMLImageElement).nextElementSibling?.removeAttribute("style");
-                          }}
+                          onError={() => setLogoError(true)}
                         />
-                      ) : null}
-                      {(!formData.logoUrl) && (
+                      ) : (
                         <Building2 size={32} className="text-slate-200" />
                       )}
                     </div>
