@@ -142,11 +142,7 @@ export function RegisterTenantDialog({ currency = "ETB" }: { currency?: string }
         if (upload.success) receiptUrl = upload.url!;
       }
 
-      if (!receiptUrl && step === 4) {
-        toast.error("Please upload payment receipt.");
-        setIsLoading(false);
-        return;
-      }
+      // Receipt is optional, proceed if empty
 
       // Validation: Minimum 1 month payment
       const unit = availableUnits.find(u => u.id === formData.unitId);
@@ -657,7 +653,7 @@ export function RegisterTenantDialog({ currency = "ETB" }: { currency?: string }
                         </div>
                         <div className="text-center">
                           <p className="text-sm font-bold text-slate-700">Upload Receipt</p>
-                          <p className="text-[10px] text-slate-400 font-medium">Bank transfer or physical receipt image</p>
+                          <p className="text-[10px] text-slate-400 font-medium">Bank transfer or physical receipt image (Optional)</p>
                         </div>
                       </>
                     )}

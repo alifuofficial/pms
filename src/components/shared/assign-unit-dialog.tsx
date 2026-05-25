@@ -144,11 +144,7 @@ export function AssignUnitDialog({
         if (upload.success) receiptUrl = upload.url!;
       }
 
-      if (!receiptUrl) {
-        toast.error("Please upload payment receipt.");
-        setIsLoading(false);
-        return;
-      }
+      // Receipt is optional, proceed if empty
 
       // Validation: Minimum 1 month payment
       const unit = availableUnits.find(u => u.id === formData.unitId);
@@ -522,7 +518,7 @@ export function AssignUnitDialog({
               )}
 
               <div className="space-y-2">
-                <Label className="text-[10px] font-semibold uppercase text-slate-400">Payment Receipt *</Label>
+                <Label className="text-[10px] font-semibold uppercase text-slate-400">Payment Receipt (Optional)</Label>
                 <div 
                   className={cn(
                     "relative border-2 border-dashed rounded-2xl p-6 flex flex-col items-center justify-center gap-2 transition-all cursor-pointer",

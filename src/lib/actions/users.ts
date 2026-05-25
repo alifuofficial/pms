@@ -146,7 +146,7 @@ export async function registerTenant(data: {
     amount: number;
     type: "MONTHLY" | "ADVANCE";
     advanceUntil?: Date;
-    receiptUrl: string;
+    receiptUrl?: string | null;
   };
 }) {
   const sessionUser = await resolveSessionUser();
@@ -191,7 +191,7 @@ export async function registerTenant(data: {
           dueDate: data.startDate, // Initial payment is for the start period
           type: data.payment.type,
           advanceUntil: data.payment.advanceUntil,
-          receiptUrl: data.payment.receiptUrl,
+          receiptUrl: data.payment.receiptUrl || null,
           status: "PENDING",
         },
       });
@@ -243,7 +243,7 @@ export async function assignUnitToTenant(data: {
     amount: number;
     type: "MONTHLY" | "ADVANCE";
     advanceUntil?: Date;
-    receiptUrl: string;
+    receiptUrl?: string | null;
   };
 }) {
   const sessionUser = await resolveSessionUser();
@@ -274,7 +274,7 @@ export async function assignUnitToTenant(data: {
           dueDate: data.startDate,
           type: data.payment.type,
           advanceUntil: data.payment.advanceUntil,
-          receiptUrl: data.payment.receiptUrl,
+          receiptUrl: data.payment.receiptUrl || null,
           status: "PENDING",
         },
       });
