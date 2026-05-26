@@ -31,12 +31,16 @@ export async function getBroadcastRecipients() {
 
     const settings = await prisma.systemSettings.findUnique({ where: { id: "global" } });
 
-    const serializedTenants = tenants.map((tenant) => {
-      const activeLease = tenant.leases.find((l) => l.status === "ACTIVE" || l.status === "PENDING");
-      
-      if (!activeLease) {
-        return {
-          id: tenant.id,
+    const serializedRecipients: any[] = [];
+
+    for (const tenant of tenants) {
+      const activeLeases = tenant.leases.filter((l) => l.status === "ACTIVE" || l.status === "PENDING");
+
+      if (activeLeases.length === 0) {
+        serializedRecipients.push({
+          id: `${tenant.id}-none`,
+          userId: tenant.id,
+          leaseId: null,
           name: tenant.name || "Unnamed Tenant",
           email: tenant.email || "",
           phoneNumber: tenant.phoneNumber || "",
@@ -49,96 +53,101 @@ export async function getBroadcastRecipients() {
           unpaidPenaltyTotal: 0,
           totalBalance: 0,
           overdue: false,
-        };
+        });
+        continue;
       }
 
-      const unit = activeLease.unit;
-      const property = unit.property;
-      const payments = activeLease.payments || [];
-      const penalties = activeLease.penalties || [];
-      
-      const pendingPayments = payments
-        .filter((p) => p.status === "PENDING" || p.status === "REJECTED")
-        .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
+      for (const lease of activeLeases) {
+        const unit = lease.unit;
+        const property = unit.property;
+        const payments = lease.payments || [];
+        const penalties = lease.penalties || [];
+        
+        const pendingPayments = payments
+          .filter((p) => p.status === "PENDING" || p.status === "REJECTED")
+          .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
 
-      const pendingDueDates = new Set(
-        pendingPayments.map((p) => {
+        const pendingDueDates = new Set(
+          pendingPayments.map((p) => {
+            const d = new Date(p.dueDate);
+            return `${d.getFullYear()}-${d.getMonth()}`;
+          })
+        );
+
+        const gapMonthDates = getArrearMonths(new Date(lease.startDate), payments);
+
+        const dbPenaltyMap = new Map<string, any>();
+        for (const p of penalties) {
           const d = new Date(p.dueDate);
-          return `${d.getFullYear()}-${d.getMonth()}`;
-        })
-      );
+          dbPenaltyMap.set(`${d.getFullYear()}-${d.getMonth()}`, p);
+        }
 
-      const gapMonthDates = getArrearMonths(new Date(activeLease.startDate), payments);
-
-      const dbPenaltyMap = new Map<string, any>();
-      for (const p of penalties) {
-        const d = new Date(p.dueDate);
-        dbPenaltyMap.set(`${d.getFullYear()}-${d.getMonth()}`, p);
-      }
-
-      const rawArrearsMonths = [
-        ...pendingPayments.map((p) => {
-          const d = new Date(p.dueDate);
-          const dbPenalty = dbPenaltyMap.get(`${d.getFullYear()}-${d.getMonth()}`);
-          const { penalty } = calcMonthPenalty(new Date(p.dueDate), unit.rentAmount, settings, dbPenalty);
-          return {
-            dueDate: p.dueDate,
-            totalAmount: unit.rentAmount + penalty,
-          };
-        }),
-        ...gapMonthDates
-          .filter((gd) => !pendingDueDates.has(`${gd.getFullYear()}-${gd.getMonth()}`))
-          .map((gd) => {
-            const dbPenalty = dbPenaltyMap.get(`${gd.getFullYear()}-${gd.getMonth()}`);
-            const { penalty } = calcMonthPenalty(gd, unit.rentAmount, settings, dbPenalty);
+        const rawArrearsMonths = [
+          ...pendingPayments.map((p) => {
+            const d = new Date(p.dueDate);
+            const dbPenalty = dbPenaltyMap.get(`${d.getFullYear()}-${d.getMonth()}`);
+            const { penalty } = calcMonthPenalty(new Date(p.dueDate), unit.rentAmount, settings, dbPenalty);
             return {
-              dueDate: gd,
+              dueDate: p.dueDate,
               totalAmount: unit.rentAmount + penalty,
             };
           }),
-      ].sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
+          ...gapMonthDates
+            .filter((gd) => !pendingDueDates.has(`${gd.getFullYear()}-${gd.getMonth()}`))
+            .map((gd) => {
+              const dbPenalty = dbPenaltyMap.get(`${gd.getFullYear()}-${gd.getMonth()}`);
+              const { penalty } = calcMonthPenalty(gd, unit.rentAmount, settings, dbPenalty);
+              return {
+                dueDate: gd,
+                totalAmount: unit.rentAmount + penalty,
+              };
+            }),
+        ].sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
 
-      // Deduct advanceBalance chronologically
-      let remainingAdvance = activeLease.advanceBalance || 0;
-      let arrearsCount = 0;
-      let arrearsBalance = 0;
+        // Deduct advanceBalance chronologically
+        let remainingAdvance = lease.advanceBalance || 0;
+        let arrearsCount = 0;
+        let arrearsBalance = 0;
 
-      for (const m of rawArrearsMonths) {
-        const deduction = Math.min(m.totalAmount, remainingAdvance);
-        const updatedTotalAmount = m.totalAmount - deduction;
-        remainingAdvance -= deduction;
-        if (updatedTotalAmount > 0) {
-          arrearsCount++;
-          arrearsBalance += updatedTotalAmount;
+        for (const m of rawArrearsMonths) {
+          const deduction = Math.min(m.totalAmount, remainingAdvance);
+          const updatedTotalAmount = m.totalAmount - deduction;
+          remainingAdvance -= deduction;
+          if (updatedTotalAmount > 0) {
+            arrearsCount++;
+            arrearsBalance += updatedTotalAmount;
+          }
         }
+
+        const unpaidPenaltyTotal = penalties
+          .filter((p) => p.status === "UNPAID" || p.status === "PARTIAL")
+          .reduce((sum, p) => sum + (p.amount - p.paidAmount), 0);
+
+        const totalBalance = arrearsBalance + unpaidPenaltyTotal;
+
+        serializedRecipients.push({
+          id: `${tenant.id}-${lease.id}`,
+          userId: tenant.id,
+          leaseId: lease.id,
+          name: tenant.name || "Unnamed Tenant",
+          email: tenant.email || "",
+          phoneNumber: tenant.phoneNumber || "",
+          propertyId: property.id,
+          propertyName: property.name,
+          unitNumber: unit.unitNumber,
+          hasActiveLease: true,
+          arrearsCount,
+          arrearsBalance,
+          unpaidPenaltyTotal,
+          totalBalance,
+          overdue: arrearsCount > 0 || unpaidPenaltyTotal > 0,
+        });
       }
-
-      const unpaidPenaltyTotal = penalties
-        .filter((p) => p.status === "UNPAID" || p.status === "PARTIAL")
-        .reduce((sum, p) => sum + (p.amount - p.paidAmount), 0);
-
-      const totalBalance = arrearsBalance + unpaidPenaltyTotal;
-
-      return {
-        id: tenant.id,
-        name: tenant.name || "Unnamed Tenant",
-        email: tenant.email || "",
-        phoneNumber: tenant.phoneNumber || "",
-        propertyId: property.id,
-        propertyName: property.name,
-        unitNumber: unit.unitNumber,
-        hasActiveLease: true,
-        arrearsCount,
-        arrearsBalance,
-        unpaidPenaltyTotal,
-        totalBalance,
-        overdue: arrearsCount > 0 || unpaidPenaltyTotal > 0,
-      };
-    });
+    }
 
     return {
       success: true,
-      tenants: serializedTenants,
+      tenants: serializedRecipients,
       properties,
     };
   } catch (error: any) {
@@ -152,9 +161,9 @@ export async function getBroadcastRecipients() {
   }
 }
 
-export async function sendBroadcastSMS(userIds: string[], messageTemplate: string) {
+export async function sendBroadcastSMS(recipientIds: string[], messageTemplate: string) {
   try {
-    if (!userIds || userIds.length === 0) {
+    if (!recipientIds || recipientIds.length === 0) {
       return { success: false, error: "No recipients selected." };
     }
     if (!messageTemplate || messageTemplate.trim() === "") {
@@ -167,23 +176,15 @@ export async function sendBroadcastSMS(userIds: string[], messageTemplate: strin
     let failed = 0;
     let skipped = 0;
 
-    for (const userId of userIds) {
+    for (const recipientId of recipientIds) {
+      const [userId, leaseId] = recipientId.split("-");
+      if (!userId) {
+        skipped++;
+        continue;
+      }
+
       const tenant = await prisma.user.findUnique({
         where: { id: userId },
-        include: {
-          leases: {
-            where: { status: { in: ["ACTIVE", "PENDING"] } },
-            include: {
-              unit: {
-                include: {
-                  property: true,
-                },
-              },
-              payments: { orderBy: { dueDate: "asc" } },
-              penalties: { orderBy: { dueDate: "asc" } },
-            },
-          },
-        },
       });
 
       if (!tenant) {
@@ -206,7 +207,21 @@ export async function sendBroadcastSMS(userIds: string[], messageTemplate: strin
         continue;
       }
 
-      const activeLease = tenant.leases.find((l) => l.status === "ACTIVE" || l.status === "PENDING");
+      let activeLease = null;
+      if (leaseId && leaseId !== "none") {
+        activeLease = await prisma.lease.findUnique({
+          where: { id: leaseId },
+          include: {
+            unit: {
+              include: {
+                property: true,
+              },
+            },
+            payments: { orderBy: { dueDate: "asc" } },
+            penalties: { orderBy: { dueDate: "asc" } },
+          },
+        });
+      }
       
       let unitNumber = "N/A";
       let propertyName = "No Active Lease";
