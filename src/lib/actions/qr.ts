@@ -86,7 +86,9 @@ function getArrearMonths(leaseStart: Date, payments: any[]): Date[] {
     let iterations = 0;
     while (iterations < 60) {
       coveredMonthKeys.add(`${tempYear}-${tempMonth}`);
-      if (tempYear === endEt.year && tempMonth === endEt.month) break;
+      if (tempYear > endEt.year || (tempYear === endEt.year && tempMonth >= endEt.month)) {
+        break;
+      }
       tempMonth++;
       if (tempMonth > 13) { tempMonth = 1; tempYear++; }
       iterations++;
