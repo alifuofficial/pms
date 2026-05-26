@@ -2,8 +2,9 @@
 
 import { useRouter, usePathname } from "next/navigation";
 import { TemplateManager } from "@/components/shared/template-manager";
+import { BroadcastComposer } from "@/components/shared/broadcast-composer";
 import { cn } from "@/lib/utils";
-import { MessageSquare, FileText, CheckCircle2, XCircle, Clock, AlertCircle } from "lucide-react";
+import { MessageSquare, FileText, CheckCircle2, XCircle, Clock, AlertCircle, Megaphone } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
 
 const STATUS_CONFIG: Record<string, { label: string; className: string; Icon: any }> = {
@@ -54,6 +55,7 @@ export function NotifyTabs({
   logsPage,
   logsTotalPages,
   logsTotal,
+  broadcastData,
 }: {
   activeTab: string;
   templates: any[];
@@ -61,12 +63,14 @@ export function NotifyTabs({
   logsPage: number;
   logsTotalPages: number;
   logsTotal: number;
+  broadcastData: any;
 }) {
   const router = useRouter();
   const pathname = usePathname();
 
   const tabs = [
     { id: "templates", label: "SMS Templates", icon: FileText },
+    { id: "broadcast", label: "Send Broadcast", icon: Megaphone },
     { id: "logs",      label: "SMS Logs",      icon: MessageSquare, badge: logsTotal },
   ];
 
@@ -100,6 +104,16 @@ export function NotifyTabs({
       {activeTab === "templates" && (
         <div className="p-8">
           <TemplateManager initialTemplates={templates} />
+        </div>
+      )}
+
+      {/* Broadcast Tab */}
+      {activeTab === "broadcast" && (
+        <div className="p-8">
+          <BroadcastComposer
+            tenants={broadcastData?.tenants || []}
+            properties={broadcastData?.properties || []}
+          />
         </div>
       )}
 

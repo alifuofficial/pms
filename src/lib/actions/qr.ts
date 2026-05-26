@@ -46,7 +46,7 @@ export async function generateUnitQrSlug(unitId: string) {
 }
 
 /** Calculates penalty amount and tier for a given due date based on Ethiopian calendar, checking against existing database record if provided. */
-function calcMonthPenalty(dueDate: Date, rentAmount: number, settings: any, dbPenalty?: any) {
+export function calcMonthPenalty(dueDate: Date, rentAmount: number, settings: any, dbPenalty?: any) {
   const diffDays = getDaysPastEthiopianExpiry(dueDate);
   
   if (dbPenalty) {
@@ -70,7 +70,7 @@ function calcMonthPenalty(dueDate: Date, rentAmount: number, settings: any, dbPe
  * Returns all months between leaseStart and now that are NOT covered by any approved payment.
  * Uses Ethiopian calendar stepping.
  */
-function getArrearMonths(leaseStart: Date, payments: any[]): Date[] {
+export function getArrearMonths(leaseStart: Date, payments: any[]): Date[] {
   const now = new Date();
   const arrears: Date[] = [];
   

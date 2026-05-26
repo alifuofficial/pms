@@ -4,6 +4,7 @@ import { TemplateManager } from "@/components/shared/template-manager";
 import { NotifyTabs } from "./notify-tabs";
 import { MessageSquare, Bell, Smartphone, ShieldCheck } from "lucide-react";
 import { SyncButton } from "./sync-button";
+import { getBroadcastRecipients } from "@/lib/actions/broadcast";
 
 export default async function NotifyPage({
   searchParams,
@@ -13,14 +14,14 @@ export default async function NotifyPage({
   const params = await searchParams;
   const activeTab = (params?.tab as string) || "templates";
 
-  const templates = await getSmsTemplates();
-
   // SMS Logs pagination
   const logsPage = parseInt((params?.page as string) || "1");
   const logsLimit = 20;
   const logsSkip = (logsPage - 1) * logsLimit;
 
-  const [logs, logsTotal] = await Promise.all([
+  const [templates, broadcastData, logs, logsTotal] = await Promise.all([
+    getSmsTemplates(),
+    getBroadcastRecipients(),
     prisma.smsLog.findMany({
       orderBy: { createdAt: "desc" },
       skip: logsSkip,
@@ -30,6 +31,7 @@ export default async function NotifyPage({
   ]);
 
   const logsTotalPages = Math.ceil(logsTotal / logsLimit);
+
 
   return (
     <div className="max-w-5xl mx-auto space-y-8 animate-in fade-in duration-700">
@@ -90,6 +92,7 @@ export default async function NotifyPage({
         logsPage={logsPage}
         logsTotalPages={logsTotalPages}
         logsTotal={logsTotal}
+        broadcastData={broadcastData}
       />
     </div>
   );
