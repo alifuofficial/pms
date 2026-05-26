@@ -2,7 +2,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { sendSMS } from "@/lib/sms";
-import { getArrearMonths, calcMonthPenalty } from "@/lib/actions/qr";
+import { getArrearMonths, calcMonthPenalty } from "@/lib/arrears";
 
 export async function getBroadcastRecipients() {
   try {
