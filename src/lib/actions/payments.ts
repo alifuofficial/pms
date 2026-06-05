@@ -3,7 +3,7 @@
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 import { resolveSessionUser } from "./auth-helper";
-import { addEthiopianMonths, toEthiopian, getDaysPastEthiopianExpiry, getEthiopianMonthEnd, hasLatePenalty } from "@/lib/calendar";
+import { addEthiopianMonths, toEthiopian, getDaysPastEthiopianExpiry, getEthiopianMonthEnd, hasLatePenalty, getDaysInEthiopianMonth } from "@/lib/calendar";
 import Kenat from "kenat";
 
 function getLeaseArrearMonths(leaseStart: Date, approvedPayments: any[]): Date[] {
@@ -12,8 +12,14 @@ function getLeaseArrearMonths(leaseStart: Date, approvedPayments: any[]): Date[]
   const coveredMonthKeys = new Set<string>();
   
   for (const p of approvedPayments) {
-    const startEt = toEthiopian(new Date(p.dueDate));
+    let startEt = toEthiopian(new Date(p.dueDate));
     const endEt = toEthiopian(p.advanceUntil ? new Date(p.advanceUntil) : new Date(p.dueDate));
+    
+    if (p.advanceUntil) {
+      if (startEt.year > endEt.year || (startEt.year === endEt.year && startEt.month > endEt.month)) {
+        startEt = endEt;
+      }
+    }
     
     let tempYear = startEt.year;
     let tempMonth = startEt.month;
@@ -32,6 +38,17 @@ function getLeaseArrearMonths(leaseStart: Date, approvedPayments: any[]): Date[]
 
   let tempYear = startEt.year;
   let tempMonth = startEt.month;
+  
+  // Skip the starting month if the lease starts on the last day of the Ethiopian month
+  const maxDays = getDaysInEthiopianMonth(tempYear, tempMonth);
+  if (startEt.day === maxDays) {
+    tempMonth++;
+    if (tempMonth > 13) {
+      tempMonth = 1;
+      tempYear++;
+    }
+  }
+
   let iterations = 0;
   
   while (iterations < 60) {
@@ -180,8 +197,14 @@ export async function approvePayment(
       
       currentCoverageEnd = sortedApproved[0].coverageEnd;
     } else {
-      // If no approved payments, start one month before lease.startDate
-      currentCoverageEnd = addEthiopianMonths(new Date(currentPayment.lease.startDate), -1);
+      // If no approved payments, start one month before lease.startDate unless skipped
+      const startEt = toEthiopian(new Date(currentPayment.lease.startDate));
+      const maxDays = getDaysInEthiopianMonth(startEt.year, startEt.month);
+      if (startEt.day === maxDays) {
+        currentCoverageEnd = new Date(currentPayment.lease.startDate);
+      } else {
+        currentCoverageEnd = addEthiopianMonths(new Date(currentPayment.lease.startDate), -1);
+      }
     }
 
     let finalAdvanceUntil = currentCoverageEnd;
@@ -563,8 +586,14 @@ export async function approvePaymentSystem(
       
       currentCoverageEnd = sortedApproved[0].coverageEnd;
     } else {
-      // If no approved payments, start one month before lease.startDate
-      currentCoverageEnd = addEthiopianMonths(new Date(currentPayment.lease.startDate), -1);
+      // If no approved payments, start one month before lease.startDate unless skipped
+      const startEt = toEthiopian(new Date(currentPayment.lease.startDate));
+      const maxDays = getDaysInEthiopianMonth(startEt.year, startEt.month);
+      if (startEt.day === maxDays) {
+        currentCoverageEnd = new Date(currentPayment.lease.startDate);
+      } else {
+        currentCoverageEnd = addEthiopianMonths(new Date(currentPayment.lease.startDate), -1);
+      }
     }
 
     let finalAdvanceUntil = currentCoverageEnd;

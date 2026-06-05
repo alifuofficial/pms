@@ -1,4 +1,4 @@
-import { getDaysPastEthiopianExpiry, toEthiopian, hasLatePenalty } from "./calendar";
+import { getDaysPastEthiopianExpiry, toEthiopian, hasLatePenalty, getDaysInEthiopianMonth } from "./calendar";
 import Kenat from "kenat";
 
 /** Calculates penalty amount and tier for a given due date based on Ethiopian calendar, checking against existing database record if provided. */
@@ -34,8 +34,14 @@ export function getArrearMonths(leaseStart: Date, payments: any[]): Date[] {
   const approvedPayments = payments.filter(p => p.status === "APPROVED");
   
   for (const p of approvedPayments) {
-    const startEt = toEthiopian(new Date(p.dueDate));
+    let startEt = toEthiopian(new Date(p.dueDate));
     const endEt = toEthiopian(p.advanceUntil ? new Date(p.advanceUntil) : new Date(p.dueDate));
+    
+    if (p.advanceUntil) {
+      if (startEt.year > endEt.year || (startEt.year === endEt.year && startEt.month > endEt.month)) {
+        startEt = endEt;
+      }
+    }
     
     let tempYear = startEt.year;
     let tempMonth = startEt.month;
@@ -56,6 +62,17 @@ export function getArrearMonths(leaseStart: Date, payments: any[]): Date[] {
 
   let tempYear = startEt.year;
   let tempMonth = startEt.month;
+  
+  // Skip the starting month if the lease starts on the last day of the Ethiopian month
+  const maxDays = getDaysInEthiopianMonth(tempYear, tempMonth);
+  if (startEt.day === maxDays) {
+    tempMonth++;
+    if (tempMonth > 13) {
+      tempMonth = 1;
+      tempYear++;
+    }
+  }
+
   let iterations = 0;
   
   while (iterations < 60) {
