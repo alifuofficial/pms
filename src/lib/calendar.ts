@@ -81,7 +81,7 @@ export function getDaysInEthiopianMonth(year: number, month: number) {
  * or capping at the end of the month (e.g. Pagume).
  */
 export function addEthiopianMonths(date: Date, monthsToAdd: number): Date {
-  const etDate = new Kenat(date).getEthiopian();
+  const etDate = toEthiopian(date);
   let newYear = etDate.year;
   let newMonth = etDate.month + monthsToAdd;
 
