@@ -140,6 +140,32 @@ export async function getReportMetrics(startDate: Date, endDate: Date) {
     currentMonthStart.setMonth(currentMonthStart.getMonth() + 1);
   }
 
+  // Utility Revenue Aggregation
+  const periodUtilities = await prisma.utilityBill.findMany({
+    where: {
+      dueDate: {
+        gte: startDate,
+        lte: endDate,
+      }
+    }
+  });
+
+  const expectedElectricity = periodUtilities
+    .filter(b => b.type === "ELECTRICITY")
+    .reduce((sum, b) => sum + b.amount, 0);
+
+  const collectedElectricity = periodUtilities
+    .filter(b => b.type === "ELECTRICITY" && b.status === "PAID")
+    .reduce((sum, b) => sum + b.amount, 0);
+
+  const expectedWater = periodUtilities
+    .filter(b => b.type === "WATER")
+    .reduce((sum, b) => sum + b.amount, 0);
+
+  const collectedWater = periodUtilities
+    .filter(b => b.type === "WATER" && b.status === "PAID")
+    .reduce((sum, b) => sum + b.amount, 0);
+
   return {
     collectedRevenue,
     expectedRevenue,
@@ -151,6 +177,10 @@ export async function getReportMetrics(startDate: Date, endDate: Date) {
     occupiedUnits,
     recentPayments,
     advancePayments,
-    monthlyMetrics
+    monthlyMetrics,
+    expectedElectricity,
+    collectedElectricity,
+    expectedWater,
+    collectedWater
   };
 }

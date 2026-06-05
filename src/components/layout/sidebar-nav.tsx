@@ -18,7 +18,8 @@ import {
   UserCog,
   MessageSquareText,
   FolderOpen,
-  Activity
+  Activity,
+  Zap
 } from "lucide-react";
 
 import { signOut } from "next-auth/react";
@@ -50,6 +51,7 @@ const navItems: NavItem[] = [
   { title: "Properties", href: "/properties", icon: Building2, roles: ["ADMIN", "MANAGER"], isShared: true, group: "Management" },
   { title: "Units", href: "/units", icon: Home, roles: ["ADMIN", "MANAGER"], isShared: true, group: "Management" },
   { title: "Tenants", href: "/tenants", icon: Users, roles: ["ADMIN", "MANAGER"], isShared: true, group: "Management" },
+  { title: "Utilities", href: "/utilities", icon: Zap, roles: ["ADMIN", "MANAGER", "ACCOUNTANT"], isShared: true, group: "Management" },
   
   // Finance
   { title: "Payments", href: "/payments", icon: CreditCard, roles: ["ADMIN", "ACCOUNTANT"], isShared: true, group: "Finance" },

@@ -26,6 +26,7 @@ model User {
   approvedRefunds      Refund[]   @relation("ManagerApprovals")
   accountantProperties Property[] @relation("PropertyAccountant")
   managedProperties    Property[] @relation("PropertyManager")
+  utilityBills         UtilityBill[] @relation("TenantUtilityBills")
 }
 
 model Property {
@@ -78,6 +79,7 @@ model Lease {
   payments          Payment[]
   penalties         Penalty[]
   refunds           Refund[]
+  utilityBills      UtilityBill[]
 }
 
 model Payment {
@@ -260,4 +262,35 @@ enum RefundStatus {
   PENDING
   APPROVED
   REJECTED
+}
+
+enum UtilityType {
+  ELECTRICITY
+  WATER
+}
+
+model UtilityBill {
+  id              String        @id @default(cuid())
+  leaseId         String
+  tenantId        String
+  type            UtilityType
+  billingMonth    String        // e.g., "Sene 2018"
+  readingDate     DateTime      @default(now())
+  previousReading Float?
+  currentReading  Float?
+  usage           Float         // calculated usage (kWh or m³)
+  rate            Float         // rate per unit (e.g., ETB/kWh)
+  amount          Float         // usage * rate
+  dueDate         DateTime
+  paidAt          DateTime?
+  status          String        @default("UNPAID") // UNPAID, PENDING, PAID, REJECTED
+  receiptUrl      String?
+  senderName      String?
+  transactionId   String?
+  bankAccountId   String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  
+  lease           Lease         @relation(fields: [leaseId], references: [id], onDelete: Cascade)
+  tenant          User          @relation("TenantUtilityBills", fields: [tenantId], references: [id], onDelete: Cascade)
 }

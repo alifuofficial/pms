@@ -66,6 +66,10 @@ export async function sendSMS(
         }
       } else if (textOrTemplate === "otp-code" && variables?.code) {
         finalMessage = `Your Soreti PMS verification code is: ${variables.code}. Valid for 10 minutes.`;
+      } else if (textOrTemplate === "utility-bill-created") {
+        finalMessage = `Dear ${variables?.tenant_name || "Resident"}, your ${variables?.utility_type || "Utility"} bill for ${variables?.billing_month || "this month"} is ${variables?.amount || "0"} ${variables?.currency || "ETB"}. Please scan the QR code in your shop to submit payment.`;
+      } else if (textOrTemplate === "utility-payment-approved") {
+        finalMessage = `Dear ${variables?.tenant_name || "Resident"}, your utility payment of ${variables?.amount || "0"} ${variables?.currency || "ETB"} for ${variables?.utility_type || "Utility"} has been approved. Thank you!`;
       } else {
         console.error(`[SMS] Template not found: ${textOrTemplate}`);
         await prisma.smsLog.create({

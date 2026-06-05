@@ -91,6 +91,18 @@ async function main() {
       name: "Lease Activation",
       description: "Sent when a new tenant lease is activated.",
       content: "Welcome {{tenant_name}}! Your lease for Unit {{unit_number}} is now active. You can access the portal with your phone number."
+    },
+    {
+      slug: "utility-bill-created",
+      name: "Utility Bill Created",
+      description: "Sent when an admin/manager records a utility bill.",
+      content: "Dear {{tenant_name}}, your {{utility_type}} bill for {{billing_month}} is {{amount}} {{currency}}. Please scan the QR code in your shop to submit payment."
+    },
+    {
+      slug: "utility-payment-approved",
+      name: "Utility Payment Approval",
+      description: "Sent when a utility payment is verified and approved.",
+      content: "Dear {{tenant_name}}, your utility payment of {{amount}} {{currency}} for {{utility_type}} has been approved. Thank you!"
     }
   ];
 

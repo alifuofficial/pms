@@ -13,7 +13,9 @@ import {
   Home, 
   Download,
   Calendar as CalendarIcon,
-  Filter
+  Filter,
+  Zap,
+  Droplet
 } from "lucide-react";
 import { formatSystemDate, formatEthiopianMonthYear } from "@/lib/calendar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -34,6 +36,10 @@ interface ReportsViewProps {
     recentPayments: any[];
     advancePayments: any[];
     monthlyMetrics?: any[];
+    expectedElectricity?: number;
+    collectedElectricity?: number;
+    expectedWater?: number;
+    collectedWater?: number;
   };
   currency: string;
   calendarType: string;
@@ -165,6 +171,93 @@ export function ReportsView({ metrics, currency, calendarType, startDate, endDat
               <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
                 <Users size={20} />
               </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Utility Revenue Breakdown Section */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <Card className="border-slate-200 shadow-none bg-white rounded-xl">
+          <CardHeader className="p-5 flex flex-row items-center justify-between space-y-0 border-b border-slate-50">
+            <div className="space-y-0.5">
+              <CardTitle className="text-sm font-semibold flex items-center gap-1.5 text-slate-800">
+                <Zap className="h-4 w-4 text-yellow-500 fill-yellow-100" />
+                Electricity Revenues
+              </CardTitle>
+              <p className="text-[10px] text-slate-400 font-medium uppercase tracking-wider">Metered Power Billing</p>
+            </div>
+          </CardHeader>
+          <CardContent className="p-5 space-y-4">
+            <div className="flex justify-between items-baseline">
+              <span className="text-xs font-semibold text-slate-400 uppercase">Collected</span>
+              <span className="text-2xl font-black text-slate-950">
+                {currency} {(metrics.collectedElectricity || 0).toLocaleString()}
+              </span>
+            </div>
+            <div className="flex justify-between items-center text-xs font-medium border-t border-slate-100 pt-3">
+              <span className="text-slate-400">Expected Total:</span>
+              <span className="text-slate-800 font-semibold">{currency} {(metrics.expectedElectricity || 0).toLocaleString()}</span>
+            </div>
+            <div className="flex justify-between items-center text-xs font-medium">
+              <span className="text-slate-400">Collection Rate:</span>
+              <span className="text-slate-800 font-semibold">
+                {metrics.expectedElectricity && metrics.expectedElectricity > 0 
+                  ? Math.round(((metrics.collectedElectricity || 0) / metrics.expectedElectricity) * 100)
+                  : 0}%
+              </span>
+            </div>
+            <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+              <div 
+                className="bg-yellow-500 h-full" 
+                style={{ 
+                  width: `${metrics.expectedElectricity && metrics.expectedElectricity > 0 
+                    ? Math.min(100, Math.round(((metrics.collectedElectricity || 0) / metrics.expectedElectricity) * 100))
+                    : 0}%` 
+                }} 
+              />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-slate-200 shadow-none bg-white rounded-xl">
+          <CardHeader className="p-5 flex flex-row items-center justify-between space-y-0 border-b border-slate-50">
+            <div className="space-y-0.5">
+              <CardTitle className="text-sm font-semibold flex items-center gap-1.5 text-slate-850">
+                <Droplet className="h-4 w-4 text-blue-500 fill-blue-100" />
+                Water Revenues
+              </CardTitle>
+              <p className="text-[10px] text-slate-400 font-medium uppercase tracking-wider">Metered Flow Billing</p>
+            </div>
+          </CardHeader>
+          <CardContent className="p-5 space-y-4">
+            <div className="flex justify-between items-baseline">
+              <span className="text-xs font-semibold text-slate-400 uppercase">Collected</span>
+              <span className="text-2xl font-black text-slate-950">
+                {currency} {(metrics.collectedWater || 0).toLocaleString()}
+              </span>
+            </div>
+            <div className="flex justify-between items-center text-xs font-medium border-t border-slate-100 pt-3">
+              <span className="text-slate-400">Expected Total:</span>
+              <span className="text-slate-800 font-semibold">{currency} {(metrics.expectedWater || 0).toLocaleString()}</span>
+            </div>
+            <div className="flex justify-between items-center text-xs font-medium">
+              <span className="text-slate-400">Collection Rate:</span>
+              <span className="text-slate-800 font-semibold">
+                {metrics.expectedWater && metrics.expectedWater > 0 
+                  ? Math.round(((metrics.collectedWater || 0) / metrics.expectedWater) * 100)
+                  : 0}%
+              </span>
+            </div>
+            <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+              <div 
+                className="bg-blue-50 h-full" 
+                style={{ 
+                  width: `${metrics.expectedWater && metrics.expectedWater > 0 
+                    ? Math.min(100, Math.round(((metrics.collectedWater || 0) / metrics.expectedWater) * 100))
+                    : 0}%` 
+                }} 
+              />
             </div>
           </CardContent>
         </Card>

@@ -73,6 +73,12 @@ export async function getPublicUnitStatus(slug: string) {
     const activeLease = unit.leases.find(l => l.status === "ACTIVE" || l.status === "PENDING");
     const payments = activeLease?.payments || [];
     const penalties = activeLease?.penalties || [];
+    const utilityBills = activeLease
+      ? await prisma.utilityBill.findMany({
+          where: { leaseId: activeLease.id },
+          orderBy: { readingDate: "desc" }
+        })
+      : [];
 
     const latestApprovedPayment = [...payments].reverse().find(p => p.status === "APPROVED");
 
@@ -241,6 +247,7 @@ export async function getPublicUnitStatus(slug: string) {
         grandTotal,
         unpaidPenaltyTotal,
         unpaidPenalties,
+        utilityBills,
         nextDuePayment: nextDuePayment ? {
           ...nextDuePayment,
           unpaidPenaltyTotal,

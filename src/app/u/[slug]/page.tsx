@@ -1,5 +1,6 @@
 import { getPublicUnitStatus } from "@/lib/actions/qr";
 import { PublicReportPayment } from "@/components/shared/public-report-payment";
+import { PublicReportUtilityPayment } from "@/components/shared/public-report-utility-payment";
 import { prisma } from "@/lib/prisma";
 import { 
   Building2, 
@@ -14,9 +15,12 @@ import {
   ShieldCheck,
   Loader2,
   Wrench,
-  Hourglass
+  Hourglass,
+  Zap,
+  Droplet
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { formatSystemDate, formatEthiopianMonthYear } from "@/lib/calendar";
 import { differenceInDays, format } from "date-fns";
@@ -604,6 +608,85 @@ export default async function PublicUnitPage({ params }: { params: Promise<{ slu
             );
           })()}
         </div>
+
+        {/* Utility Bills Card */}
+        {lease && lease.utilityBills && lease.utilityBills.length > 0 && (
+          <div className="bg-white rounded-[2.5rem] shadow-2xl shadow-slate-900/5 overflow-hidden border border-slate-100 p-8 space-y-6">
+            <div className="flex items-center justify-between border-b border-slate-50 pb-4">
+              <div className="flex items-center gap-2">
+                <Zap size={18} className="text-yellow-500" />
+                <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest">Utility Payments</h3>
+              </div>
+              <Badge className="bg-slate-100 text-slate-600 border border-slate-150 shadow-none font-bold text-[9px] uppercase tracking-wider">
+                {lease.utilityBills.filter((b: any) => b.status !== 'PAID').length} Unpaid
+              </Badge>
+            </div>
+
+            <div className="space-y-4">
+              {lease.utilityBills.map((bill: any) => {
+                const isPaid = bill.status === "PAID";
+                const isPending = bill.status === "PENDING";
+                const isRejected = bill.status === "REJECTED";
+
+                return (
+                  <div key={bill.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100/80">
+                    <div className="flex items-center gap-3">
+                      <div className={cn(
+                        "w-9 h-9 rounded-xl flex items-center justify-center shadow-sm",
+                        bill.type === "ELECTRICITY" ? "bg-yellow-50 text-yellow-600" : "bg-blue-50 text-blue-600"
+                      )}>
+                        {bill.type === "ELECTRICITY" ? <Zap size={16} /> : <Droplet size={16} />}
+                      </div>
+                      <div className="text-left">
+                        <p className="text-xs font-black text-slate-900 uppercase">
+                          {bill.type === "ELECTRICITY" ? "Electricity" : "Water"} - {bill.billingMonth}
+                        </p>
+                        {bill.previousReading !== null && bill.currentReading !== null ? (
+                          <p className="text-[10px] text-slate-500 font-semibold mt-0.5">
+                            Usage: {bill.usage.toLocaleString()} {bill.type === "ELECTRICITY" ? "kWh" : "m³"} ({bill.previousReading} → {bill.currentReading})
+                          </p>
+                        ) : (
+                          <p className="text-[10px] text-slate-500 font-semibold mt-0.5">Flat consumption charge</p>
+                        )}
+                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mt-0.5">
+                          Due: {formatSystemDate(new Date(bill.dueDate), "ETHIOPIAN")}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="text-right flex flex-col items-end gap-1.5">
+                      <span className="font-mono text-xs font-black text-slate-900">
+                        {bill.amount.toLocaleString()} {settings.currency}
+                      </span>
+                      {isPaid ? (
+                        <Badge className="bg-emerald-50 text-emerald-700 border-emerald-150 shadow-none font-bold text-[8px] uppercase py-0.5">
+                          Paid
+                        </Badge>
+                      ) : isPending ? (
+                        <Badge className="bg-amber-50 text-amber-700 border-amber-150 shadow-none font-bold text-[8px] uppercase py-0.5 animate-pulse">
+                          Reviewing
+                        </Badge>
+                      ) : (
+                        <div className="flex items-center gap-1.5">
+                          {isRejected && (
+                            <Badge className="bg-red-50 text-red-700 border-red-150 shadow-none font-bold text-[8px] uppercase py-0.5 mr-1">
+                              Rejected
+                            </Badge>
+                          )}
+                          <PublicReportUtilityPayment
+                            bill={bill}
+                            currency={settings.currency}
+                            bankAccounts={settings.bankAccounts}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Security Meta */}
         <div className="flex flex-col items-center justify-center gap-4 pt-4">

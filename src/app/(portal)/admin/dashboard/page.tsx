@@ -41,7 +41,8 @@ export default async function AdminDashboard() {
     (async () => ({
       totalProperties: await prisma.property.count(),
       activeTenants: await prisma.user.count({ where: { role: "TENANT" } }),
-      pendingApprovals: await prisma.payment.count({ where: { status: "PENDING" } }),
+      pendingApprovals: (await prisma.payment.count({ where: { status: "PENDING" } })) + 
+                        (await prisma.utilityBill.count({ where: { status: "PENDING" } })),
       totalRevenue: await (async () => {
         const rent = await prisma.payment.aggregate({
           where: { status: "APPROVED" },
@@ -51,7 +52,11 @@ export default async function AdminDashboard() {
           where: { status: "PAID" },
           _sum: { paidAmount: true }
         });
-        return (rent._sum.amount || 0) + (penalty._sum.paidAmount || 0);
+        const utility = await prisma.utilityBill.aggregate({
+          where: { status: "PAID" },
+          _sum: { amount: true }
+        });
+        return (rent._sum.amount || 0) + (penalty._sum.paidAmount || 0) + (utility._sum.amount || 0);
       })()
     }))()
   ]);
