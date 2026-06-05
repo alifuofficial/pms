@@ -11,7 +11,8 @@ import {
   ArrowUpRight,
   Activity,
   UserCog,
-  ChevronRight
+  ChevronRight,
+  ArrowRight
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -77,6 +78,22 @@ export default async function AdminDashboard() {
 
   return (
     <div className="max-w-[1200px] mx-auto space-y-6 animate-in fade-in duration-500 pb-10">
+      {/* Demo Sandbox Alert Banner */}
+      <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm">
+        <div className="flex gap-3 items-start md:items-center">
+          <Activity className="h-5 w-5 text-blue-600 shrink-0 mt-0.5 md:mt-0 animate-pulse" />
+          <div>
+            <h3 className="text-sm font-semibold text-blue-800">Want to test features without touching the real database?</h3>
+            <p className="text-xs text-blue-700 font-medium font-sans">Use the Demo Sandbox to simulate properties, tenants, ledger entries, and late fee calculations in a safe environment.</p>
+          </div>
+        </div>
+        <Link href="/admin/demo/dashboard">
+          <Button size="sm" className="bg-blue-600 hover:bg-blue-700 text-white h-9 rounded-lg font-semibold shadow-none self-start md:self-auto uppercase text-[10px] tracking-wider shrink-0">
+            Switch to Demo Sandbox <ArrowRight className="ml-2 h-3.5 w-3.5" />
+          </Button>
+        </Link>
+      </div>
+
       {/* Header Section */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="space-y-0.5">

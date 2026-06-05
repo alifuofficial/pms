@@ -76,13 +76,23 @@ export function SidebarNav({ role, user }: { role: string; user: any }) {
   const { state } = useSidebar();
   const isCollapsed = state === "collapsed";
   const userRoleLower = role.toLowerCase();
+  const isDemo = pathname.startsWith("/admin/demo");
   
-  const filteredItems = navItems.filter((item) => item.roles.includes(role));
+  const filteredItems = navItems.filter((item) => {
+    if (!item.roles.includes(role)) return false;
+    if (isDemo) {
+      // Show only simulated pages in Demo mode
+      const allowedDemoHrefs = ["/dashboard", "/properties", "/units", "/tenants", "/payments", "/settings"];
+      if (item.href === "/demo") return true;
+      if (!allowedDemoHrefs.includes(item.href)) return false;
+    }
+    return true;
+  });
 
   return (
     <Sidebar collapsible="icon" className="border-r border-slate-200 bg-white">
       <SidebarHeader className="p-4">
-        <Link href={`/${userRoleLower}/dashboard`} className="flex items-center gap-2 group">
+        <Link href={isDemo ? "/admin/demo/dashboard" : `/${userRoleLower}/dashboard`} className="flex items-center gap-2 group">
           <div className="w-8 h-8 rounded-lg bg-slate-900 flex items-center justify-center shadow-none shrink-0">
             <Building2 className="h-5 w-5 text-white" />
           </div>
@@ -92,6 +102,14 @@ export function SidebarNav({ role, user }: { role: string; user: any }) {
             </span>
           )}
         </Link>
+        {isDemo && !isCollapsed && (
+          <div className="mt-3 p-2 bg-amber-50 border border-amber-200 rounded-lg text-center">
+            <span className="text-[10px] font-bold text-amber-800 uppercase tracking-wider block">Demo Sandbox Active</span>
+            <Link href="/admin/dashboard" className="text-[10px] text-blue-600 hover:text-blue-700 hover:underline font-bold mt-1 block">
+              Exit to Live Mode
+            </Link>
+          </div>
+        )}
       </SidebarHeader>
 
       <SidebarContent className="px-3 py-2">
@@ -111,7 +129,10 @@ export function SidebarNav({ role, user }: { role: string; user: any }) {
                 </p>
               )}
               {items.map((item) => {
-                const finalHref = item.isShared ? `/${userRoleLower}${item.href}` : item.href;
+                let finalHref = item.isShared ? `/${userRoleLower}${item.href}` : item.href;
+                if (isDemo && item.isShared && item.href !== "/demo" && item.href.startsWith("/")) {
+                  finalHref = `/admin/demo${item.href}`;
+                }
                 const isActive = pathname === finalHref;
                 
                 return (
