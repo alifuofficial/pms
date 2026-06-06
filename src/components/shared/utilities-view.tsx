@@ -21,10 +21,12 @@ import {
   Loader2, 
   DollarSign, 
   AlertCircle,
-  Eye
+  Eye,
+  Download,
+  Upload
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { getEthiopianMonths, getEthiopianYearRange, formatSystemDate } from "@/lib/calendar";
+import { getEthiopianMonths, getEthiopianYearRange, formatSystemDate, toEthiopian, getNowInAddisAbaba } from "@/lib/calendar";
 import { 
   getUtilityBills, 
   createUtilityBillsBatch, 
@@ -53,8 +55,30 @@ export function UtilitiesView({
   const [selectedPropertyId, setSelectedPropertyId] = useState(properties[0]?.id || "");
   const [utilityType, setUtilityType] = useState<"ELECTRICITY" | "WATER">("ELECTRICITY");
   
-  // Billing tab states
-  const [billingMonth, setBillingMonth] = useState("Sene 2018");
+  const etMonthsList = [
+    { id: 1, eng: "Meskerem", label: "መስከረም (Meskerem)" },
+    { id: 2, eng: "Tikimt", label: "ጥቅምት (Tikimt)" },
+    { id: 3, eng: "Hidar", label: "ህዳር (Hidar)" },
+    { id: 4, eng: "Tahsas", label: "ታህሳስ (Tahsas)" },
+    { id: 5, eng: "Tir", label: "ጥር (Tir)" },
+    { id: 6, eng: "Yekatit", label: "የካቲት (Yekatit)" },
+    { id: 7, eng: "Megabit", label: "መጋቢት (Megabit)" },
+    { id: 8, eng: "Miazia", label: "ሚያዝያ (Miazia)" },
+    { id: 9, eng: "Ginbot", label: "ግንቦት (Ginbot)" },
+    { id: 10, eng: "Sene", label: "ሰኔ (Sene)" },
+    { id: 11, eng: "Hamle", label: "ሐምሌ (Hamle)" },
+    { id: 12, eng: "Nehase", label: "ነሐሴ (Nehase)" },
+    { id: 13, eng: "Pagume", label: "ጳጉሜ (Pagume)" }
+  ];
+
+  // Initialize with current Ethiopian month and year
+  const defaultEtDate = toEthiopian(getNowInAddisAbaba());
+  const initialMonthObj = etMonthsList.find(m => m.id === defaultEtDate.month) || etMonthsList[9]; // default Sene
+
+  const [selectedEtMonth, setSelectedEtMonth] = useState(initialMonthObj.eng);
+  const [selectedEtYear, setSelectedEtYear] = useState(defaultEtDate.year.toString());
+  
+  const billingMonth = `${selectedEtMonth} ${selectedEtYear}`;
   const [dueDate, setDueDate] = useState("");
   const [defaultRate, setDefaultRate] = useState(utilityType === "ELECTRICITY" ? "5" : "15");
   const [unitsData, setUnitsData] = useState<any[]>([]);
@@ -213,6 +237,160 @@ export function UtilitiesView({
     }
   };
 
+  const handleDownloadCSVTemplate = () => {
+    if (unitsData.length === 0) {
+      toast.error("No occupied units loaded to export.");
+      return;
+    }
+
+    const headers = ["Unit Number", "Resident Name", "Previous Reading", "Current Reading", "Rate"];
+    const rows = unitsData.map(u => [
+      u.unitNumber,
+      u.tenantName,
+      u.previousReading,
+      "", // Empty for the manager to fill in
+      u.rate
+    ]);
+
+    const escapeCSV = (val: any) => {
+      const str = String(val === null || val === undefined ? "" : val);
+      if (str.includes(",") || str.includes('"') || str.includes("\n") || str.includes("\r")) {
+        return `"${str.replace(/"/g, '""')}"`;
+      }
+      return str;
+    };
+
+    const csvContent = [
+      headers.map(escapeCSV).join(","),
+      ...rows.map(row => row.map(escapeCSV).join(","))
+    ].join("\r\n");
+
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `utilities_template_${utilityType.toLowerCase()}_${billingMonth.replace(/\s+/g, "_")}.csv`);
+    link.style.visibility = "hidden";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    toast.success("CSV Template downloaded successfully! Open in Excel, fill in the 'Current Reading' column, and upload.");
+  };
+
+  const handleUploadCSV = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target?.result as string;
+      if (!text) {
+        toast.error("Could not read CSV file content.");
+        return;
+      }
+
+      try {
+        const lines = text.split(/\r?\n/);
+        if (lines.length < 2) {
+          toast.error("CSV file is empty or missing headers.");
+          return;
+        }
+
+        const headers = lines[0].split(",").map(h => h.trim().replace(/^"|"$/g, ""));
+        
+        // Find indices
+        const unitNumIdx = headers.findIndex(h => h.toLowerCase().includes("unit"));
+        const currReadIdx = headers.findIndex(h => h.toLowerCase().includes("current"));
+        const rateIdx = headers.findIndex(h => h.toLowerCase().includes("rate"));
+
+        if (unitNumIdx === -1 || currReadIdx === -1) {
+          toast.error("CSV must contain 'Unit Number' and 'Current Reading' columns.");
+          return;
+        }
+
+        let importedCount = 0;
+        let unmatchedUnits: string[] = [];
+
+        setUnitsData(prev => {
+          const updated = [...prev];
+          
+          for (let i = 1; i < lines.length; i++) {
+            const line = lines[i].trim();
+            if (!line) continue;
+
+            // Simple robust cell parser supporting quotes
+            const cells = [];
+            let current = "";
+            let inQuotes = false;
+            for (let j = 0; j < line.length; j++) {
+              const char = line[j];
+              if (char === '"') {
+                inQuotes = !inQuotes;
+              } else if (char === ',' && !inQuotes) {
+                cells.push(current.trim().replace(/^"|"$/g, "").replace(/""/g, '"'));
+                current = "";
+              } else {
+                current += char;
+              }
+            }
+            cells.push(current.trim().replace(/^"|"$/g, "").replace(/""/g, '"'));
+
+            if (cells.length < 2) continue;
+
+            const csvUnitNum = cells[unitNumIdx];
+            const csvCurrentReading = cells[currReadIdx];
+            const csvRate = rateIdx !== -1 ? cells[rateIdx] : null;
+
+            if (!csvUnitNum || !csvCurrentReading) continue;
+
+            // Fuzzy matching
+            const clean = (s: string) => s.replace(/\D/g, "");
+            const csvClean = clean(csvUnitNum);
+
+            const unitIdx = updated.findIndex(u => 
+              u.unitNumber === csvUnitNum || 
+              clean(u.unitNumber) === csvClean
+            );
+
+            if (unitIdx !== -1) {
+              const currentVal = parseFloat(csvCurrentReading);
+              if (!isNaN(currentVal)) {
+                updated[unitIdx].currentReading = csvCurrentReading;
+                if (csvRate && !isNaN(parseFloat(csvRate))) {
+                  updated[unitIdx].rate = csvRate;
+                }
+                updated[unitIdx].included = true;
+                importedCount++;
+              }
+            } else {
+              unmatchedUnits.push(csvUnitNum);
+            }
+          }
+
+          return updated;
+        });
+
+        // Reset file input
+        e.target.value = "";
+
+        if (importedCount > 0) {
+          toast.success(`Successfully populated readings for ${importedCount} units! Please verify the computed values in the table below before saving.`);
+        } else {
+          toast.error("No valid readings could be imported. Make sure to fill in 'Current Reading' as numeric values.");
+        }
+
+        if (unmatchedUnits.length > 0) {
+          toast.warning(`Unmatched CSV rows: ${unmatchedUnits.slice(0, 5).join(", ")}${unmatchedUnits.length > 5 ? "..." : ""}`);
+        }
+
+      } catch (err) {
+        console.error(err);
+        toast.error("Error parsing CSV file.");
+      }
+    };
+    reader.readAsText(file);
+  };
+
   const handleVerifyPayment = async (status: "APPROVED" | "REJECTED") => {
     if (!selectedBill) return;
 
@@ -330,14 +508,29 @@ export function UtilitiesView({
               {/* Configuration Panel */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 p-4 bg-slate-50 rounded-xl border border-slate-100">
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Billing Month (Ethiopian)</label>
-                  <Input 
-                    required 
-                    value={billingMonth} 
-                    onChange={e => setBillingMonth(e.target.value)} 
-                    placeholder="e.g. Sene 2018" 
-                    className="bg-white h-9 text-xs font-bold"
-                  />
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Billing Month (Ethiopian)</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Select value={selectedEtMonth} onValueChange={(val) => val && setSelectedEtMonth(val)}>
+                      <SelectTrigger className="h-9 text-xs bg-white font-bold">
+                        <SelectValue placeholder="Month" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {etMonthsList.map(m => (
+                          <SelectItem key={m.eng} value={m.eng}>{m.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Select value={selectedEtYear} onValueChange={(val) => val && setSelectedEtYear(val)}>
+                      <SelectTrigger className="h-9 text-xs bg-white font-bold">
+                        <SelectValue placeholder="Year" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {getEthiopianYearRange().map(y => (
+                          <SelectItem key={y} value={y.toString()}>{y}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Payment Due Date</label>
@@ -360,6 +553,43 @@ export function UtilitiesView({
                     placeholder="e.g. 5.0"
                     className="bg-white h-9 text-xs font-bold"
                   />
+                </div>
+              </div>
+
+              {/* CSV Import/Export Actions */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 bg-slate-50 rounded-xl border border-slate-100 text-xs">
+                <div className="flex items-center gap-1.5 text-slate-650 font-bold uppercase tracking-wider text-[10px]">
+                  <FileText size={14} className="text-indigo-500 shrink-0" />
+                  <span>Bulk CSV Utilities Processing:</span>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleDownloadCSVTemplate}
+                    disabled={unitsData.length === 0}
+                    className="h-9 text-[10px] font-bold uppercase tracking-widest border-slate-200 text-slate-600 hover:text-slate-800 hover:bg-slate-50 rounded-lg shadow-none"
+                  >
+                    <Download className="mr-1.5 h-3.5 w-3.5" /> Download Template
+                  </Button>
+                  
+                  <div className="relative">
+                    <input
+                      type="file"
+                      accept=".csv"
+                      onChange={handleUploadCSV}
+                      disabled={unitsData.length === 0}
+                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10 disabled:cursor-not-allowed"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={unitsData.length === 0}
+                      className="h-9 text-[10px] font-bold uppercase tracking-widest border-indigo-200 text-indigo-650 bg-indigo-50/50 hover:bg-indigo-100 rounded-lg shadow-none"
+                    >
+                      <Upload className="mr-1.5 h-3.5 w-3.5" /> Upload CSV
+                    </Button>
+                  </div>
                 </div>
               </div>
 
