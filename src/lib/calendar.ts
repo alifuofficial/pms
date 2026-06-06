@@ -3,7 +3,8 @@ import Kenat from "kenat";
 export function formatSystemDate(date: Date, calendarType: string) {
   if (calendarType === "ETHIOPIAN") {
     try {
-      const addisDate = new Date(date.toLocaleString("en-US", { timeZone: "Africa/Addis_Ababa" }));
+      const normalized = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 12, 0, 0);
+      const addisDate = new Date(normalized.toLocaleString("en-US", { timeZone: "Africa/Addis_Ababa" }));
       const etDate = new Kenat(addisDate);
       // Use the instance method formatWithWeekday for the desired "Day, Month Date, Year" format
       return etDate.formatWithWeekday("amharic", false);
@@ -23,8 +24,7 @@ export function formatSystemDate(date: Date, calendarType: string) {
 
 export function formatEthiopianMonthYear(date: Date) {
   try {
-    const addisDate = new Date(date.toLocaleString("en-US", { timeZone: "Africa/Addis_Ababa" }));
-    const etDate = new Kenat(addisDate).getEthiopian();
+    const etDate = toEthiopian(date);
     const months = getEthiopianMonths();
     const monthName = months.find(m => m.id === etDate.month)?.name.split(" ")[0];
     return `${monthName} ${etDate.year}`;
@@ -105,18 +105,17 @@ export function addEthiopianMonths(date: Date, monthsToAdd: number): Date {
  */
 export function getEthiopianMonthEnd(date: Date): Date {
   try {
-    const addisDate = new Date(date.toLocaleString("en-US", { timeZone: "Africa/Addis_Ababa" }));
-    const etDate = new Kenat(addisDate).getEthiopian();
+    const etDate = toEthiopian(date);
     const lastDay = getDaysInEthiopianMonth(etDate.year, etDate.month);
     // Build the last-day Ethiopian date and convert back to Gregorian
     const lastDayEt = new Kenat({ year: etDate.year, month: etDate.month, day: lastDay });
     const greg = lastDayEt.getGregorian();
-    return new Date(greg.year, greg.month - 1, greg.day);
+    return new Date(greg.year, greg.month - 1, greg.day, 12, 0, 0); // Noon for safety
   } catch {
     // Fallback: last day of Gregorian month
     const d = new Date(date);
     d.setMonth(d.getMonth() + 1, 0);
-    return d;
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 12, 0, 0); // Noon for safety
   }
 }
 
@@ -127,8 +126,7 @@ export function getEthiopianMonthEnd(date: Date): Date {
  */
 export function getDaysIntoEthiopianMonth(date: Date): number {
   const now = getNowInAddisAbaba();
-  const addisDate = new Date(date.toLocaleString("en-US", { timeZone: "Africa/Addis_Ababa" }));
-  const etDate = new Kenat(addisDate).getEthiopian();
+  const etDate = toEthiopian(date);
   // Get Gregorian date for Day 1 of this Ethiopian month
   const monthStartEt = new Kenat({ year: etDate.year, month: etDate.month, day: 1 });
   const gregStart = monthStartEt.getGregorian();
@@ -180,7 +178,8 @@ export function getDaysPastEthiopianExpiry(expiryDate: Date): number {
 }
 
 export function toEthiopian(date: Date) {
-  const addisDate = new Date(date.toLocaleString("en-US", { timeZone: "Africa/Addis_Ababa" }));
+  const normalized = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 12, 0, 0);
+  const addisDate = new Date(normalized.toLocaleString("en-US", { timeZone: "Africa/Addis_Ababa" }));
   return new Kenat(addisDate).getEthiopian();
 }
 
