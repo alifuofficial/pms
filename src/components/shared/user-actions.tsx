@@ -19,7 +19,8 @@ import {
   Loader2, 
   Menu,
   ShieldAlert,
-  Plus
+  Plus,
+  Calendar
 } from "lucide-react";
 import { 
   DropdownMenu, 
@@ -31,6 +32,7 @@ import { updateUser, deleteUser } from "@/lib/actions/users";
 import { toast } from "sonner";
 import { AssignUnitDialog } from "./assign-unit-dialog";
 import { AssignPropertiesDialog } from "./assign-properties-dialog";
+import { ManageLeasesDialog } from "./manage-leases-dialog";
 import { UserPlus, Building } from "lucide-react";
 
 
@@ -40,6 +42,7 @@ export function UserActions({ user, currency = "ETB" }: { user: any, currency?: 
   const [isDeleting, setIsDeleting] = useState(false);
   const [isAssigning, setIsAssigning] = useState(false);
   const [isAssigningProperties, setIsAssigningProperties] = useState(false);
+  const [isManagingLeases, setIsManagingLeases] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
   
@@ -94,13 +97,21 @@ export function UserActions({ user, currency = "ETB" }: { user: any, currency?: 
             <Edit size={12} /> Edit Account
           </DropdownMenuItem>
 
-          {user.role === "TENANT" && (
-            <DropdownMenuItem 
-              onClick={() => setIsAssigning(true)}
-              className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-blue-600 rounded-lg cursor-pointer hover:bg-blue-50"
-            >
-              <UserPlus size={12} /> Assign New Unit
-            </DropdownMenuItem>
+           {user.role === "TENANT" && (
+            <>
+              <DropdownMenuItem 
+                onClick={() => setIsAssigning(true)}
+                className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-blue-600 rounded-lg cursor-pointer hover:bg-blue-50"
+              >
+                <UserPlus size={12} /> Assign New Unit
+              </DropdownMenuItem>
+              <DropdownMenuItem 
+                onClick={() => setIsManagingLeases(true)}
+                className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-teal-600 rounded-lg cursor-pointer hover:bg-teal-50"
+              >
+                <Calendar size={12} /> Manage Leases
+              </DropdownMenuItem>
+            </>
           )}
 
           {(user.role === "MANAGER" || user.role === "ACCOUNTANT") && (
@@ -247,6 +258,14 @@ export function UserActions({ user, currency = "ETB" }: { user: any, currency?: 
           ...(user.managedProperties?.map((p: any) => p.id) || []),
           ...(user.accountantProperties?.map((p: any) => p.id) || [])
         ]}
+      />
+
+      <ManageLeasesDialog
+        open={isManagingLeases}
+        onOpenChange={setIsManagingLeases}
+        tenantId={user.id}
+        tenantName={user.name}
+        leases={user.leases || []}
       />
     </>
   );

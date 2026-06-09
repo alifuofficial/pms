@@ -351,3 +351,100 @@ export async function updateUserProfile(data: {
     return { success: false, error: `Failed to update profile: ${error.message || error}` };
   }
 }
+
+export async function updateLeaseDates(leaseId: string, startDate: Date, endDate: Date) {
+  const sessionUser = await resolveSessionUser();
+  if (!sessionUser || (sessionUser.role !== "ADMIN" && sessionUser.role !== "MANAGER")) {
+    return { success: false, error: "Unauthorized" };
+  }
+
+  try {
+    const oldLease = await prisma.lease.findUnique({
+      where: { id: leaseId },
+      include: { payments: true }
+    });
+
+    if (!oldLease) {
+      return { success: false, error: "Lease not found." };
+    }
+
+    const oldStartDate = new Date(oldLease.startDate);
+    
+    // Shift payment dueDates and advanceUntil dates by the difference in months
+    const { toEthiopian } = await import("@/lib/calendar");
+    const oldEt = toEthiopian(oldStartDate);
+    const newEt = toEthiopian(new Date(startDate));
+    
+    const monthDiff = (newEt.year - oldEt.year) * 13 + (newEt.month - oldEt.month);
+    
+    await prisma.$transaction(async (tx) => {
+      // 1. Update lease dates
+      await tx.lease.update({
+        where: { id: leaseId },
+        data: {
+          startDate,
+          endDate,
+        }
+      });
+
+      // 2. Shift all associated payments
+      if (monthDiff !== 0) {
+        const { addEthiopianMonths } = await import("@/lib/calendar");
+        for (const payment of oldLease.payments) {
+          const updatedDueDate = addEthiopianMonths(new Date(payment.dueDate), monthDiff);
+          const updatedAdvanceUntil = payment.advanceUntil 
+            ? addEthiopianMonths(new Date(payment.advanceUntil), monthDiff)
+            : null;
+
+          await tx.payment.update({
+            where: { id: payment.id },
+            data: {
+              dueDate: updatedDueDate,
+              advanceUntil: updatedAdvanceUntil,
+            }
+          });
+        }
+      } else {
+        // If start date changed but monthDiff is 0 (i.e. day changed within the same month),
+        // we should still ensure the initial payment's dueDate matches the new lease startDate.
+        for (const payment of oldLease.payments) {
+          if (new Date(payment.dueDate).getTime() === oldStartDate.getTime()) {
+            await tx.payment.update({
+              where: { id: payment.id },
+              data: {
+                dueDate: startDate
+              }
+            });
+          }
+        }
+      }
+
+      // 3. Create Audit Log
+      await tx.auditLog.create({
+        data: {
+          userId: sessionUser.id,
+          action: `Modified lease dates for lease ${leaseId}. Shifted payments by ${monthDiff} months.`,
+          actionType: "LEASE_UPDATE",
+          oldValue: JSON.stringify({ startDate: oldLease.startDate, endDate: oldLease.endDate }),
+          newValue: JSON.stringify({ startDate, endDate }),
+          metadata: JSON.stringify({ leaseId, monthDiff })
+        }
+      });
+    });
+
+    revalidatePath("/admin/tenants");
+    revalidatePath("/admin/units");
+    revalidatePath("/accountant/payments");
+    revalidatePath("/accountant/dashboard");
+    revalidatePath("/tenant/leases");
+    revalidatePath("/tenant/payments");
+    revalidatePath("/manager/tenants");
+    revalidatePath("/", "layout");
+    
+    return { success: true };
+  } catch (error: any) {
+    console.error("Update Lease Dates Error:", error);
+    return { success: false, error: `Failed to update lease dates: ${error.message || error}` };
+  }
+}
+
