@@ -10,7 +10,7 @@ const nextConfig: NextConfig = {
         headers: [
           {
             key: "Content-Security-Policy",
-            value: "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://avatar.vercel.sh; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; upgrade-insecure-requests;",
+            value: "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://avatar.vercel.sh https://storage.soretiinternational.com; font-src 'self' data:; connect-src 'self'; frame-src 'self' https://storage.soretiinternational.com; frame-ancestors 'none'; upgrade-insecure-requests;",
           },
           {
             key: "X-Frame-Options",
