@@ -178,9 +178,25 @@ export function getDaysPastEthiopianExpiry(expiryDate: Date): number {
 }
 
 export function toEthiopian(date: Date) {
-  const normalized = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 12, 0, 0);
-  const addisDate = new Date(normalized.toLocaleString("en-US", { timeZone: "Africa/Addis_Ababa" }));
-  return new Kenat(addisDate).getEthiopian();
+  const fmt = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Africa/Addis_Ababa",
+    year: "numeric",
+    month: "numeric",
+    day: "numeric"
+  });
+  
+  const parts = fmt.formatToParts(date);
+  const partMap: Record<string, string> = {};
+  for (const part of parts) {
+    partMap[part.type] = part.value;
+  }
+  
+  const year = parseInt(partMap.year);
+  const month = parseInt(partMap.month);
+  const day = parseInt(partMap.day);
+  
+  const gregDate = new Date(year, month - 1, day, 12, 0, 0);
+  return new Kenat(gregDate).getEthiopian();
 }
 
 export function hasLatePenalty(dueDate: Date, settings: any): boolean {
