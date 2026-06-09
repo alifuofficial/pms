@@ -448,3 +448,78 @@ export async function updateLeaseDates(leaseId: string, startDate: Date, endDate
   }
 }
 
+export async function terminateLease(leaseId: string) {
+  const sessionUser = await resolveSessionUser();
+  if (!sessionUser || (sessionUser.role !== "ADMIN" && sessionUser.role !== "MANAGER")) {
+    return { success: false, error: "Unauthorized" };
+  }
+
+  try {
+    const lease = await prisma.lease.findUnique({
+      where: { id: leaseId },
+      include: { unit: true }
+    });
+
+    if (!lease) {
+      return { success: false, error: "Lease not found." };
+    }
+
+    await prisma.$transaction(async (tx) => {
+      // 1. Update lease status to TERMINATED
+      await tx.lease.update({
+        where: { id: leaseId },
+        data: { status: "TERMINATED" }
+      });
+
+      // 2. Reject any pending payments associated with this lease
+      await tx.payment.updateMany({
+        where: { leaseId, status: "PENDING" },
+        data: { status: "REJECTED" }
+      });
+
+      // 3. Update unit status to AVAILABLE if no other active/pending leases occupy it
+      const activeLeases = await tx.lease.count({
+        where: {
+          unitId: lease.unitId,
+          status: { in: ["ACTIVE", "PENDING"] },
+          id: { not: leaseId }
+        }
+      });
+
+      if (activeLeases === 0) {
+        await tx.unit.update({
+          where: { id: lease.unitId },
+          data: { status: "AVAILABLE" }
+        });
+      }
+
+      // 4. Create Audit Log
+      await tx.auditLog.create({
+        data: {
+          userId: sessionUser.id,
+          action: `Terminated/Canceled lease ${leaseId} for unit ${lease.unit.unitNumber}`,
+          actionType: "LEASE_UPDATE",
+          oldValue: JSON.stringify({ status: lease.status }),
+          newValue: JSON.stringify({ status: "TERMINATED" }),
+          metadata: JSON.stringify({ leaseId, unitId: lease.unitId })
+        }
+      });
+    });
+
+    revalidatePath("/admin/tenants");
+    revalidatePath("/admin/units");
+    revalidatePath("/accountant/payments");
+    revalidatePath("/accountant/dashboard");
+    revalidatePath("/tenant/leases");
+    revalidatePath("/tenant/payments");
+    revalidatePath("/manager/tenants");
+    revalidatePath("/", "layout");
+
+    return { success: true };
+  } catch (error: any) {
+    console.error("Terminate Lease Error:", error);
+    return { success: false, error: `Failed to terminate lease: ${error.message || error}` };
+  }
+}
+
+

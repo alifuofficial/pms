@@ -20,8 +20,9 @@ import {
   X,
   Clock
 } from "lucide-react";
-import { updateLeaseDates } from "@/lib/actions/users";
+import { updateLeaseDates, terminateLease } from "@/lib/actions/users";
 import { toast } from "sonner";
+import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import Kenat from "kenat";
 import { 
@@ -47,7 +48,9 @@ export function ManageLeasesDialog({
   tenantName, 
   leases = [] 
 }: ManageLeasesDialogProps) {
+  const router = useRouter();
   const [editingLeaseId, setEditingLeaseId] = useState<string | null>(null);
+  const [confirmTerminateLeaseId, setConfirmTerminateLeaseId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
   // Date selection states
@@ -61,6 +64,7 @@ export function ManageLeasesDialog({
     setEthStart({ year: startEt.year, month: startEt.month, day: startEt.day });
     setEthEnd({ year: endEt.year, month: endEt.month, day: endEt.day });
     setEditingLeaseId(lease.id);
+    setConfirmTerminateLeaseId(null);
   };
 
   const cancelEditing = () => {
@@ -85,11 +89,31 @@ export function ManageLeasesDialog({
       if (result.success) {
         toast.success("Lease dates updated successfully.");
         setEditingLeaseId(null);
+        router.refresh();
       } else {
         toast.error(result.error || "Failed to update lease dates.");
       }
     } catch (err) {
       toast.error("Failed to parse selected dates.");
+      console.error(err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleTerminate = async (leaseId: string) => {
+    setIsLoading(true);
+    try {
+      const result = await terminateLease(leaseId);
+      if (result.success) {
+        toast.success("Lease cancelled successfully.");
+        setConfirmTerminateLeaseId(null);
+        router.refresh();
+      } else {
+        toast.error(result.error || "Failed to cancel lease.");
+      }
+    } catch (err) {
+      toast.error("Failed to cancel lease.");
       console.error(err);
     } finally {
       setIsLoading(false);
@@ -216,6 +240,29 @@ export function ManageLeasesDialog({
                         </Button>
                       </div>
                     </div>
+                  ) : confirmTerminateLeaseId === lease.id ? (
+                    <div className="pt-2 border-t border-slate-100 flex items-center justify-between bg-red-50/50 p-2.5 rounded-xl border border-red-100/60 animate-in fade-in duration-200">
+                      <span className="text-[10px] font-bold text-red-700 uppercase tracking-tight">Cancel this lease?</span>
+                      <div className="flex gap-1.5">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 text-[9px] font-bold uppercase tracking-wider rounded-lg border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                          onClick={() => setConfirmTerminateLeaseId(null)}
+                          disabled={isLoading}
+                        >
+                          No
+                        </Button>
+                        <Button
+                          size="sm"
+                          className="h-7 text-[9px] font-bold uppercase tracking-wider rounded-lg bg-red-600 text-white hover:bg-red-700"
+                          onClick={() => handleTerminate(lease.id)}
+                          disabled={isLoading}
+                        >
+                          {isLoading ? <Loader2 size={10} className="animate-spin mr-1" /> : <X size={10} className="mr-1" />} Yes, Cancel
+                        </Button>
+                      </div>
+                    </div>
                   ) : (
                     <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
                       <div className="space-y-0.5">
@@ -226,14 +273,27 @@ export function ManageLeasesDialog({
                           Gregorian: {new Date(lease.startDate).toLocaleDateString()} to {new Date(lease.endDate).toLocaleDateString()}
                         </p>
                       </div>
-                      <Button 
-                        size="sm" 
-                        variant="ghost" 
-                        className="h-8 text-[10px] font-bold uppercase tracking-widest text-slate-600 bg-white hover:bg-slate-100 rounded-lg border border-slate-200/80 px-3"
-                        onClick={() => startEditing(lease)}
-                      >
-                        <Edit size={12} className="mr-1" /> Edit Month
-                      </Button>
+                      <div className="flex gap-1.5">
+                        <Button 
+                          size="sm" 
+                          variant="ghost" 
+                          className="h-8 text-[10px] font-bold uppercase tracking-widest text-red-500 bg-white hover:bg-red-50 hover:text-red-600 rounded-lg border border-red-100 px-3"
+                          onClick={() => {
+                            setConfirmTerminateLeaseId(lease.id);
+                            setEditingLeaseId(null);
+                          }}
+                        >
+                          Cancel Lease
+                        </Button>
+                        <Button 
+                          size="sm" 
+                          variant="ghost" 
+                          className="h-8 text-[10px] font-bold uppercase tracking-widest text-slate-600 bg-white hover:bg-slate-100 rounded-lg border border-slate-200/80 px-3"
+                          onClick={() => startEditing(lease)}
+                        >
+                          <Edit size={12} className="mr-1" /> Edit Month
+                        </Button>
+                      </div>
                     </div>
                   )}
                 </div>
