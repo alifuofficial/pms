@@ -243,7 +243,7 @@ export async function getPublicUnitStatus(slug: string) {
           .reduce((sum, p) => sum + p.amount, 0),
         daysLeft,
         arrearsMonths,
-        arrearsCount: arrearsMonths.length,
+        arrearsCount: arrearsMonths.filter(m => m.totalAmount > 0).length,
         grandTotal,
         unpaidPenaltyTotal,
         unpaidPenalties,

@@ -143,6 +143,14 @@ export default async function PublicUnitPage({ params }: { params: Promise<{ slu
         accentColor = "text-slate-900";
         statusIcon = <Loader2 size={14} className="animate-spin" />;
         statusLabel = "UNDER REVIEW";
+    } else if (lease && lease.arrearsCount > 0) {
+        // Rent arrears exist
+        status = "OVERDUE";
+        statusColor = "text-rose-600 bg-rose-50 border-rose-100";
+        themeColor = "bg-rose-600";
+        accentColor = "text-rose-600";
+        statusIcon = <AlertCircle size={14} />;
+        statusLabel = "OVERDUE";
     } else if (daysLeftVal < 0) {
         // Prepaid expired / overdue
         status = "OVERDUE";
