@@ -29,7 +29,7 @@ export async function uploadFile(file: File) {
         
         const baseUrl = settings.ftpBaseUrl 
           ? (settings.ftpBaseUrl.endsWith("/") ? settings.ftpBaseUrl : `${settings.ftpBaseUrl}/`)
-          : "/uploads/";
+          : "/api/uploads/";
           
         return { success: true, url: `${baseUrl}${filename}` };
       } catch (ftpError) {

@@ -45,5 +45,63 @@ export async function GET(
     }
   }
 
+  // Fallback: Check if FTP is enabled and retrieve file from FTP server
+  try {
+    const { prisma } = await import("@/lib/prisma");
+    const settings = await prisma.systemSettings.findUnique({
+      where: { id: "global" },
+    });
+
+    if (settings?.ftpEnabled && settings?.ftpHost) {
+      const ftp = await import("basic-ftp");
+      const { Writable } = await import("stream");
+      const client = new ftp.Client(15000);
+      client.ftp.ipFamily = 4;
+
+      try {
+        await client.access({
+          host: settings.ftpHost,
+          port: settings.ftpPort || 21,
+          user: settings.ftpUser || "",
+          password: settings.ftpPass || "",
+        });
+
+        const chunks: Buffer[] = [];
+        const writableStream = new Writable({
+          write(chunk, encoding, callback) {
+            chunks.push(Buffer.from(chunk));
+            callback();
+          }
+        });
+
+        await client.downloadTo(writableStream, filename);
+        const fileBuffer = Buffer.concat(chunks);
+        const ext = filename.split('.').pop()?.toLowerCase();
+
+        const contentTypes: Record<string, string> = {
+          'jpg': 'image/jpeg',
+          'jpeg': 'image/jpeg',
+          'png': 'image/png',
+          'gif': 'image/gif',
+          'webp': 'image/webp',
+          'pdf': 'application/pdf'
+        };
+
+        return new NextResponse(fileBuffer, {
+          headers: {
+            'Content-Type': contentTypes[ext || ''] || 'application/octet-stream',
+            'Cache-Control': 'public, max-age=31536000, immutable'
+          }
+        });
+      } catch (ftpError) {
+        console.error(`[API] Error downloading file ${filename} from FTP:`, ftpError);
+      } finally {
+        client.close();
+      }
+    }
+  } catch (error) {
+    console.error("[API] Failed to retrieve settings or download from FTP:", error);
+  }
+
   return new NextResponse("File not found", { status: 404 });
 }
