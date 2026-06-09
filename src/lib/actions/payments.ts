@@ -717,3 +717,65 @@ export async function approvePaymentSystem(
     return { success: false, error: "Failed to approve payment" };
   }
 }
+
+export async function changePaymentAttachment(paymentId: string, formData: FormData) {
+  try {
+    const sessionUser = await resolveSessionUser();
+    if (!sessionUser || (sessionUser.role !== "ACCOUNTANT" && sessionUser.role !== "ADMIN")) {
+      return { success: false, error: "Unauthorized" };
+    }
+
+    const file = formData.get("file") as File;
+    if (!file || file.size === 0) {
+      return { success: false, error: "No file provided" };
+    }
+
+    const { uploadFile } = await import("./storage");
+    const uploadResult = await uploadFile(file);
+    if (!uploadResult.success || !uploadResult.url) {
+      return { success: false, error: uploadResult.error || "Failed to upload file" };
+    }
+
+    const receiptUrl = uploadResult.url;
+
+    const currentPayment = await prisma.payment.findUnique({
+      where: { id: paymentId }
+    });
+
+    const newStatus = (currentPayment?.status === "APPROVED") ? "APPROVED" : "PENDING";
+
+    await prisma.payment.update({
+      where: { id: paymentId },
+      data: { 
+        receiptUrl,
+        status: newStatus,
+        paidAt: currentPayment?.paidAt || new Date()
+      },
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        userId: sessionUser.id,
+        action: `Updated attachment for payment ${paymentId} to ${receiptUrl}`,
+        actionType: "PAYMENT_ATTACHMENT_UPDATE",
+        oldValue: JSON.stringify({ receiptUrl: currentPayment?.receiptUrl, status: currentPayment?.status }),
+        newValue: JSON.stringify({ receiptUrl, status: newStatus }),
+        metadata: JSON.stringify({ paymentId, receiptUrl })
+      }
+    });
+
+    revalidatePath("/admin/payments");
+    revalidatePath("/accountant/payments");
+    revalidatePath("/admin/dashboard");
+    revalidatePath("/accountant/dashboard");
+    revalidatePath("/tenant/payments");
+    revalidatePath("/tenant/dashboard");
+    revalidatePath("/", "layout");
+    
+    return { success: true, receiptUrl };
+  } catch (error: any) {
+    console.error("Change Payment Attachment Error:", error);
+    return { success: false, error: error.message || "Failed to update attachment" };
+  }
+}
+

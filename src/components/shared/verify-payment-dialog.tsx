@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { 
   Dialog, 
   DialogContent, 
@@ -24,9 +24,10 @@ import {
   Download,
   User,
   Hash,
-  DollarSign
+  DollarSign,
+  Upload
 } from "lucide-react";
-import { approvePayment, rejectPayment, togglePenaltyPaid } from "@/lib/actions/payments";
+import { approvePayment, rejectPayment, togglePenaltyPaid, changePaymentAttachment } from "@/lib/actions/payments";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -39,9 +40,39 @@ export function VerifyPaymentDialog({ payment, currency }: VerifyPaymentDialogPr
   const [open, setOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [actualAmount, setActualAmount] = useState(payment.amount);
+  const [receiptUrl, setReceiptUrl] = useState(payment.receiptUrl);
+  const [isUploading, setIsUploading] = useState(false);
 
-  const isPDF = payment.receiptUrl?.toLowerCase().endsWith(".pdf");
-  const isImage = /\.(jpg|jpeg|png|gif|webp)$/i.test(payment.receiptUrl || "");
+  useEffect(() => {
+    setReceiptUrl(payment.receiptUrl);
+    setActualAmount(payment.amount);
+  }, [payment.receiptUrl, payment.amount]);
+
+  const isPDF = receiptUrl?.toLowerCase().endsWith(".pdf");
+  const isImage = /\.(jpg|jpeg|png|gif|webp)$/i.test(receiptUrl || "");
+
+  const handleAttachmentChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploading(true);
+    const formData = new FormData();
+    formData.append("file", file);
+
+    try {
+      const result = await changePaymentAttachment(payment.id, formData);
+      if (result.success && result.receiptUrl) {
+        setReceiptUrl(result.receiptUrl);
+        toast.success("Attachment updated successfully.");
+      } else {
+        toast.error(result.error || "Failed to update attachment.");
+      }
+    } catch (err) {
+      toast.error("An error occurred while uploading the file.");
+    } finally {
+      setIsUploading(false);
+    }
+  };
 
   const handleApprove = async () => {
     setIsLoading(true);
@@ -101,14 +132,14 @@ export function VerifyPaymentDialog({ payment, currency }: VerifyPaymentDialogPr
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Transaction Audit</p>
               </div>
             </div>
-            {payment.receiptUrl && (
+             {receiptUrl && (
               <div className="flex items-center gap-2">
-                <a href={payment.receiptUrl} target="_blank" rel="noopener noreferrer">
+                <a href={receiptUrl} target="_blank" rel="noopener noreferrer">
                   <Button variant="outline" size="icon" className="h-9 w-9 rounded-xl border-slate-200">
                     <ExternalLink size={16} />
                   </Button>
                 </a>
-                <a href={payment.receiptUrl} download>
+                <a href={receiptUrl} download>
                   <Button variant="outline" size="icon" className="h-9 w-9 rounded-xl border-slate-200">
                     <Download size={16} />
                   </Button>
@@ -243,18 +274,44 @@ export function VerifyPaymentDialog({ payment, currency }: VerifyPaymentDialogPr
 
           {/* Automatic Receipt Preview */}
           <div className="space-y-3">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Attached Receipt Preview</p>
-            {payment.receiptUrl ? (
+            <div className="flex items-center justify-between px-1">
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Attached Receipt Preview</p>
+              <label className="cursor-pointer">
+                <input 
+                  type="file" 
+                  accept="image/*,application/pdf" 
+                  className="hidden" 
+                  onChange={handleAttachmentChange}
+                  disabled={isUploading}
+                />
+                <span className="text-[10px] font-bold text-blue-600 hover:text-blue-700 uppercase tracking-widest flex items-center gap-1">
+                  {isUploading ? (
+                    <>
+                      <Loader2 size={12} className="animate-spin" /> Uploading...
+                    </>
+                  ) : receiptUrl ? (
+                    <>
+                      <Upload size={12} /> Change File
+                    </>
+                  ) : (
+                    <>
+                      <Upload size={12} /> Add File
+                    </>
+                  )}
+                </span>
+              </label>
+            </div>
+            {receiptUrl ? (
               <div className="w-full bg-slate-100 rounded-2xl overflow-hidden border border-slate-200 shadow-inner min-h-[300px] flex items-center justify-center">
                 {isPDF ? (
                   <iframe 
-                    src={`${payment.receiptUrl}#toolbar=0`} 
+                    src={`${receiptUrl}#toolbar=0`} 
                     className="w-full h-[400px] border-none"
                     title="Receipt Preview"
                   />
                 ) : isImage ? (
                   <img 
-                    src={payment.receiptUrl} 
+                    src={receiptUrl} 
                     alt="Receipt" 
                     className="max-w-full h-auto object-contain" 
                   />
