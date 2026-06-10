@@ -20,7 +20,8 @@ import {
   X,
   Clock
 } from "lucide-react";
-import { updateLeaseDates, terminateLease } from "@/lib/actions/users";
+import { updateLeaseDates, terminateLease, updateLeaseUnit } from "@/lib/actions/users";
+import { getAvailableUnits } from "@/lib/actions/properties";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
@@ -52,6 +53,23 @@ export function ManageLeasesDialog({
   const [editingLeaseId, setEditingLeaseId] = useState<string | null>(null);
   const [confirmTerminateLeaseId, setConfirmTerminateLeaseId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+
+  const [availableUnits, setAvailableUnits] = useState<any[]>([]);
+  const [changingLeaseId, setChangingLeaseId] = useState<string | null>(null);
+  const [selectedUnitId, setSelectedUnitId] = useState<string>("");
+
+  useEffect(() => {
+    if (open) {
+      getAvailableUnits().then((units) => {
+        setAvailableUnits(units || []);
+      }).catch(err => {
+        console.error("Failed to fetch available units:", err);
+      });
+    } else {
+      setChangingLeaseId(null);
+      setSelectedUnitId("");
+    }
+  }, [open]);
 
   // Date selection states
   const [ethStart, setEthStart] = useState({ year: 0, month: 0, day: 0 });
@@ -114,6 +132,27 @@ export function ManageLeasesDialog({
       }
     } catch (err) {
       toast.error("Failed to cancel lease.");
+      console.error(err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleChangeUnit = async (leaseId: string) => {
+    if (!selectedUnitId) return;
+    setIsLoading(true);
+    try {
+      const result = await updateLeaseUnit(leaseId, selectedUnitId);
+      if (result.success) {
+        toast.success("Lease unit updated successfully.");
+        setChangingLeaseId(null);
+        setSelectedUnitId("");
+        router.refresh();
+      } else {
+        toast.error(result.error || "Failed to update lease unit.");
+      }
+    } catch (err) {
+      toast.error("Failed to update lease unit.");
       console.error(err);
     } finally {
       setIsLoading(false);
@@ -240,6 +279,50 @@ export function ManageLeasesDialog({
                         </Button>
                       </div>
                     </div>
+                  ) : changingLeaseId === lease.id ? (
+                    <div className="pt-3 border-t border-slate-200/60 space-y-4">
+                      <div className="space-y-1.5">
+                        <Label className="text-[10px] font-bold text-slate-400 uppercase">Select New Unit</Label>
+                        {availableUnits.length > 0 ? (
+                          <select
+                            value={selectedUnitId}
+                            onChange={(e) => setSelectedUnitId(e.target.value)}
+                            className="w-full rounded-lg border border-slate-200 bg-white h-10 px-3 text-xs outline-none focus:border-blue-500 transition-all font-semibold"
+                          >
+                            <option value="">-- Choose Available Unit --</option>
+                            {availableUnits.map((u) => (
+                              <option key={u.id} value={u.id}>
+                                {u.property.name} - Unit {u.unitNumber} ({u.type}, {u.rentAmount.toLocaleString()} ETB)
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <div className="p-3 bg-amber-50 border border-amber-100 rounded-xl text-amber-800 text-[11px] font-medium">
+                            No available units are currently configured in the system. Please vacate or create a unit first.
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex justify-end gap-2 pt-2">
+                        <Button 
+                          size="sm" 
+                          variant="outline" 
+                          className="h-8 text-[10px] font-bold uppercase tracking-wider rounded-lg"
+                          onClick={() => setChangingLeaseId(null)}
+                          disabled={isLoading}
+                        >
+                          <X size={12} className="mr-1" /> Cancel
+                        </Button>
+                        <Button 
+                          size="sm" 
+                          className="h-8 text-[10px] font-bold uppercase tracking-wider rounded-lg bg-blue-600 text-white hover:bg-blue-700"
+                          onClick={() => handleChangeUnit(lease.id)}
+                          disabled={isLoading || !selectedUnitId}
+                        >
+                          {isLoading ? <Loader2 size={12} className="animate-spin mr-1" /> : <Check size={12} className="mr-1" />} Confirm
+                        </Button>
+                      </div>
+                    </div>
                   ) : confirmTerminateLeaseId === lease.id ? (
                     <div className="pt-2 border-t border-slate-100 flex items-center justify-between bg-red-50/50 p-2.5 rounded-xl border border-red-100/60 animate-in fade-in duration-200">
                       <span className="text-[10px] font-bold text-red-700 uppercase tracking-tight">Cancel this lease?</span>
@@ -277,10 +360,11 @@ export function ManageLeasesDialog({
                         <Button 
                           size="sm" 
                           variant="ghost" 
-                          className="h-8 text-[10px] font-bold uppercase tracking-widest text-red-500 bg-white hover:bg-red-50 hover:text-red-600 rounded-lg border border-red-100 px-3"
+                          className="h-8 text-[10px] font-bold uppercase tracking-widest text-red-500 bg-white hover:bg-red-50 hover:text-red-600 rounded-lg border border-red-100 px-2.5"
                           onClick={() => {
                             setConfirmTerminateLeaseId(lease.id);
                             setEditingLeaseId(null);
+                            setChangingLeaseId(null);
                           }}
                         >
                           Cancel Lease
@@ -288,8 +372,25 @@ export function ManageLeasesDialog({
                         <Button 
                           size="sm" 
                           variant="ghost" 
-                          className="h-8 text-[10px] font-bold uppercase tracking-widest text-slate-600 bg-white hover:bg-slate-100 rounded-lg border border-slate-200/80 px-3"
-                          onClick={() => startEditing(lease)}
+                          className="h-8 text-[10px] font-bold uppercase tracking-widest text-blue-600 bg-white hover:bg-blue-50 rounded-lg border border-blue-100 px-2.5"
+                          onClick={() => {
+                            setChangingLeaseId(lease.id);
+                            setEditingLeaseId(null);
+                            setConfirmTerminateLeaseId(null);
+                            setSelectedUnitId("");
+                          }}
+                        >
+                          Change Unit
+                        </Button>
+                        <Button 
+                          size="sm" 
+                          variant="ghost" 
+                          className="h-8 text-[10px] font-bold uppercase tracking-widest text-slate-600 bg-white hover:bg-slate-100 rounded-lg border border-slate-200/80 px-2.5"
+                          onClick={() => {
+                            startEditing(lease);
+                            setChangingLeaseId(null);
+                            setConfirmTerminateLeaseId(null);
+                          }}
                         >
                           <Edit size={12} className="mr-1" /> Edit Month
                         </Button>

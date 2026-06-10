@@ -522,4 +522,107 @@ export async function terminateLease(leaseId: string) {
   }
 }
 
+export async function updateLeaseUnit(leaseId: string, newUnitId: string) {
+  const sessionUser = await resolveSessionUser();
+  if (!sessionUser || (sessionUser.role !== "ADMIN" && sessionUser.role !== "MANAGER")) {
+    return { success: false, error: "Unauthorized" };
+  }
+
+  try {
+    const lease = await prisma.lease.findUnique({
+      where: { id: leaseId },
+      include: { unit: true }
+    });
+
+    if (!lease) {
+      return { success: false, error: "Lease not found." };
+    }
+
+    if (lease.unitId === newUnitId) {
+      return { success: true, message: "Unit is already the same." };
+    }
+
+    const newUnit = await prisma.unit.findUnique({
+      where: { id: newUnitId }
+    });
+
+    if (!newUnit) {
+      return { success: false, error: "New unit not found." };
+    }
+
+    if (newUnit.status !== "AVAILABLE") {
+      return { success: false, error: `New unit ${newUnit.unitNumber} is not available (status: ${newUnit.status}).` };
+    }
+
+    await prisma.$transaction(async (tx) => {
+      // 1. Update lease unitId
+      await tx.lease.update({
+        where: { id: leaseId },
+        data: { unitId: newUnitId }
+      });
+
+      // 2. Set old unit to AVAILABLE if no other active/pending leases occupy it
+      const activeLeasesOldUnit = await tx.lease.count({
+        where: {
+          unitId: lease.unitId,
+          status: { in: ["ACTIVE", "PENDING"] },
+          id: { not: leaseId }
+        }
+      });
+
+      if (activeLeasesOldUnit === 0) {
+        await tx.unit.update({
+          where: { id: lease.unitId },
+          data: { status: "AVAILABLE" }
+        });
+      }
+
+      // 3. Set new unit to OCCUPIED
+      await tx.unit.update({
+        where: { id: newUnitId },
+        data: { status: "OCCUPIED" }
+      });
+
+      // 4. Update pending monthly payments' amounts if they matched the old rent amount
+      await tx.payment.updateMany({
+        where: {
+          leaseId,
+          status: "PENDING",
+          type: "MONTHLY",
+          amount: lease.unit.rentAmount
+        },
+        data: {
+          amount: newUnit.rentAmount
+        }
+      });
+
+      // 5. Create Audit Log
+      await tx.auditLog.create({
+        data: {
+          userId: sessionUser.id,
+          action: `Transferred lease ${leaseId} from unit ${lease.unit.unitNumber} to unit ${newUnit.unitNumber}`,
+          actionType: "LEASE_UPDATE",
+          oldValue: JSON.stringify({ unitId: lease.unitId, rentAmount: lease.unit.rentAmount }),
+          newValue: JSON.stringify({ unitId: newUnitId, rentAmount: newUnit.rentAmount }),
+          metadata: JSON.stringify({ leaseId, oldUnitId: lease.unitId, newUnitId })
+        }
+      });
+    });
+
+    revalidatePath("/admin/tenants");
+    revalidatePath("/admin/units");
+    revalidatePath("/accountant/payments");
+    revalidatePath("/accountant/dashboard");
+    revalidatePath("/tenant/leases");
+    revalidatePath("/tenant/payments");
+    revalidatePath("/manager/tenants");
+    revalidatePath("/", "layout");
+
+    return { success: true };
+  } catch (error: any) {
+    console.error("Update Lease Unit Error:", error);
+    return { success: false, error: `Failed to update lease unit: ${error.message || error}` };
+  }
+}
+
 
