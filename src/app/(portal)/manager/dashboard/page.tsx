@@ -23,6 +23,7 @@ import { Badge } from "@/components/ui/badge";
 import { getSystemToday } from "@/lib/calendar";
 import Link from "next/link";
 import { getRevenueAnalytics, getOccupancyAnalytics, getRecentAuditLogs } from "@/lib/actions/analytics";
+import { getPendingPenalties } from "@/lib/actions/penalties";
 import { formatDistanceToNow } from "date-fns";
 
 export default async function ManagerDashboard() {
@@ -42,7 +43,8 @@ export default async function ManagerDashboard() {
     revenueData,
     occupancyData,
     auditLogs,
-    stats
+    stats,
+    pendingPenalties
   ] = await Promise.all([
     getRevenueAnalytics(6, propertyIds),
     getOccupancyAnalytics(6, propertyIds),
@@ -56,7 +58,8 @@ export default async function ManagerDashboard() {
         prisma.unit.count({ where: { ...propertyFilter, status: "AVAILABLE" } }),
       ]);
       return { totalProps, totalUnits, occupiedUnits, availableUnits };
-    })()
+    })(),
+    getPendingPenalties({ propertyIds, take: 5 })
   ]);
 
   const occupancyRate = stats.totalUnits > 0 
@@ -87,19 +90,6 @@ export default async function ManagerDashboard() {
     take: 4,
     include: { tenant: true, unit: { include: { property: true } } },
     orderBy: { createdAt: "desc" },
-  });
-
-  const pendingPenalties = await prisma.penalty.findMany({
-    where: {
-      lease: { unit: { propertyId: { in: propertyIds } } },
-      status: "UNPAID"
-    },
-    include: {
-      tenant: true,
-      lease: { include: { unit: true } }
-    },
-    orderBy: { dueDate: "desc" },
-    take: 5
   });
 
   return (

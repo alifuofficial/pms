@@ -25,23 +25,27 @@ import { PenaltyList } from "@/components/shared/penalty-list";
 import { auth } from "@/auth";
 import Link from "next/link";
 import { getRevenueAnalytics, getRecentAuditLogs } from "@/lib/actions/analytics";
+import { getPendingPenalties } from "@/lib/actions/penalties";
 import { formatDistanceToNow } from "date-fns";
 
 export default async function AccountantDashboard() {
   const session = await auth();
-  if (!session?.user) return null;
-
+  
   // Get properties assigned to this accountant
   const assignedProperties = await prisma.property.findMany({
-    where: { accountantId: session.user.id },
+    where: { accountantId: session?.user?.id },
     select: { id: true }
   });
   const propertyIds = assignedProperties.map(p => p.id);
   const propertyFilter = propertyIds.length > 0 ? { lease: { unit: { propertyId: { in: propertyIds } } } } : { id: "none" };
 
-  const [settings, calendarType, revenueData, auditLogs] = await Promise.all([
-    getSystemSettings(),
-    getEffectiveCalendar(),
+  const settings = await getSystemSettings();
+  const calendarType = await getEffectiveCalendar();
+  
+  const [
+    revenueData,
+    auditLogs
+  ] = await Promise.all([
     getRevenueAnalytics(6, propertyIds),
     getRecentAuditLogs(10)
   ]);
@@ -77,17 +81,7 @@ export default async function AccountantDashboard() {
     orderBy: { createdAt: "desc" },
   });
 
-  const pendingPenalties = await prisma.penalty.findMany({
-    where: {
-      status: "UNPAID"
-    },
-    include: {
-      tenant: true,
-      lease: { include: { unit: true } }
-    },
-    orderBy: { dueDate: "desc" },
-    take: 10
-  });
+  const pendingPenalties = await getPendingPenalties({ propertyIds, take: 10 });
 
   return (
     <div className="max-w-[1200px] mx-auto space-y-6 animate-in fade-in duration-500 pb-10">

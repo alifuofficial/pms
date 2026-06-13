@@ -21,6 +21,7 @@ import { PenaltyList } from "@/components/shared/penalty-list";
 import { Badge } from "@/components/ui/badge";
 import { getSystemToday } from "@/lib/calendar";
 import { getRevenueAnalytics, getOccupancyAnalytics, getRecentAuditLogs, getPaymentTypeBreakdown } from "@/lib/actions/analytics";
+import { getPendingPenalties } from "@/lib/actions/penalties";
 import { formatDistanceToNow } from "date-fns";
 import Link from "next/link";
 
@@ -66,17 +67,7 @@ export default async function AdminDashboard() {
     orderBy: { createdAt: "desc" },
   });
 
-  const pendingPenalties = await prisma.penalty.findMany({
-    where: {
-      status: "UNPAID"
-    },
-    include: {
-      tenant: true,
-      lease: { include: { unit: true } }
-    },
-    orderBy: { dueDate: "desc" },
-    take: 10
-  });
+  const pendingPenalties = await getPendingPenalties({ take: 10 });
 
   const maxCollection = revenueData.length > 0 ? Math.max(...revenueData.map(d => d.collected || 0)) : 0;
   const bestMonth = revenueData.find(d => d.collected === maxCollection && d.collected > 0);
