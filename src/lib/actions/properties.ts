@@ -76,6 +76,8 @@ export async function createUnit(propertyId: string, data: {
   size: number;
   type: string;
   rentAmount: number;
+  penaltyExempt?: boolean;
+  mergedIntoId?: string | null;
 }) {
   const session = await auth();
   if (!session?.user) return { success: false, error: "Unauthorized" };
@@ -133,6 +135,8 @@ export async function updateUnit(id: string, data: {
   type: string;
   rentAmount: number;
   status: "AVAILABLE" | "OCCUPIED" | "MAINTENANCE";
+  penaltyExempt?: boolean;
+  mergedIntoId?: string | null;
 }) {
   const session = await auth();
   if (!session?.user) return { success: false, error: "Unauthorized" };
@@ -174,6 +178,8 @@ export async function bulkUpdateUnits(ids: string[], data: {
   type?: string;
   rentAmount?: number;
   qrPrinted?: boolean;
+  penaltyExempt?: boolean;
+  mergedIntoId?: string | null;
 }) {
   const session = await auth();
   if (!session?.user) return { success: false, error: "Unauthorized" };
@@ -295,4 +301,13 @@ export async function vacateUnit(unitId: string) {
     console.error("Vacate Unit Error:", error);
     return { success: false, error: "Failed to vacate unit." };
   }
+}
+
+export async function getUnitsByProperty(propertyId: string) {
+  const session = await auth();
+  if (!session?.user) return [];
+  return await prisma.unit.findMany({
+    where: { propertyId },
+    orderBy: { unitNumber: "asc" }
+  });
 }

@@ -86,7 +86,7 @@ export async function getBroadcastRecipients() {
           ...pendingPayments.map((p) => {
             const d = new Date(p.dueDate);
             const dbPenalty = dbPenaltyMap.get(`${d.getFullYear()}-${d.getMonth()}`);
-            const { penalty } = calcMonthPenalty(new Date(p.dueDate), unit.rentAmount, settings, dbPenalty);
+            const { penalty } = calcMonthPenalty(new Date(p.dueDate), unit.rentAmount, settings, dbPenalty, unit.penaltyExempt);
             return {
               dueDate: p.dueDate,
               totalAmount: unit.rentAmount + penalty,
@@ -96,7 +96,7 @@ export async function getBroadcastRecipients() {
             .filter((gd) => !pendingDueDates.has(`${gd.getFullYear()}-${gd.getMonth()}`))
             .map((gd) => {
               const dbPenalty = dbPenaltyMap.get(`${gd.getFullYear()}-${gd.getMonth()}`);
-              const { penalty } = calcMonthPenalty(gd, unit.rentAmount, settings, dbPenalty);
+              const { penalty } = calcMonthPenalty(gd, unit.rentAmount, settings, dbPenalty, unit.penaltyExempt);
               return {
                 dueDate: gd,
                 totalAmount: unit.rentAmount + penalty,
@@ -260,7 +260,7 @@ export async function sendBroadcastSMS(recipientIds: string[], messageTemplate: 
           ...pendingPayments.map((p) => {
             const d = new Date(p.dueDate);
             const dbPenalty = dbPenaltyMap.get(`${d.getFullYear()}-${d.getMonth()}`);
-            const { penalty } = calcMonthPenalty(new Date(p.dueDate), unit.rentAmount, settings, dbPenalty);
+            const { penalty } = calcMonthPenalty(new Date(p.dueDate), unit.rentAmount, settings, dbPenalty, unit.penaltyExempt);
             return {
               dueDate: p.dueDate,
               totalAmount: unit.rentAmount + penalty,
@@ -270,7 +270,7 @@ export async function sendBroadcastSMS(recipientIds: string[], messageTemplate: 
             .filter((gd) => !pendingDueDates.has(`${gd.getFullYear()}-${gd.getMonth()}`))
             .map((gd) => {
               const dbPenalty = dbPenaltyMap.get(`${gd.getFullYear()}-${gd.getMonth()}`);
-              const { penalty } = calcMonthPenalty(gd, unit.rentAmount, settings, dbPenalty);
+              const { penalty } = calcMonthPenalty(gd, unit.rentAmount, settings, dbPenalty, unit.penaltyExempt);
               return {
                 dueDate: gd,
                 totalAmount: unit.rentAmount + penalty,

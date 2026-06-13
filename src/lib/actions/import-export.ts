@@ -91,11 +91,14 @@ export async function importTenantsCsv(csvString: string) {
 export async function exportUnitsCsv() {
   try {
     const units = await prisma.unit.findMany({
-      include: { property: { select: { name: true } } },
+      include: { 
+        property: { select: { name: true } },
+        mergedInto: { select: { unitNumber: true } }
+      },
       orderBy: [{ property: { name: 'asc' } }, { unitNumber: 'asc' }]
     });
 
-    const headers = ["PropertyName", "UnitNumber", "Type", "Floor", "Size", "RentAmount", "QrSlug"];
+    const headers = ["PropertyName", "UnitNumber", "Type", "Floor", "Size", "RentAmount", "QrSlug", "PenaltyExempt", "MergedIntoUnitNumber"];
     const data = units.map(u => ({
       PropertyName: u.property.name,
       UnitNumber: u.unitNumber,
@@ -103,7 +106,9 @@ export async function exportUnitsCsv() {
       Floor: u.floor?.toString() || "",
       Size: u.size?.toString() || "",
       RentAmount: u.rentAmount.toString(),
-      QrSlug: u.qrSlug || ""
+      QrSlug: u.qrSlug || "",
+      PenaltyExempt: u.penaltyExempt ? "true" : "false",
+      MergedIntoUnitNumber: u.mergedInto?.unitNumber || ""
     }));
 
     const csvString = generateCSV(data, headers);
@@ -198,11 +203,18 @@ export async function importUnitsCsv(csvString: string) {
       const qrSlugInput = row["QrSlug"]?.trim();
 
       if (existingUnit) {
-        // If the unit exists, but has a different QrSlug in the CSV backup, restore it!
-        if (qrSlugInput && existingUnit.qrSlug !== qrSlugInput) {
+        // If the unit exists, but has a different QrSlug or penaltyExempt in the CSV backup, restore it!
+        const penaltyExemptInput = row["PenaltyExempt"]?.trim()?.toLowerCase() === "true";
+        if (
+          (qrSlugInput && existingUnit.qrSlug !== qrSlugInput) ||
+          (row["PenaltyExempt"] !== undefined && existingUnit.penaltyExempt !== penaltyExemptInput)
+        ) {
           await prisma.unit.update({
             where: { id: existingUnit.id },
-            data: { qrSlug: qrSlugInput }
+            data: {
+              ...(qrSlugInput ? { qrSlug: qrSlugInput } : {}),
+              penaltyExempt: penaltyExemptInput
+            }
           });
           importedCount++;
         } else {
@@ -241,10 +253,36 @@ export async function importUnitsCsv(csvString: string) {
             size: row["Size"] ? parseFloat(row["Size"]) : null,
             rentAmount: rentAmount,
             status: "AVAILABLE",
-            qrSlug: qrSlug
+            qrSlug: qrSlug,
+            penaltyExempt: row["PenaltyExempt"]?.trim()?.toLowerCase() === "true"
           }
         });
         importedCount++;
+      }
+    }
+
+    // Second pass: resolve MergedIntoUnitNumber for all imported rows
+    for (const row of data) {
+      const propName = row["PropertyName"]?.trim();
+      const unitNumber = row["UnitNumber"]?.trim();
+      const mergedIntoUnitNo = row["MergedIntoUnitNumber"]?.trim();
+
+      if (propName && unitNumber && mergedIntoUnitNo) {
+        const prop = await prisma.property.findFirst({ where: { name: propName } });
+        if (prop) {
+          const currentUnit = await prisma.unit.findFirst({
+            where: { propertyId: prop.id, unitNumber }
+          });
+          const parentUnit = await prisma.unit.findFirst({
+            where: { propertyId: prop.id, unitNumber: mergedIntoUnitNo }
+          });
+          if (currentUnit && parentUnit) {
+            await prisma.unit.update({
+              where: { id: currentUnit.id },
+              data: { mergedIntoId: parentUnit.id }
+            });
+          }
+        }
       }
     }
 

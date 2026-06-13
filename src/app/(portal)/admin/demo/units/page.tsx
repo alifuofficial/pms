@@ -38,7 +38,7 @@ export default function DemoUnits() {
   const [unitDialogOpen, setUnitDialogOpen] = useState(false);
   
   // Forms state
-  const [newUnit, setNewUnit] = useState({ propertyId: "", unitNumber: "", type: "Retail", rentAmount: "" });
+  const [newUnit, setNewUnit] = useState({ propertyId: "", unitNumber: "", type: "Retail", rentAmount: "", penaltyExempt: false });
 
   useEffect(() => {
     setIsMounted(true);
@@ -55,13 +55,14 @@ export default function DemoUnits() {
       unitNumber: newUnit.unitNumber,
       type: newUnit.type,
       rentAmount: parseFloat(newUnit.rentAmount) || 0,
-      status: "VACANT"
+      status: "VACANT",
+      penaltyExempt: newUnit.penaltyExempt
     };
     const updated = [...units, created];
     setUnits(updated);
     saveUnits(updated);
     setUnitDialogOpen(false);
-    setNewUnit({ propertyId: "", unitNumber: "", type: "Retail", rentAmount: "" });
+    setNewUnit({ propertyId: "", unitNumber: "", type: "Retail", rentAmount: "", penaltyExempt: false });
     toast.success("Sandbox unit added!");
     logAction(`Added simulated Unit ${created.unitNumber}`);
   };
@@ -160,6 +161,18 @@ export default function DemoUnits() {
                     <label className="text-xs font-semibold text-slate-700">Monthly Rent Amount</label>
                     <Input required type="number" value={newUnit.rentAmount} onChange={e => setNewUnit({...newUnit, rentAmount: e.target.value})} placeholder="e.g. 12000" />
                   </div>
+                  <div className="flex items-center gap-2 pt-1">
+                    <input 
+                      type="checkbox"
+                      id="demo-penaltyExempt"
+                      checked={newUnit.penaltyExempt}
+                      onChange={(e) => setNewUnit({...newUnit, penaltyExempt: e.target.checked})}
+                      className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900 cursor-pointer"
+                    />
+                    <label htmlFor="demo-penaltyExempt" className="text-xs font-semibold text-slate-700 cursor-pointer select-none">
+                      Exempt from Late Penalty Fees
+                    </label>
+                  </div>
                 </div>
                 <DialogFooter>
                   <Button type="submit" className="bg-slate-900 text-white rounded-lg hover:bg-slate-800">Create Unit</Button>
@@ -189,7 +202,14 @@ export default function DemoUnits() {
                 return (
                   <TableRow key={unit.id} className="hover:bg-slate-50/50">
                     <TableCell className="px-5 py-3.5">
-                      <span className="font-semibold text-slate-900 text-xs">Unit {unit.unitNumber}</span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-semibold text-slate-900 text-xs">Unit {unit.unitNumber}</span>
+                        {unit.penaltyExempt && (
+                          <span className="bg-amber-100 text-amber-800 text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider select-none shrink-0 border border-amber-200">
+                            Exempt
+                          </span>
+                        )}
+                      </div>
                       <span className="text-[10px] text-slate-400 font-medium block">{prop?.name}</span>
                     </TableCell>
                     <TableCell className="text-xs text-slate-600">{unit.type}</TableCell>

@@ -16,7 +16,7 @@ const formatFloor = (f: number) => {
   return `${f}${s} Floor`;
 };
 
-type BulkField = "floor" | "status" | "type" | "rentAmount" | "qrPrinted";
+type BulkField = "floor" | "status" | "type" | "rentAmount" | "qrPrinted" | "penaltyExempt";
 
 const BULK_FIELDS: { value: BulkField; label: string }[] = [
   { value: "floor",      label: "Floor" },
@@ -24,6 +24,7 @@ const BULK_FIELDS: { value: BulkField; label: string }[] = [
   { value: "type",       label: "Unit Type" },
   { value: "rentAmount", label: "Rent Amount" },
   { value: "qrPrinted",  label: "QR Code Printed Status" },
+  { value: "penaltyExempt", label: "Late Penalty Exemption" },
 ];
 
 export function UnitsBulkTable({ units, currency }: { units: any[]; currency: string }) {
@@ -66,6 +67,7 @@ export function UnitsBulkTable({ units, currency }: { units: any[]; currency: st
       if (bulkField === "type")        data.type = bulkValue;
       if (bulkField === "rentAmount")  data.rentAmount = parseFloat(bulkValue);
       if (bulkField === "qrPrinted")   data.qrPrinted = bulkValue === "true";
+      if (bulkField === "penaltyExempt") data.penaltyExempt = bulkValue === "true";
 
       const result = await bulkUpdateUnits(ids, data);
       if (result.success) {
@@ -100,6 +102,7 @@ export function UnitsBulkTable({ units, currency }: { units: any[]; currency: st
                 else if (f === "type") setBulkValue("Studio");
                 else if (f === "rentAmount") setBulkValue("0");
                 else if (f === "qrPrinted") setBulkValue("true");
+                else if (f === "penaltyExempt") setBulkValue("true");
               }}
             >
               {BULK_FIELDS.map(f => (
@@ -165,6 +168,17 @@ export function UnitsBulkTable({ units, currency }: { units: any[]; currency: st
               >
                 <option value="true" className="text-slate-900">Mark as Printed</option>
                 <option value="false" className="text-slate-900">Mark as Pending (Not Printed)</option>
+              </select>
+            )}
+
+            {bulkField === "penaltyExempt" && (
+              <select
+                className="h-8 rounded-lg bg-white/10 border border-white/20 text-white text-xs font-semibold px-2 outline-none"
+                value={bulkValue}
+                onChange={(e) => setBulkValue(e.target.value)}
+              >
+                <option value="true" className="text-slate-900">Exempt from Penalties</option>
+                <option value="false" className="text-slate-900">Subject to Penalties</option>
               </select>
             )}
 
@@ -240,8 +254,25 @@ export function UnitsBulkTable({ units, currency }: { units: any[]; currency: st
                         <Home size={16} />
                       </div>
                       <div>
-                        <p className="text-sm font-semibold text-slate-900">Unit {unit.unitNumber}</p>
+                        <div className="flex items-center gap-1.5">
+                          <p className="text-sm font-semibold text-slate-900">Unit {unit.unitNumber}</p>
+                          {unit.penaltyExempt && (
+                            <span className="bg-amber-100 text-amber-800 text-[9px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider select-none shrink-0 border border-amber-200">
+                              Exempt
+                            </span>
+                          )}
+                        </div>
                         <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-tight">{unit.type}</p>
+                        {unit.mergedInto && (
+                          <p className="text-[10px] text-amber-600 font-bold mt-0.5">
+                            Merged into Unit {unit.mergedInto.unitNumber}
+                          </p>
+                        )}
+                        {unit.mergedUnits && unit.mergedUnits.length > 0 && (
+                          <p className="text-[10px] text-blue-600 font-bold mt-0.5">
+                            Primary Parent (+ {unit.mergedUnits.map((u: any) => u.unitNumber).join(", ")})
+                          </p>
+                        )}
                         {unit.status === "OCCUPIED" && unit.leases?.[0]?.tenant && (
                           <p className="text-[10px] text-emerald-600 font-medium mt-0.5 truncate max-w-[140px]">
                             Occupied by: {unit.leases[0].tenant.name}

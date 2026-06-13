@@ -36,6 +36,7 @@ export function AddUnitDialog({
     size: "",
     type: "Studio",
     rentAmount: "",
+    penaltyExempt: false,
   });
 
   useEffect(() => {
@@ -66,6 +67,7 @@ export function AddUnitDialog({
       size: parseFloat(formData.size) || 0,
       type: formData.type,
       rentAmount: parseFloat(formData.rentAmount),
+      penaltyExempt: formData.penaltyExempt,
     });
     setIsLoading(false);
     
@@ -78,7 +80,8 @@ export function AddUnitDialog({
         floor: "0", 
         size: "", 
         type: "Studio", 
-        rentAmount: "" 
+        rentAmount: "",
+        penaltyExempt: false
       });
     } else {
       toast.error(result.error || "Failed to add unit.");
@@ -189,6 +192,19 @@ export function AddUnitDialog({
                 onChange={(e) => setFormData({ ...formData, rentAmount: e.target.value })}
                 className="rounded-lg border-slate-200 bg-white h-10 text-sm font-medium"
               />
+            </div>
+
+            <div className="flex items-center gap-2 pt-1">
+              <input 
+                type="checkbox"
+                id="penaltyExempt"
+                checked={formData.penaltyExempt}
+                onChange={(e) => setFormData({ ...formData, penaltyExempt: e.target.checked })}
+                className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900 cursor-pointer"
+              />
+              <Label htmlFor="penaltyExempt" className="text-xs font-semibold text-slate-700 cursor-pointer select-none">
+                Exempt from Late Penalty Fees
+              </Label>
             </div>
           </div>
 

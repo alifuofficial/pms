@@ -25,6 +25,7 @@ export interface Unit {
   type: string;
   rentAmount: number;
   status: "VACANT" | "OCCUPIED";
+  penaltyExempt?: boolean;
 }
 
 export interface Tenant {
@@ -315,7 +316,7 @@ export const simulatePaymentApproval = (paymentId: string) => {
     const gdEt = toEthiopian(gd);
     const isStartMonth = gdEt.year === startEt.year && gdEt.month === startEt.month;
 
-    const hasPenalty = currentSettings.lateFeeEnabled && !(isStartMonth && approvedPayments.length === 0);
+    const hasPenalty = !unit.penaltyExempt && currentSettings.lateFeeEnabled && !(isStartMonth && approvedPayments.length === 0);
     const penaltyAmount = hasPenalty ? (monthlyRent * (currentSettings.lateFeePercentage / 100)) : 0;
 
     if (penaltyAmount > 0) {

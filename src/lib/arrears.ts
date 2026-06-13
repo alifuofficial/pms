@@ -2,8 +2,12 @@ import { getDaysPastEthiopianExpiry, toEthiopian, hasLatePenalty, getDaysInEthio
 import Kenat from "kenat";
 
 /** Calculates penalty amount and tier for a given due date based on Ethiopian calendar, checking against existing database record if provided. */
-export function calcMonthPenalty(dueDate: Date, rentAmount: number, settings: any, dbPenalty?: any) {
+export function calcMonthPenalty(dueDate: Date, rentAmount: number, settings: any, dbPenalty?: any, penaltyExempt: boolean = false) {
   const diffDays = getDaysPastEthiopianExpiry(dueDate);
+  
+  if (penaltyExempt) {
+    return { penalty: 0, penaltyTier: 0, diffDays };
+  }
   
   if (dbPenalty) {
     const penaltyAmount = Math.max(0, dbPenalty.amount - dbPenalty.paidAmount);

@@ -32,6 +32,10 @@ export async function processLateFees() {
     const now = new Date();
 
     for (const payment of pendingPayments) {
+      if (payment.lease.unit.penaltyExempt) {
+        continue;
+      }
+
       const diffDays = getDaysIntoEthiopianMonth(new Date(payment.dueDate));
 
       // Ethiopian Legal Context: 

@@ -56,6 +56,10 @@ model Unit {
   size       Float?
   qrSlug     String?    @unique
   qrPrinted  Boolean    @default(false)
+  penaltyExempt Boolean @default(false)
+  mergedIntoId  String?
+  mergedInto    Unit?      @relation("UnitMerge", fields: [mergedIntoId], references: [id], onDelete: SetNull)
+  mergedUnits   Unit[]     @relation("UnitMerge")
   leases     Lease[]
   property   Property   @relation(fields: [propertyId], references: [id], onDelete: Cascade)
 

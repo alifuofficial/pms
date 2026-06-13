@@ -25,7 +25,7 @@ import {
   DropdownMenuItem, 
   DropdownMenuTrigger 
 } from "@/components/ui/dropdown-menu";
-import { updateUnit, deleteUnit, vacateUnit } from "@/lib/actions/properties";
+import { updateUnit, deleteUnit, vacateUnit, getUnitsByProperty } from "@/lib/actions/properties";
 import { generateUnitQrSlug } from "@/lib/actions/qr";
 import { toast } from "sonner";
 import { QrCode, ExternalLink, Download, Copy, Check, LogOut } from "lucide-react";
@@ -39,11 +39,20 @@ export function UnitActions({ unit }: { unit: any }) {
   const [isLoading, setIsLoading] = useState(false);
   const [qrSlug, setQrSlug] = useState(unit.qrSlug || "");
   const [isCopied, setIsCopied] = useState(false);
+  const [siblingUnits, setSiblingUnits] = useState<any[]>([]);
 
   // Sync with prop updates from server revalidation
   useEffect(() => {
     if (unit.qrSlug) setQrSlug(unit.qrSlug);
   }, [unit.qrSlug]);
+
+  useEffect(() => {
+    if (isEditing && unit.propertyId) {
+      getUnitsByProperty(unit.propertyId).then((res) => {
+        setSiblingUnits(res.filter((u: any) => u.id !== unit.id));
+      });
+    }
+  }, [isEditing, unit.propertyId, unit.id]);
 
   const copyLink = () => {
     if (typeof window !== 'undefined') {
@@ -61,6 +70,8 @@ export function UnitActions({ unit }: { unit: any }) {
     type: unit.type,
     rentAmount: unit.rentAmount,
     status: unit.status,
+    penaltyExempt: unit.penaltyExempt || false,
+    mergedIntoId: unit.mergedIntoId || "",
   });
 
   const handleEdit = async (e: React.FormEvent) => {
@@ -228,6 +239,36 @@ export function UnitActions({ unit }: { unit: any }) {
                   <option value="MAINTENANCE">Maintenance</option>
                 </select>
               </div>
+            </div>
+
+            <div className="flex items-center gap-2 pt-1">
+              <input 
+                type="checkbox"
+                id={`edit-penaltyExempt-${unit.id}`}
+                checked={editData.penaltyExempt}
+                onChange={(e) => setEditData({ ...editData, penaltyExempt: e.target.checked })}
+                className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900 cursor-pointer"
+              />
+              <Label htmlFor={`edit-penaltyExempt-${unit.id}`} className="text-xs font-semibold text-slate-700 cursor-pointer select-none">
+                Exempt from Late Penalty Fees
+              </Label>
+            </div>
+
+            <div className="space-y-1.5 pt-1">
+              <Label className="text-[10px] font-semibold uppercase text-slate-400">Merge into Unit</Label>
+              <select 
+                className="w-full rounded-lg border border-slate-200 bg-white h-10 px-3 text-sm font-medium outline-none"
+                value={editData.mergedIntoId || ""}
+                onChange={(e) => setEditData({ ...editData, mergedIntoId: e.target.value || null })}
+              >
+                <option value="">None (Independent Unit)</option>
+                {siblingUnits.map(u => (
+                  <option key={u.id} value={u.id}>Unit {u.unitNumber} ({u.type})</option>
+                ))}
+              </select>
+              <p className="text-[10px] text-slate-400 font-medium leading-normal">
+                Merging links this unit to a parent. Scan requests will show the parent unit's lease, financials, and details.
+              </p>
             </div>
 
             <DialogFooter className="pt-2">

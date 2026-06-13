@@ -134,7 +134,7 @@ export async function approvePayment(
       const gdEt = toEthiopian(gd);
       const isStartMonth = gdEt.year === startEt.year && gdEt.month === startEt.month;
       
-      const hasPenalty = hasLatePenalty(gd, settings) && !(isStartMonth && approvedPayments.length === 0);
+      const hasPenalty = !currentPayment.lease.unit.penaltyExempt && hasLatePenalty(gd, settings) && !(isStartMonth && approvedPayments.length === 0);
       const penaltyAmount = hasPenalty ? (monthlyRent * ((settings?.lateFeePercentage || 5) / 100)) : 0;
       
       const monthKey = `${gd.getFullYear()}-${gd.getMonth()}`;
@@ -523,7 +523,7 @@ export async function approvePaymentSystem(
       const gdEt = toEthiopian(gd);
       const isStartMonth = gdEt.year === startEt.year && gdEt.month === startEt.month;
       
-      const hasPenalty = hasLatePenalty(gd, settings) && !(isStartMonth && approvedPayments.length === 0);
+      const hasPenalty = !currentPayment.lease.unit.penaltyExempt && hasLatePenalty(gd, settings) && !(isStartMonth && approvedPayments.length === 0);
       const penaltyAmount = hasPenalty ? (monthlyRent * ((settings?.lateFeePercentage || 5) / 100)) : 0;
       
       const monthKey = `${gd.getFullYear()}-${gd.getMonth()}`;

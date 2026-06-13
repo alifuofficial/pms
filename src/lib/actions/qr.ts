@@ -50,10 +50,11 @@ export async function generateUnitQrSlug(unitId: string) {
 
 export async function getPublicUnitStatus(slug: string) {
   try {
-    const unit = await prisma.unit.findUnique({
+    let unit = await prisma.unit.findUnique({
       where: { qrSlug: slug },
       include: {
         property: true,
+        mergedUnits: true,
         leases: {
           orderBy: { createdAt: "desc" },
           include: {
@@ -66,6 +67,46 @@ export async function getPublicUnitStatus(slug: string) {
     });
 
     if (!unit) return { success: false, error: "Unit not found." };
+
+    // If this unit is merged into another, fetch the parent unit
+    if (unit.mergedIntoId) {
+      const parentUnit = await prisma.unit.findUnique({
+        where: { id: unit.mergedIntoId },
+        include: {
+          property: true,
+          mergedUnits: true,
+          leases: {
+            orderBy: { createdAt: "desc" },
+            include: {
+              tenant: { select: { name: true } },
+              payments: { orderBy: { dueDate: "asc" } },
+              penalties: { orderBy: { dueDate: "asc" } }
+            }
+          }
+        }
+      });
+      if (parentUnit) {
+        const childNumbers = parentUnit.mergedUnits.map(u => u.unitNumber).join(" + ");
+        parentUnit.unitNumber = `${parentUnit.unitNumber} + ${childNumbers}`;
+        
+        const totalSize = (parentUnit.size || 0) + parentUnit.mergedUnits.reduce((acc, curr) => acc + (curr.size || 0), 0);
+        parentUnit.size = totalSize;
+        
+        const totalRent = parentUnit.rentAmount + parentUnit.mergedUnits.reduce((acc, curr) => acc + (curr.rentAmount || 0), 0);
+        parentUnit.rentAmount = totalRent;
+        
+        unit = parentUnit;
+      }
+    } else if (unit.mergedUnits && unit.mergedUnits.length > 0) {
+      const childNumbers = unit.mergedUnits.map(u => u.unitNumber).join(" + ");
+      unit.unitNumber = `${unit.unitNumber} + ${childNumbers}`;
+      
+      const totalSize = (unit.size || 0) + unit.mergedUnits.reduce((acc, curr) => acc + (curr.size || 0), 0);
+      unit.size = totalSize;
+      
+      const totalRent = unit.rentAmount + unit.mergedUnits.reduce((acc, curr) => acc + (curr.rentAmount || 0), 0);
+      unit.rentAmount = totalRent;
+    }
 
     const settings = await prisma.systemSettings.findUnique({ where: { id: "global" } });
     const bankAccounts = await prisma.bankAccount.findMany({ orderBy: { createdAt: "desc" } });
@@ -128,7 +169,7 @@ export async function getPublicUnitStatus(slug: string) {
       ...pendingPayments.map(p => {
         const d = new Date(p.dueDate);
         const dbPenalty = dbPenaltyMap.get(`${d.getFullYear()}-${d.getMonth()}`);
-        const { penalty, penaltyTier, diffDays } = calcMonthPenalty(new Date(p.dueDate), unit.rentAmount, settings, dbPenalty);
+        const { penalty, penaltyTier, diffDays } = calcMonthPenalty(new Date(p.dueDate), unit.rentAmount, settings, dbPenalty, unit.penaltyExempt);
         return {
           id: p.id,
           dueDate: p.dueDate,
@@ -146,7 +187,7 @@ export async function getPublicUnitStatus(slug: string) {
       }),
       ...gapMonthDates.filter(gd => !pendingDueDates.has(`${gd.getFullYear()}-${gd.getMonth()}`)).map(gd => {
         const dbPenalty = dbPenaltyMap.get(`${gd.getFullYear()}-${gd.getMonth()}`);
-        const { penalty, penaltyTier, diffDays } = calcMonthPenalty(gd, unit.rentAmount, settings, dbPenalty);
+        const { penalty, penaltyTier, diffDays } = calcMonthPenalty(gd, unit.rentAmount, settings, dbPenalty, unit.penaltyExempt);
         return {
           id: `gap-${gd.getFullYear()}-${gd.getMonth()}`,
           dueDate: gd,
@@ -204,7 +245,7 @@ export async function getPublicUnitStatus(slug: string) {
     const estimatedNext = !primaryMonth && latestApprovedPayment ? (() => {
       const nextDate = addEthiopianMonths(new Date(latestApprovedPayment.advanceUntil || latestApprovedPayment.dueDate), 1);
       const dbPenalty = dbPenaltyMap.get(`${nextDate.getFullYear()}-${nextDate.getMonth()}`);
-      const { penalty, penaltyTier, diffDays } = calcMonthPenalty(nextDate, unit.rentAmount, settings, dbPenalty);
+      const { penalty, penaltyTier, diffDays } = calcMonthPenalty(nextDate, unit.rentAmount, settings, dbPenalty, unit.penaltyExempt);
       return {
         id: "estimated",
         dueDate: nextDate,
