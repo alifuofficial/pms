@@ -16,7 +16,7 @@ const formatFloor = (f: number) => {
   return `${f}${s} Floor`;
 };
 
-type BulkField = "floor" | "status" | "type" | "rentAmount" | "qrPrinted" | "penaltyExempt";
+type BulkField = "floor" | "status" | "type" | "rentAmount" | "qrPrinted" | "penaltyExempt" | "merge";
 
 const BULK_FIELDS: { value: BulkField; label: string }[] = [
   { value: "floor",      label: "Floor" },
@@ -25,6 +25,7 @@ const BULK_FIELDS: { value: BulkField; label: string }[] = [
   { value: "rentAmount", label: "Rent Amount" },
   { value: "qrPrinted",  label: "QR Code Printed Status" },
   { value: "penaltyExempt", label: "Late Penalty Exemption" },
+  { value: "merge",      label: "Merge Units (Set Parent)" },
 ];
 
 export function UnitsBulkTable({ units, currency }: { units: any[]; currency: string }) {
@@ -61,6 +62,22 @@ export function UnitsBulkTable({ units, currency }: { units: any[]; currency: st
     startTransition(async () => {
       const ids = Array.from(selected);
       let data: any = {};
+
+      if (bulkField === "merge") {
+        const parentId = bulkValue;
+        const childIds = ids.filter(id => id !== parentId);
+
+        const childrenResult = await bulkUpdateUnits(childIds, { mergedIntoId: parentId });
+        const parentResult = await bulkUpdateUnits([parentId], { mergedIntoId: null });
+
+        if (childrenResult.success && parentResult.success) {
+          toast.success("Successfully merged units under parent.");
+          setSelected(new Set());
+        } else {
+          toast.error("Merge bulk update failed.");
+        }
+        return;
+      }
 
       if (bulkField === "floor")       data.floor = parseInt(bulkValue);
       if (bulkField === "status")      data.status = bulkValue;
@@ -103,6 +120,10 @@ export function UnitsBulkTable({ units, currency }: { units: any[]; currency: st
                 else if (f === "rentAmount") setBulkValue("0");
                 else if (f === "qrPrinted") setBulkValue("true");
                 else if (f === "penaltyExempt") setBulkValue("true");
+                else if (f === "merge") {
+                  const firstId = Array.from(selected)[0] || "";
+                  setBulkValue(firstId);
+                }
               }}
             >
               {BULK_FIELDS.map(f => (
@@ -179,6 +200,23 @@ export function UnitsBulkTable({ units, currency }: { units: any[]; currency: st
               >
                 <option value="true" className="text-slate-900">Exempt from Penalties</option>
                 <option value="false" className="text-slate-900">Subject to Penalties</option>
+              </select>
+            )}
+
+            {bulkField === "merge" && (
+              <select
+                className="h-8 rounded-lg bg-white/10 border border-white/20 text-white text-xs font-semibold px-2 outline-none"
+                value={bulkValue}
+                onChange={(e) => setBulkValue(e.target.value)}
+              >
+                {Array.from(selected).map(id => {
+                  const u = units.find(unit => unit.id === id);
+                  return (
+                    <option key={id} value={id} className="text-slate-900">
+                      Set Unit {u?.unitNumber || "Unknown"} as Parent
+                    </option>
+                  );
+                })}
               </select>
             )}
 

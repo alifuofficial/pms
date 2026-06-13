@@ -68,10 +68,24 @@ export async function getPublicUnitStatus(slug: string) {
 
     if (!unit) return { success: false, error: "Unit not found." };
 
-    // If this unit is merged into another, fetch the parent unit
-    if (unit.mergedIntoId) {
+    // Resolve to root parent unit recursively to support chain merges
+    let rootUnitId = unit.id;
+    let rootUnitMergedIntoId = unit.mergedIntoId;
+    const visited = new Set<string>([unit.id]);
+    while (rootUnitMergedIntoId && !visited.has(rootUnitMergedIntoId)) {
+      const parent = await prisma.unit.findUnique({
+        where: { id: rootUnitMergedIntoId },
+        select: { id: true, mergedIntoId: true }
+      });
+      if (!parent) break;
+      rootUnitId = parent.id;
+      rootUnitMergedIntoId = parent.mergedIntoId;
+      visited.add(parent.id);
+    }
+
+    if (rootUnitId !== unit.id) {
       const parentUnit = await prisma.unit.findUnique({
-        where: { id: unit.mergedIntoId },
+        where: { id: rootUnitId },
         include: {
           property: true,
           mergedUnits: true,
@@ -86,18 +100,12 @@ export async function getPublicUnitStatus(slug: string) {
         }
       });
       if (parentUnit) {
-        const childNumbers = parentUnit.mergedUnits.map(u => u.unitNumber).join(" + ");
-        parentUnit.unitNumber = `${parentUnit.unitNumber} + ${childNumbers}`;
-        
-        const totalSize = (parentUnit.size || 0) + parentUnit.mergedUnits.reduce((acc, curr) => acc + (curr.size || 0), 0);
-        parentUnit.size = totalSize;
-        
-        const totalRent = parentUnit.rentAmount + parentUnit.mergedUnits.reduce((acc, curr) => acc + (curr.rentAmount || 0), 0);
-        parentUnit.rentAmount = totalRent;
-        
         unit = parentUnit;
       }
-    } else if (unit.mergedUnits && unit.mergedUnits.length > 0) {
+    }
+
+    // Now combine details across all merged units
+    if (unit.mergedUnits && unit.mergedUnits.length > 0) {
       const childNumbers = unit.mergedUnits.map(u => u.unitNumber).join(" + ");
       unit.unitNumber = `${unit.unitNumber} + ${childNumbers}`;
       
