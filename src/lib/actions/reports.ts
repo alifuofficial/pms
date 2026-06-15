@@ -9,21 +9,63 @@ export async function getReportMetrics(startDate: Date, endDate: Date) {
     throw new Error("Unauthorized");
   }
 
-  // 1. Revenue & Collection Rate
-  const periodPayments = await prisma.payment.findMany({
-    where: {
-      dueDate: {
-        gte: startDate,
-        lte: endDate,
+  // 1. Revenue & Collection Rate (calculated using the monthly metrics)
+  const monthlyMetrics = [];
+  let currentMonthStart = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
+  const endLimit = new Date(endDate.getFullYear(), endDate.getMonth(), 1);
+
+  while (currentMonthStart <= endLimit) {
+    const start = new Date(currentMonthStart.getFullYear(), currentMonthStart.getMonth(), 1);
+    const end = new Date(currentMonthStart.getFullYear(), currentMonthStart.getMonth() + 1, 0, 23, 59, 59, 999);
+
+    const activeLeases = await prisma.lease.findMany({
+      where: {
+        status: { in: ["ACTIVE", "EXPIRED", "TERMINATED"] },
+        startDate: { lte: end },
+        endDate: { gte: start }
+      },
+      include: {
+        unit: {
+          select: {
+            rentAmount: true
+          }
+        }
       }
-    }
-  });
+    });
 
-  const expectedRevenue = periodPayments.reduce((sum, p) => sum + p.amount, 0);
-  const collectedRevenue = periodPayments
-    .filter(p => p.status === "APPROVED")
-    .reduce((sum, p) => sum + p.amount, 0);
+    const filteredLeases = activeLeases.filter(lease => {
+      if (lease.status === "TERMINATED" && lease.updatedAt < start) {
+        return false;
+      }
+      return true;
+    });
 
+    const expected = filteredLeases.reduce((sum, lease) => sum + (lease.unit?.rentAmount || 0), 0);
+
+    const collectedRent = await prisma.payment.aggregate({
+      where: {
+        status: "APPROVED",
+        dueDate: { gte: start, lte: end }
+      },
+      _sum: { amount: true }
+    });
+
+    const collected = collectedRent._sum.amount || 0;
+    const rate = expected > 0 ? Math.round((collected / expected) * 100) : 0;
+
+    monthlyMetrics.push({
+      name: start.toLocaleString("default", { month: "short" }),
+      expected,
+      collected,
+      rate
+    });
+
+    // Move to next month safely by modifying currentMonthStart
+    currentMonthStart.setMonth(currentMonthStart.getMonth() + 1);
+  }
+
+  const expectedRevenue = monthlyMetrics.reduce((sum, m) => sum + m.expected, 0);
+  const collectedRevenue = monthlyMetrics.reduce((sum, m) => sum + m.collected, 0);
   const collectionRate = expectedRevenue > 0 
     ? Math.round((collectedRevenue / expectedRevenue) * 100) 
     : 0;
@@ -101,44 +143,7 @@ export async function getReportMetrics(startDate: Date, endDate: Date) {
     advanceUntil: p.advanceUntil
   }));
 
-  // 7. Monthly Breakdown for the selected range (e.g. for reports expected vs collected)
-  const monthlyMetrics = [];
-  let currentMonthStart = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
-  const endLimit = new Date(endDate.getFullYear(), endDate.getMonth(), 1);
-
-  while (currentMonthStart <= endLimit) {
-    const start = new Date(currentMonthStart.getFullYear(), currentMonthStart.getMonth(), 1);
-    const end = new Date(currentMonthStart.getFullYear(), currentMonthStart.getMonth() + 1, 0, 23, 59, 59, 999);
-
-    const expectedRent = await prisma.payment.aggregate({
-      where: {
-        dueDate: { gte: start, lte: end }
-      },
-      _sum: { amount: true }
-    });
-
-    const collectedRent = await prisma.payment.aggregate({
-      where: {
-        status: "APPROVED",
-        dueDate: { gte: start, lte: end }
-      },
-      _sum: { amount: true }
-    });
-
-    const expected = expectedRent._sum.amount || 0;
-    const collected = collectedRent._sum.amount || 0;
-    const rate = expected > 0 ? Math.round((collected / expected) * 100) : 0;
-
-    monthlyMetrics.push({
-      name: start.toLocaleString("default", { month: "short" }),
-      expected,
-      collected,
-      rate
-    });
-
-    // Move to next month safely by modifying currentMonthStart
-    currentMonthStart.setMonth(currentMonthStart.getMonth() + 1);
-  }
+  // 7. Monthly Breakdown for the selected range (already calculated above)
 
   // Utility Revenue Aggregation
   const periodUtilities = await prisma.utilityBill.findMany({

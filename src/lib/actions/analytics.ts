@@ -12,15 +12,34 @@ export async function getRevenueAnalytics(months: number = 6, propertyIds?: stri
     const start = startOfMonth(date);
     const end = endOfMonth(date);
 
-    const expectedRent = await prisma.payment.aggregate({
+    // Calculate expected rent based on active/rented leases in this month
+    const activeLeases = await prisma.lease.findMany({
       where: {
-        dueDate: { gte: start, lte: end },
+        status: { in: ["ACTIVE", "EXPIRED", "TERMINATED"] },
+        startDate: { lte: end },
+        endDate: { gte: start },
         ...(propertyIds && propertyIds.length > 0 ? {
-          lease: { unit: { propertyId: { in: propertyIds } } }
+          unit: { propertyId: { in: propertyIds } }
         } : {})
       },
-      _sum: { amount: true },
+      include: {
+        unit: {
+          select: {
+            rentAmount: true
+          }
+        }
+      }
     });
+
+    const filteredLeases = activeLeases.filter(lease => {
+      // Exclude leases that were terminated before the start of the month
+      if (lease.status === "TERMINATED" && lease.updatedAt < start) {
+        return false;
+      }
+      return true;
+    });
+
+    const expected = filteredLeases.reduce((sum, lease) => sum + (lease.unit?.rentAmount || 0), 0);
 
     const collectedRent = await prisma.payment.aggregate({
       where: {
@@ -33,7 +52,6 @@ export async function getRevenueAnalytics(months: number = 6, propertyIds?: stri
       _sum: { amount: true },
     });
 
-    const expected = expectedRent._sum.amount || 0;
     const collected = collectedRent._sum.amount || 0;
     const rate = expected > 0 ? Math.round((collected / expected) * 100) : 0;
 
