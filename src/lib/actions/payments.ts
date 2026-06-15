@@ -147,8 +147,17 @@ export async function approvePayment(
         currentPenaltyOwed = dbPenalty.amount - dbPenalty.paidAmount;
       }
       
-      // 1. Settle penalty for this month first
-      if (currentPenaltyOwed > 0) {
+      // 1. Settle rent for this month first
+      if (fundsRemaining >= monthlyRent) {
+        fundsRemaining -= monthlyRent;
+        monthsCovered++;
+      } else {
+        clearedAllArrears = false;
+        break;
+      }
+
+      // 2. Settle penalty for this month using any remaining funds
+      if (currentPenaltyOwed > 0 && fundsRemaining > 0) {
         const toPay = Math.min(currentPenaltyOwed, fundsRemaining);
         currentPenaltyPaid = toPay;
         actualPenaltyPaid += toPay;
@@ -168,15 +177,6 @@ export async function approvePayment(
             dueDate: gd
           });
         }
-      }
-      
-      // 2. Settle rent for this month
-      if (fundsRemaining >= monthlyRent) {
-        fundsRemaining -= monthlyRent;
-        monthsCovered++;
-      } else {
-        clearedAllArrears = false;
-        break;
       }
     }
     
@@ -536,8 +536,17 @@ export async function approvePaymentSystem(
         currentPenaltyOwed = dbPenalty.amount - dbPenalty.paidAmount;
       }
       
-      // 1. Settle penalty for this month first
-      if (currentPenaltyOwed > 0) {
+      // 1. Settle rent for this month first
+      if (fundsRemaining >= monthlyRent) {
+        fundsRemaining -= monthlyRent;
+        monthsCovered++;
+      } else {
+        clearedAllArrears = false;
+        break;
+      }
+
+      // 2. Settle penalty for this month using any remaining funds
+      if (currentPenaltyOwed > 0 && fundsRemaining > 0) {
         const toPay = Math.min(currentPenaltyOwed, fundsRemaining);
         currentPenaltyPaid = toPay;
         actualPenaltyPaid += toPay;
@@ -557,15 +566,6 @@ export async function approvePaymentSystem(
             dueDate: gd
           });
         }
-      }
-      
-      // 2. Settle rent for this month
-      if (fundsRemaining >= monthlyRent) {
-        fundsRemaining -= monthlyRent;
-        monthsCovered++;
-      } else {
-        clearedAllArrears = false;
-        break;
       }
     }
     
