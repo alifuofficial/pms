@@ -37,6 +37,7 @@ export function AddUnitDialog({
     type: "Studio",
     rentAmount: "",
     penaltyExempt: false,
+    companyOwned: false,
   });
 
   useEffect(() => {
@@ -68,6 +69,7 @@ export function AddUnitDialog({
       type: formData.type,
       rentAmount: parseFloat(formData.rentAmount),
       penaltyExempt: formData.penaltyExempt,
+      companyOwned: formData.companyOwned,
     });
     setIsLoading(false);
     
@@ -81,7 +83,8 @@ export function AddUnitDialog({
         size: "", 
         type: "Studio", 
         rentAmount: "",
-        penaltyExempt: false
+        penaltyExempt: false,
+        companyOwned: false
       });
     } else {
       toast.error(result.error || "Failed to add unit.");
@@ -194,17 +197,32 @@ export function AddUnitDialog({
               />
             </div>
 
-            <div className="flex items-center gap-2 pt-1">
-              <input 
-                type="checkbox"
-                id="penaltyExempt"
-                checked={formData.penaltyExempt}
-                onChange={(e) => setFormData({ ...formData, penaltyExempt: e.target.checked })}
-                className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900 cursor-pointer"
-              />
-              <Label htmlFor="penaltyExempt" className="text-xs font-semibold text-slate-700 cursor-pointer select-none">
-                Exempt from Late Penalty Fees
-              </Label>
+            <div className="flex flex-col gap-2.5 pt-1">
+              <div className="flex items-center gap-2">
+                <input 
+                  type="checkbox"
+                  id="penaltyExempt"
+                  checked={formData.penaltyExempt}
+                  onChange={(e) => setFormData({ ...formData, penaltyExempt: e.target.checked })}
+                  className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900 cursor-pointer"
+                />
+                <Label htmlFor="penaltyExempt" className="text-xs font-semibold text-slate-700 cursor-pointer select-none">
+                  Exempt from Late Penalty Fees
+                </Label>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <input 
+                  type="checkbox"
+                  id="companyOwned"
+                  checked={formData.companyOwned}
+                  onChange={(e) => setFormData({ ...formData, companyOwned: e.target.checked })}
+                  className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900 cursor-pointer"
+                />
+                <Label htmlFor="companyOwned" className="text-xs font-semibold text-slate-700 cursor-pointer select-none">
+                  Company-Owned Unit (No rent paid, exclude from reports)
+                </Label>
+              </div>
             </div>
           </div>
 

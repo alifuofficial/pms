@@ -22,7 +22,10 @@ export async function getReportMetrics(startDate: Date, endDate: Date) {
       where: {
         status: { in: ["ACTIVE", "EXPIRED", "TERMINATED"] },
         startDate: { lte: end },
-        endDate: { gte: start }
+        endDate: { gte: start },
+        unit: {
+          companyOwned: false
+        }
       },
       include: {
         unit: {
@@ -45,7 +48,12 @@ export async function getReportMetrics(startDate: Date, endDate: Date) {
     const collectedRent = await prisma.payment.aggregate({
       where: {
         status: "APPROVED",
-        dueDate: { gte: start, lte: end }
+        dueDate: { gte: start, lte: end },
+        lease: {
+          unit: {
+            companyOwned: false
+          }
+        }
       },
       _sum: { amount: true }
     });

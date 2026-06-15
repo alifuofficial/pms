@@ -12,15 +12,18 @@ export async function getRevenueAnalytics(months: number = 6, propertyIds?: stri
     const start = startOfMonth(date);
     const end = endOfMonth(date);
 
-    // Calculate expected rent based on active/rented leases in this month
+    // Calculate expected rent based on active/rented leases in this month (excluding companyOwned)
     const activeLeases = await prisma.lease.findMany({
       where: {
         status: { in: ["ACTIVE", "EXPIRED", "TERMINATED"] },
         startDate: { lte: end },
         endDate: { gte: start },
-        ...(propertyIds && propertyIds.length > 0 ? {
-          unit: { propertyId: { in: propertyIds } }
-        } : {})
+        unit: {
+          companyOwned: false,
+          ...(propertyIds && propertyIds.length > 0 ? {
+            propertyId: { in: propertyIds }
+          } : {})
+        }
       },
       include: {
         unit: {
@@ -45,9 +48,14 @@ export async function getRevenueAnalytics(months: number = 6, propertyIds?: stri
       where: {
         status: "APPROVED",
         dueDate: { gte: start, lte: end },
-        ...(propertyIds && propertyIds.length > 0 ? {
-          lease: { unit: { propertyId: { in: propertyIds } } }
-        } : {})
+        lease: {
+          unit: {
+            companyOwned: false,
+            ...(propertyIds && propertyIds.length > 0 ? {
+              propertyId: { in: propertyIds }
+            } : {})
+          }
+        }
       },
       _sum: { amount: true },
     });

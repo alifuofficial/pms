@@ -71,6 +71,7 @@ export function UnitActions({ unit }: { unit: any }) {
     rentAmount: unit.rentAmount,
     status: unit.status,
     penaltyExempt: unit.penaltyExempt || false,
+    companyOwned: unit.companyOwned || false,
     mergedIntoId: unit.mergedIntoId || "",
   });
 
@@ -241,17 +242,32 @@ export function UnitActions({ unit }: { unit: any }) {
               </div>
             </div>
 
-            <div className="flex items-center gap-2 pt-1">
-              <input 
-                type="checkbox"
-                id={`edit-penaltyExempt-${unit.id}`}
-                checked={editData.penaltyExempt}
-                onChange={(e) => setEditData({ ...editData, penaltyExempt: e.target.checked })}
-                className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900 cursor-pointer"
-              />
-              <Label htmlFor={`edit-penaltyExempt-${unit.id}`} className="text-xs font-semibold text-slate-700 cursor-pointer select-none">
-                Exempt from Late Penalty Fees
-              </Label>
+            <div className="flex flex-col gap-2.5 pt-1">
+              <div className="flex items-center gap-2">
+                <input 
+                  type="checkbox"
+                  id={`edit-penaltyExempt-${unit.id}`}
+                  checked={editData.penaltyExempt}
+                  onChange={(e) => setEditData({ ...editData, penaltyExempt: e.target.checked })}
+                  className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900 cursor-pointer"
+                />
+                <Label htmlFor={`edit-penaltyExempt-${unit.id}`} className="text-xs font-semibold text-slate-700 cursor-pointer select-none">
+                  Exempt from Late Penalty Fees
+                </Label>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <input 
+                  type="checkbox"
+                  id={`edit-companyOwned-${unit.id}`}
+                  checked={editData.companyOwned}
+                  onChange={(e) => setEditData({ ...editData, companyOwned: e.target.checked })}
+                  className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900 cursor-pointer"
+                />
+                <Label htmlFor={`edit-companyOwned-${unit.id}`} className="text-xs font-semibold text-slate-700 cursor-pointer select-none">
+                  Company-Owned Unit (No rent paid, exclude from reports)
+                </Label>
+              </div>
             </div>
 
             <div className="space-y-1.5 pt-1">

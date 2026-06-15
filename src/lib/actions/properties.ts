@@ -77,6 +77,7 @@ export async function createUnit(propertyId: string, data: {
   type: string;
   rentAmount: number;
   penaltyExempt?: boolean;
+  companyOwned?: boolean;
   mergedIntoId?: string | null;
 }) {
   const session = await auth();
@@ -136,6 +137,7 @@ export async function updateUnit(id: string, data: {
   rentAmount: number;
   status: "AVAILABLE" | "OCCUPIED" | "MAINTENANCE";
   penaltyExempt?: boolean;
+  companyOwned?: boolean;
   mergedIntoId?: string | null;
 }) {
   const session = await auth();
@@ -179,6 +181,7 @@ export async function bulkUpdateUnits(ids: string[], data: {
   rentAmount?: number;
   qrPrinted?: boolean;
   penaltyExempt?: boolean;
+  companyOwned?: boolean;
   mergedIntoId?: string | null;
 }) {
   const session = await auth();
