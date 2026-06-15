@@ -39,6 +39,7 @@ interface TenantRecipient {
   unpaidPenaltyTotal: number;
   totalBalance: number;
   overdue: boolean;
+  penaltyExempt: boolean;
 }
 
 interface PropertyOption {
@@ -93,7 +94,10 @@ export function BroadcastComposer({
       const matchesStatus =
         selectedStatus === "all" ||
         (selectedStatus === "overdue" && tenant.overdue) ||
-        (selectedStatus === "paid" && !tenant.overdue);
+        (selectedStatus === "overdue-rent" && tenant.arrearsCount > 0) ||
+        (selectedStatus === "unpaid-penalty-only" && tenant.arrearsCount === 0 && tenant.unpaidPenaltyTotal > 0) ||
+        (selectedStatus === "paid" && !tenant.overdue) ||
+        (selectedStatus === "penalty-exempt" && tenant.penaltyExempt);
 
       return matchesSearch && matchesProperty && matchesStatus;
     });
@@ -135,7 +139,13 @@ export function BroadcastComposer({
       const matchIds = tenants
         .filter((t) => {
           const matchProp = propertyId === "all" || t.propertyId === propertyId;
-          const matchStat = status === "all" || (status === "overdue" && t.overdue) || (status === "paid" && !t.overdue);
+          let matchStat = false;
+          if (status === "all") matchStat = true;
+          else if (status === "overdue") matchStat = t.overdue;
+          else if (status === "overdue-rent") matchStat = t.arrearsCount > 0;
+          else if (status === "unpaid-penalty-only") matchStat = t.arrearsCount === 0 && t.unpaidPenaltyTotal > 0;
+          else if (status === "paid") matchStat = !t.overdue;
+          else if (status === "penalty-exempt") matchStat = t.penaltyExempt;
           return matchProp && matchStat;
         })
         .map((t) => t.id);
@@ -379,8 +389,11 @@ export function BroadcastComposer({
                   className="w-full bg-white border border-slate-200 rounded-lg text-xs h-9 px-3 focus:outline-none focus:ring-1 focus:ring-slate-900 transition-colors"
                 >
                   <option value="all">All Tenants</option>
-                  <option value="overdue">In Arrears (Overdue Only)</option>
-                  <option value="paid">Up-to-Date (No Arrears)</option>
+                  <option value="overdue">Overdue (Owes Rent or Penalty)</option>
+                  <option value="overdue-rent">Rent Overdue (Owes Rent)</option>
+                  <option value="unpaid-penalty-only">Paid Rent Fully but Owes Penalties</option>
+                  <option value="paid">Up-to-Date (No Arrears or Penalties)</option>
+                  <option value="penalty-exempt">Late Penalty Exempt Only</option>
                 </select>
               </div>
             </div>
@@ -439,7 +452,12 @@ export function BroadcastComposer({
                               <p className="text-[9px] text-slate-400 font-medium">{tenant.email || "No email"}</p>
                             </td>
                             <td className="py-3 px-3">
-                              <p className="text-xs font-semibold text-slate-700">Unit {tenant.unitNumber}</p>
+                              <div className="flex items-center gap-1.5">
+                                <p className="text-xs font-semibold text-slate-700">Unit {tenant.unitNumber}</p>
+                                {tenant.penaltyExempt && (
+                                  <span className="text-[8px] font-black bg-amber-50 text-amber-700 border border-amber-200/50 px-1.5 py-0.5 rounded uppercase tracking-tighter">Exempt</span>
+                                )}
+                              </div>
                               <p className="text-[9px] text-slate-400 font-medium truncate max-w-[130px]" title={tenant.propertyName}>
                                 {tenant.propertyName}
                               </p>

@@ -53,6 +53,7 @@ export async function getBroadcastRecipients() {
           unpaidPenaltyTotal: 0,
           totalBalance: 0,
           overdue: false,
+          penaltyExempt: false,
         });
         continue;
       }
@@ -141,6 +142,7 @@ export async function getBroadcastRecipients() {
           unpaidPenaltyTotal,
           totalBalance,
           overdue: arrearsCount > 0 || unpaidPenaltyTotal > 0,
+          penaltyExempt: unit.penaltyExempt,
         });
       }
     }
