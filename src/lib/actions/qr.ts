@@ -129,7 +129,15 @@ export async function getPublicUnitStatus(slug: string) {
         })
       : [];
 
-    const latestApprovedPayment = [...payments].reverse().find(p => p.status === "APPROVED");
+    const approvedPayments = payments.filter(p => p.status === "APPROVED");
+    const latestApprovedPayment = approvedPayments.length > 0
+      ? [...approvedPayments].sort((a, b) => {
+          const dateA = new Date(a.advanceUntil || a.dueDate).getTime();
+          const dateB = new Date(b.advanceUntil || b.dueDate).getTime();
+          if (dateA !== dateB) return dateA - dateB;
+          return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+        })[approvedPayments.length - 1]
+      : null;
 
     // ── STEP 1: Determine Coverage and Days Left ───────────────────────────
     const coverageDate = latestApprovedPayment

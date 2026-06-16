@@ -114,7 +114,14 @@ export async function processDailyAlerts() {
     for (const lease of activeLeases) {
       if (!lease.tenant.phoneNumber) continue;
 
-      const latestPayment = lease.payments[lease.payments.length - 1];
+      const latestPayment = lease.payments.length > 0
+        ? [...lease.payments].sort((a, b) => {
+            const dateA = new Date(a.advanceUntil || a.dueDate).getTime();
+            const dateB = new Date(b.advanceUntil || b.dueDate).getTime();
+            if (dateA !== dateB) return dateA - dateB;
+            return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+          })[lease.payments.length - 1]
+        : null;
       const coverageUntil = latestPayment?.advanceUntil || latestPayment?.dueDate || lease.startDate;
       const daysLeft = getDaysUntilEthiopianExpiry(new Date(coverageUntil));
 

@@ -230,7 +230,14 @@ export const calculateArrearsForLease = (lease: Lease, allPayments: Payment[]): 
 // Countdown Calculation
 export const calculateDaysLeftForLease = (lease: Lease, allPayments: Payment[], allUnits: Unit[], currentSettings: Settings) => {
   const leasePayments = allPayments.filter(p => p.leaseId === lease.id && p.status === "APPROVED");
-  const latestPayment = [...leasePayments].reverse().find(p => p.status === "APPROVED");
+  const latestPayment = leasePayments.length > 0
+    ? [...leasePayments].sort((a, b) => {
+        const dateA = new Date(a.advanceUntil || a.dueDate).getTime();
+        const dateB = new Date(b.advanceUntil || b.dueDate).getTime();
+        if (dateA !== dateB) return dateA - dateB;
+        return a.id.localeCompare(b.id);
+      })[leasePayments.length - 1]
+    : null;
 
   const coverageUntil = latestPayment?.advanceUntil || latestPayment?.dueDate || null;
   if (!coverageUntil) return { days: 0, text: "No payment", expired: true };
@@ -252,7 +259,14 @@ export const calculateDaysLeftForLease = (lease: Lease, allPayments: Payment[], 
 // Next Payment Due calculations
 export const getNextMonthForLease = (lease: Lease, allPayments: Payment[]) => {
   const leasePayments = allPayments.filter(p => p.leaseId === lease.id && p.status === "APPROVED");
-  const latestPayment = [...leasePayments].reverse().find(p => p.status === "APPROVED");
+  const latestPayment = leasePayments.length > 0
+    ? [...leasePayments].sort((a, b) => {
+        const dateA = new Date(a.advanceUntil || a.dueDate).getTime();
+        const dateB = new Date(b.advanceUntil || b.dueDate).getTime();
+        if (dateA !== dateB) return dateA - dateB;
+        return a.id.localeCompare(b.id);
+      })[leasePayments.length - 1]
+    : null;
 
   let currentEnd: Date;
   if (latestPayment) {

@@ -64,10 +64,17 @@ export async function reportPublicPayment(formData: FormData) {
 
     // ── Calculate Target Due Date & Coverage ────────────────────────────────
     // 1. Determine the first unpaid month (nextDue)
-    const latestPayment = await prisma.payment.findFirst({
-      where: { leaseId: lease.id, status: "APPROVED" },
-      orderBy: { dueDate: "desc" }
+    const approvedPayments = await prisma.payment.findMany({
+      where: { leaseId: lease.id, status: "APPROVED" }
     });
+    const latestPayment = approvedPayments.length > 0
+      ? [...approvedPayments].sort((a, b) => {
+          const dateA = new Date(a.advanceUntil || a.dueDate).getTime();
+          const dateB = new Date(b.advanceUntil || b.dueDate).getTime();
+          if (dateA !== dateB) return dateA - dateB;
+          return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+        })[approvedPayments.length - 1]
+      : null;
 
     let nextDue = new Date();
     if (latestPayment) {
