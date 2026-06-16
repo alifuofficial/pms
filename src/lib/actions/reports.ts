@@ -2,6 +2,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/auth";
+import { getLeaseUncollectedBalance } from "@/lib/arrears";
 
 export async function getReportMetrics(startDate: Date, endDate: Date) {
   const session = await auth();
@@ -180,13 +181,11 @@ export async function getReportMetrics(startDate: Date, endDate: Date) {
     .reduce((sum, b) => sum + b.amount, 0);
 
   // 8. Tenants with Uncollected Balance due on or before endDate
-  const unpaidLeases = await prisma.lease.findMany({
+  const settings = await prisma.systemSettings.findUnique({ where: { id: "global" } });
+  const allLeases = await prisma.lease.findMany({
     where: {
-      OR: [
-        { payments: { some: { status: { in: ["PENDING", "REJECTED"] } } } },
-        { penalties: { some: { status: { in: ["UNPAID", "PARTIAL"] } } } },
-        { utilityBills: { some: { status: { in: ["UNPAID", "PENDING", "REJECTED"] } } } }
-      ]
+      status: { in: ["ACTIVE", "EXPIRED", "TERMINATED"] },
+      unit: { companyOwned: false }
     },
     include: {
       tenant: {
@@ -199,32 +198,14 @@ export async function getReportMetrics(startDate: Date, endDate: Date) {
           }
         }
       },
-      payments: {
-        where: {
-          status: { in: ["PENDING", "REJECTED"] },
-          dueDate: { lte: endDate }
-        }
-      },
-      penalties: {
-        where: {
-          status: { in: ["UNPAID", "PARTIAL"] },
-          dueDate: { lte: endDate }
-        }
-      },
-      utilityBills: {
-        where: {
-          status: { in: ["UNPAID", "PENDING", "REJECTED"] },
-          dueDate: { lte: endDate }
-        }
-      }
+      payments: true,
+      penalties: true,
+      utilityBills: true
     }
   });
 
-  const uncollectedTenants = unpaidLeases.map(lease => {
-    const rentUncollected = lease.payments.reduce((sum, p) => sum + p.amount, 0);
-    const penaltiesUncollected = lease.penalties.reduce((sum, p) => sum + (p.amount - p.paidAmount), 0);
-    const utilitiesUncollected = lease.utilityBills.reduce((sum, b) => sum + b.amount, 0);
-    const totalUncollected = rentUncollected + penaltiesUncollected + utilitiesUncollected;
+  const uncollectedTenants = allLeases.map(lease => {
+    const { rentUncollected, penaltiesUncollected, utilitiesUncollected, totalUncollected } = getLeaseUncollectedBalance(lease, settings, endDate);
 
     return {
       leaseId: lease.id,

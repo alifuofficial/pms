@@ -23,6 +23,7 @@ import { Badge } from "@/components/ui/badge";
 import { getSystemToday } from "@/lib/calendar";
 import { getRevenueAnalytics, getOccupancyAnalytics, getRecentAuditLogs, getPaymentTypeBreakdown } from "@/lib/actions/analytics";
 import { getPendingPenalties } from "@/lib/actions/penalties";
+import { getLeaseUncollectedBalance } from "@/lib/arrears";
 import { formatDistanceToNow } from "date-fns";
 import Link from "next/link";
 
@@ -61,20 +62,21 @@ export default async function AdminDashboard() {
         return (rent._sum.amount || 0) + (penalty._sum.paidAmount || 0) + (utility._sum.amount || 0);
       })(),
       uncollectedBalance: await (async () => {
-        const rent = await prisma.payment.aggregate({
-          where: { status: { in: ["PENDING", "REJECTED"] } },
-          _sum: { amount: true }
+        const activeLeases = await prisma.lease.findMany({
+          where: { status: "ACTIVE" },
+          include: {
+            unit: true,
+            payments: true,
+            penalties: true,
+            utilityBills: true,
+          }
         });
-        const penaltyList = await prisma.penalty.findMany({
-          where: { status: { in: ["UNPAID", "PARTIAL"] } },
-          select: { amount: true, paidAmount: true }
-        });
-        const penalty = penaltyList.reduce((sum, p) => sum + (p.amount - p.paidAmount), 0);
-        const utility = await prisma.utilityBill.aggregate({
-          where: { status: { in: ["UNPAID", "PENDING", "REJECTED"] } },
-          _sum: { amount: true }
-        });
-        return (rent._sum.amount || 0) + penalty + (utility._sum.amount || 0);
+        let total = 0;
+        for (const lease of activeLeases) {
+          const { totalUncollected } = getLeaseUncollectedBalance(lease, settings);
+          total += totalUncollected;
+        }
+        return total;
       })()
     }))()
   ]);
