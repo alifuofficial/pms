@@ -179,6 +179,67 @@ export async function getReportMetrics(startDate: Date, endDate: Date) {
     .filter(b => b.type === "WATER" && b.status === "PAID")
     .reduce((sum, b) => sum + b.amount, 0);
 
+  // 8. Tenants with Uncollected Balance due on or before endDate
+  const unpaidLeases = await prisma.lease.findMany({
+    where: {
+      OR: [
+        { payments: { some: { status: { in: ["PENDING", "REJECTED"] } } } },
+        { penalties: { some: { status: { in: ["UNPAID", "PARTIAL"] } } } },
+        { utilityBills: { some: { status: { in: ["UNPAID", "PENDING", "REJECTED"] } } } }
+      ]
+    },
+    include: {
+      tenant: {
+        select: { name: true, email: true }
+      },
+      unit: {
+        include: {
+          property: {
+            select: { name: true }
+          }
+        }
+      },
+      payments: {
+        where: {
+          status: { in: ["PENDING", "REJECTED"] },
+          dueDate: { lte: endDate }
+        }
+      },
+      penalties: {
+        where: {
+          status: { in: ["UNPAID", "PARTIAL"] },
+          dueDate: { lte: endDate }
+        }
+      },
+      utilityBills: {
+        where: {
+          status: { in: ["UNPAID", "PENDING", "REJECTED"] },
+          dueDate: { lte: endDate }
+        }
+      }
+    }
+  });
+
+  const uncollectedTenants = unpaidLeases.map(lease => {
+    const rentUncollected = lease.payments.reduce((sum, p) => sum + p.amount, 0);
+    const penaltiesUncollected = lease.penalties.reduce((sum, p) => sum + (p.amount - p.paidAmount), 0);
+    const utilitiesUncollected = lease.utilityBills.reduce((sum, b) => sum + b.amount, 0);
+    const totalUncollected = rentUncollected + penaltiesUncollected + utilitiesUncollected;
+
+    return {
+      leaseId: lease.id,
+      tenantName: lease.tenant.name,
+      tenantEmail: lease.tenant.email || "",
+      propertyName: lease.unit.property.name,
+      unitNumber: lease.unit.unitNumber,
+      rentUncollected,
+      penaltiesUncollected,
+      utilitiesUncollected,
+      totalUncollected
+    };
+  }).filter(t => t.totalUncollected > 0)
+    .sort((a, b) => b.totalUncollected - a.totalUncollected);
+
   return {
     collectedRevenue,
     expectedRevenue,
@@ -194,6 +255,7 @@ export async function getReportMetrics(startDate: Date, endDate: Date) {
     expectedElectricity,
     collectedElectricity,
     expectedWater,
-    collectedWater
+    collectedWater,
+    uncollectedTenants
   };
 }

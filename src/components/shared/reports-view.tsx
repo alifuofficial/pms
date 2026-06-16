@@ -15,7 +15,10 @@ import {
   Calendar as CalendarIcon,
   Filter,
   Zap,
-  Droplet
+  Droplet,
+  TrendingDown,
+  FileSpreadsheet,
+  Printer
 } from "lucide-react";
 import { formatSystemDate, formatEthiopianMonthYear } from "@/lib/calendar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -40,6 +43,7 @@ interface ReportsViewProps {
     collectedElectricity?: number;
     expectedWater?: number;
     collectedWater?: number;
+    uncollectedTenants: any[];
   };
   currency: string;
   calendarType: string;
@@ -60,6 +64,34 @@ export function ReportsView({ metrics, currency, calendarType, startDate, endDat
 
   const handlePrint = () => {
     window.print();
+  };
+
+  const handleExportCSV = () => {
+    const headers = ["Tenant Name", "Tenant Email", "Property", "Unit Number", `Rent Uncollected (${currency})`, `Penalties Uncollected (${currency})`, `Utilities Uncollected (${currency})`, `Total Outstanding (${currency})`];
+    const rows = metrics.uncollectedTenants.map(t => [
+      t.tenantName,
+      t.tenantEmail,
+      t.propertyName,
+      t.unitNumber,
+      t.rentUncollected,
+      t.penaltiesUncollected,
+      t.utilitiesUncollected,
+      t.totalUncollected
+    ]);
+
+    const csvContent = [
+      headers.join(","),
+      ...rows.map(row => row.map(val => `"${String(val).replace(/"/g, '""')}"`).join(","))
+    ].join("\n");
+
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `uncollected_balances_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   return (
@@ -411,6 +443,78 @@ export function ReportsView({ metrics, currency, calendarType, startDate, endDat
                   </td>
                   <td className="py-4 px-6 text-right font-black text-slate-900">
                     {currency} {p.amount.toLocaleString()}
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Tenants with Outstanding Balances Section */}
+      <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-none print:mt-8">
+        <div className="p-5 border-b border-slate-100 flex items-center justify-between print:border-b-2">
+          <div>
+            <h2 className="text-sm font-bold text-red-600 uppercase tracking-tight">Tenants with Outstanding Balances</h2>
+            <p className="text-xs text-slate-500 font-medium mt-0.5">List of tenants who have outstanding/unpaid rent, penalties, or utilities due up to {formatSystemDate(endDate, calendarType)}.</p>
+          </div>
+          <div className="flex items-center gap-2 print:hidden">
+            <Button
+              onClick={handleExportCSV}
+              variant="outline"
+              size="sm"
+              className="h-8 border-slate-200 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 flex items-center gap-1.5 shadow-none"
+            >
+              <FileSpreadsheet size={13} className="text-emerald-600" /> Export CSV (Excel)
+            </Button>
+            <Button
+              onClick={handlePrint}
+              variant="outline"
+              size="sm"
+              className="h-8 border-slate-200 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 flex items-center gap-1.5 shadow-none"
+            >
+              <Printer size={13} className="text-indigo-600" /> Export PDF (Print)
+            </Button>
+          </div>
+        </div>
+        <table className="w-full text-left">
+          <thead className="bg-slate-50/50 text-[10px] text-slate-400 font-bold uppercase tracking-widest border-b border-slate-200">
+            <tr>
+              <th className="py-4 px-6">Tenant</th>
+              <th className="py-4 px-6">Property / Unit</th>
+              <th className="py-4 px-6 text-right">Rent Due</th>
+              <th className="py-4 px-6 text-right">Late Fees</th>
+              <th className="py-4 px-6 text-right">Utilities</th>
+              <th className="py-4 px-6 text-right">Total Outstanding</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100 text-sm">
+            {metrics.uncollectedTenants.length === 0 ? (
+              <tr>
+                <td colSpan={6} className="py-12 text-center text-slate-500 font-medium animate-pulse">No outstanding balances in this period.</td>
+              </tr>
+            ) : (
+              metrics.uncollectedTenants.map(t => (
+                <tr key={t.leaseId} className="hover:bg-slate-50/50 transition-colors">
+                  <td className="py-4 px-6">
+                    <p className="font-bold text-slate-900">{t.tenantName}</p>
+                    <p className="text-[10px] text-slate-400 font-medium">{t.tenantEmail}</p>
+                  </td>
+                  <td className="py-4 px-6">
+                    <p className="text-xs font-semibold text-slate-700">{t.propertyName}</p>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase">Unit {t.unitNumber}</p>
+                  </td>
+                  <td className="py-4 px-6 text-right text-slate-600 font-medium">
+                    {t.rentUncollected > 0 ? `${currency} ${t.rentUncollected.toLocaleString()}` : "-"}
+                  </td>
+                  <td className="py-4 px-6 text-right text-slate-600 font-medium">
+                    {t.penaltiesUncollected > 0 ? `${currency} ${t.penaltiesUncollected.toLocaleString()}` : "-"}
+                  </td>
+                  <td className="py-4 px-6 text-right text-slate-600 font-medium">
+                    {t.utilitiesUncollected > 0 ? `${currency} ${t.utilitiesUncollected.toLocaleString()}` : "-"}
+                  </td>
+                  <td className="py-4 px-6 text-right font-black text-red-600">
+                    {currency} {t.totalUncollected.toLocaleString()}
                   </td>
                 </tr>
               ))

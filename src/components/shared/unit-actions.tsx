@@ -25,10 +25,10 @@ import {
   DropdownMenuItem, 
   DropdownMenuTrigger 
 } from "@/components/ui/dropdown-menu";
-import { updateUnit, deleteUnit, vacateUnit, getUnitsByProperty } from "@/lib/actions/properties";
+import { updateUnit, deleteUnit, vacateUnit, getUnitsByProperty, bulkUpdateUnits } from "@/lib/actions/properties";
 import { generateUnitQrSlug } from "@/lib/actions/qr";
 import { toast } from "sonner";
-import { QrCode, ExternalLink, Download, Copy, Check, LogOut } from "lucide-react";
+import { QrCode, ExternalLink, Download, Copy, Check, LogOut, Link2Off } from "lucide-react";
 import QRCode from "react-qr-code";
 
 export function UnitActions({ unit }: { unit: any }) {
@@ -118,6 +118,30 @@ export function UnitActions({ unit }: { unit: any }) {
     }
   };
 
+  const handleUnmerge = async () => {
+    setIsLoading(true);
+    const result = await bulkUpdateUnits([unit.id], { mergedIntoId: null });
+    setIsLoading(false);
+    if (result.success) {
+      toast.success("Unit unmerged successfully.");
+    } else {
+      toast.error(result.error || "Failed to unmerge unit.");
+    }
+  };
+
+  const handleUnmergeChildren = async () => {
+    if (!unit.mergedUnits || unit.mergedUnits.length === 0) return;
+    setIsLoading(true);
+    const childIds = unit.mergedUnits.map((u: any) => u.id);
+    const result = await bulkUpdateUnits(childIds, { mergedIntoId: null });
+    setIsLoading(false);
+    if (result.success) {
+      toast.success("All child units unmerged successfully.");
+    } else {
+      toast.error(result.error || "Failed to unmerge child units.");
+    }
+  };
+
   return (
     <>
       <DropdownMenu>
@@ -139,6 +163,24 @@ export function UnitActions({ unit }: { unit: any }) {
           >
             <QrCode size={12} /> Unit Gateway
           </DropdownMenuItem>
+          {unit.mergedIntoId && (
+            <DropdownMenuItem 
+              onClick={handleUnmerge}
+              disabled={isLoading}
+              className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-amber-600 rounded-lg cursor-pointer hover:bg-amber-50"
+            >
+              {isLoading ? <Loader2 size={12} className="animate-spin" /> : <Link2Off size={12} />} Unmerge Unit
+            </DropdownMenuItem>
+          )}
+          {unit.mergedUnits && unit.mergedUnits.length > 0 && (
+            <DropdownMenuItem 
+              onClick={handleUnmergeChildren}
+              disabled={isLoading}
+              className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-amber-600 rounded-lg cursor-pointer hover:bg-amber-50"
+            >
+              {isLoading ? <Loader2 size={12} className="animate-spin" /> : <Link2Off size={12} />} Unmerge Children
+            </DropdownMenuItem>
+          )}
           {unit.status === "OCCUPIED" && (
             <DropdownMenuItem 
               onClick={() => setIsVacating(true)}

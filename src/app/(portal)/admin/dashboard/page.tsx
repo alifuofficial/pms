@@ -12,7 +12,8 @@ import {
   Activity,
   UserCog,
   ChevronRight,
-  ArrowRight
+  ArrowRight,
+  TrendingDown
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -58,6 +59,22 @@ export default async function AdminDashboard() {
           _sum: { amount: true }
         });
         return (rent._sum.amount || 0) + (penalty._sum.paidAmount || 0) + (utility._sum.amount || 0);
+      })(),
+      uncollectedBalance: await (async () => {
+        const rent = await prisma.payment.aggregate({
+          where: { status: { in: ["PENDING", "REJECTED"] } },
+          _sum: { amount: true }
+        });
+        const penaltyList = await prisma.penalty.findMany({
+          where: { status: { in: ["UNPAID", "PARTIAL"] } },
+          select: { amount: true, paidAmount: true }
+        });
+        const penalty = penaltyList.reduce((sum, p) => sum + (p.amount - p.paidAmount), 0);
+        const utility = await prisma.utilityBill.aggregate({
+          where: { status: { in: ["UNPAID", "PENDING", "REJECTED"] } },
+          _sum: { amount: true }
+        });
+        return (rent._sum.amount || 0) + penalty + (utility._sum.amount || 0);
       })()
     }))()
   ]);
@@ -119,12 +136,13 @@ export default async function AdminDashboard() {
       </div>
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
         {[
           { label: "Properties", value: stats.totalProperties, icon: Building2, color: "text-blue-500" },
           { label: "Tenants", value: stats.activeTenants, icon: Users, color: "text-emerald-500" },
           { label: "Pending", value: stats.pendingApprovals, icon: Clock, color: "text-amber-500" },
           { label: "Revenue", value: `${settings?.currency || 'USD'} ${stats.totalRevenue.toLocaleString()}`, icon: ShieldCheck, color: "text-indigo-500" },
+          { label: "Uncollected", value: `${settings?.currency || 'USD'} ${stats.uncollectedBalance.toLocaleString()}`, icon: TrendingDown, color: "text-red-500" },
         ].map((stat, i) => (
           <div key={i} className="bg-white p-5 rounded-xl border border-slate-200 flex items-center justify-between shadow-sm">
             <div className="space-y-0.5">

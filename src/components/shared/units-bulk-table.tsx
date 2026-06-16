@@ -16,7 +16,7 @@ const formatFloor = (f: number) => {
   return `${f}${s} Floor`;
 };
 
-type BulkField = "floor" | "status" | "type" | "rentAmount" | "qrPrinted" | "penaltyExempt" | "companyOwned" | "hasMeter" | "merge";
+type BulkField = "floor" | "status" | "type" | "rentAmount" | "qrPrinted" | "penaltyExempt" | "companyOwned" | "hasMeter" | "merge" | "unmerge";
 
 const BULK_FIELDS: { value: BulkField; label: string }[] = [
   { value: "floor",      label: "Floor" },
@@ -28,6 +28,7 @@ const BULK_FIELDS: { value: BulkField; label: string }[] = [
   { value: "companyOwned",  label: "Company Ownership" },
   { value: "hasMeter",      label: "Utility Meter Status (Has Meter)" },
   { value: "merge",      label: "Merge Units (Set Parent)" },
+  { value: "unmerge",    label: "Unmerge Units" },
 ];
 
 export function UnitsBulkTable({ units, currency }: { units: any[]; currency: string }) {
@@ -81,6 +82,23 @@ export function UnitsBulkTable({ units, currency }: { units: any[]; currency: st
         return;
       }
 
+      if (bulkField === "unmerge") {
+        const childIdsOfSelectedParents = units
+          .filter(u => ids.includes(u.id) && u.mergedUnits && u.mergedUnits.length > 0)
+          .flatMap(u => u.mergedUnits.map((child: any) => child.id));
+
+        const allIdsToUnmerge = Array.from(new Set([...ids, ...childIdsOfSelectedParents]));
+
+        const result = await bulkUpdateUnits(allIdsToUnmerge, { mergedIntoId: null });
+        if (result.success) {
+          toast.success("Successfully unmerged units.");
+          setSelected(new Set());
+        } else {
+          toast.error(result.error || "Unmerge bulk update failed.");
+        }
+        return;
+      }
+
       if (bulkField === "floor")       data.floor = parseInt(bulkValue);
       if (bulkField === "status")      data.status = bulkValue;
       if (bulkField === "type")        data.type = bulkValue;
@@ -129,6 +147,9 @@ export function UnitsBulkTable({ units, currency }: { units: any[]; currency: st
                 else if (f === "merge") {
                   const firstId = Array.from(selected)[0] || "";
                   setBulkValue(firstId);
+                }
+                else if (f === "unmerge") {
+                  setBulkValue("");
                 }
               }}
             >
