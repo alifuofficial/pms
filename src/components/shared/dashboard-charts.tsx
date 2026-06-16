@@ -244,3 +244,104 @@ export function OccupancyChart({ data = [] }: { data?: ChartData[] }) {
     </div>
   );
 }
+
+export function EthiopianRevenueChart({ data = [] }: { data?: ChartData[] }) {
+  const [isMounted, setIsMounted] = useState(false);
+  
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
+  if (data.length === 0) {
+    return (
+      <div className="h-[300px] w-full flex items-center justify-center bg-slate-50/50 rounded-lg border border-dashed border-slate-200">
+        <p className="text-xs font-medium text-slate-400 italic">No Ethiopian revenue data available</p>
+      </div>
+    );
+  }
+
+  if (!isMounted) return <div className="h-[300px] w-full" />;
+
+  return (
+    <div className="h-[300px] w-full">
+      <ResponsiveContainer width="100%" height="100%" minHeight={0} minWidth={0}>
+        <BarChart data={data}>
+          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+          <XAxis 
+            dataKey="name" 
+            axisLine={false} 
+            tickLine={false} 
+            tick={{ fill: '#94a3b8', fontSize: 10, fontWeight: 500 }} 
+            dy={10}
+          />
+          <YAxis 
+            axisLine={false} 
+            tickLine={false} 
+            tick={{ fill: '#94a3b8', fontSize: 10, fontWeight: 500 }} 
+            tickFormatter={(value) => `${value.toLocaleString()}`}
+          />
+          <Tooltip 
+            cursor={{ fill: '#f8fafc' }}
+            content={({ active, payload }) => {
+              if (active && payload && payload.length) {
+                const item = payload[0].payload as any;
+                return (
+                  <div className="bg-white p-3 border border-slate-100 rounded-xl shadow-lg space-y-1.5 text-xs text-slate-600 font-medium">
+                    <p className="font-bold text-slate-800 text-sm border-b border-slate-50 pb-1 uppercase tracking-tight">{item.name}</p>
+                    <div className="flex justify-between items-center gap-6">
+                      <span className="flex items-center gap-1.5 text-slate-400 font-semibold"><span className="w-2 h-2 rounded-full bg-slate-450" /> Expected:</span>
+                      <span className="font-bold text-slate-700">{item.expected?.toLocaleString() || 0}</span>
+                    </div>
+                    <div className="flex justify-between items-center gap-6">
+                      <span className="flex items-center gap-1.5 text-blue-500 font-semibold"><span className="w-2 h-2 rounded-full bg-blue-500" /> Collected:</span>
+                      <span className="font-bold text-blue-600">{item.collected?.toLocaleString() || 0}</span>
+                    </div>
+                    <div className="flex justify-between items-center gap-6">
+                      <span className="flex items-center gap-1.5 text-red-500 font-semibold"><span className="w-2 h-2 rounded-full bg-red-500" /> Uncollected:</span>
+                      <span className="font-bold text-red-600">{item.uncollected?.toLocaleString() || 0}</span>
+                    </div>
+                    <div className="flex justify-between items-center gap-6 border-t border-slate-50 pt-1.5 font-bold">
+                      <span className="text-emerald-600">Collection Rate:</span>
+                      <span className="text-emerald-600">{item.rate || 0}%</span>
+                    </div>
+                  </div>
+                );
+              }
+              return null;
+            }}
+          />
+          <Legend 
+            verticalAlign="top" 
+            height={36} 
+            iconType="circle"
+            formatter={(value) => <span className="text-[10px] font-bold text-slate-500 uppercase tracking-tight">{value}</span>}
+          />
+          <Bar 
+            dataKey="expected" 
+            name="Expected"
+            fill="#64748b" 
+            radius={[4, 4, 0, 0]} 
+            barSize={15}
+            animationDuration={1000}
+          />
+          <Bar 
+            dataKey="collected" 
+            name="Collected"
+            fill="#3b82f6" 
+            radius={[4, 4, 0, 0]} 
+            barSize={15}
+            animationDuration={1000}
+          />
+          <Bar 
+            dataKey="uncollected" 
+            name="Uncollected"
+            fill="#ef4444" 
+            radius={[4, 4, 0, 0]} 
+            barSize={15}
+            animationDuration={1000}
+          />
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}

@@ -2,6 +2,8 @@
 
 import { prisma } from "@/lib/prisma";
 import { startOfMonth, subMonths, format, endOfMonth } from "date-fns";
+import { toEthiopian, getNowInAddisAbaba, getDaysInEthiopianMonth } from "@/lib/calendar";
+import Kenat from "kenat";
 
 export async function getRevenueAnalytics(months: number = 6, propertyIds?: string[]) {
   const result = [];
@@ -182,4 +184,82 @@ export async function getPaymentTypeBreakdown(propertyIds?: string[]) {
     { name: "Advance Payments", value: advanceCount, color: "#8b5cf6" },
     { name: "Penalties", value: penaltyCount, color: "#f59e0b" },
   ];
+}
+
+export async function getEthiopianRevenueAnalytics(months: number = 6, propertyIds?: string[]) {
+  const result = [];
+  const now = getNowInAddisAbaba();
+  const nowEt = toEthiopian(now);
+  const settings = await prisma.systemSettings.findUnique({ where: { id: "global" } });
+
+  for (let i = months - 1; i >= 0; i--) {
+    let etYear = nowEt.year;
+    let etMonth = nowEt.month - i;
+    while (etMonth <= 0) {
+      etMonth += 13;
+      etYear--;
+    }
+
+    const startEtObj = new Kenat({ year: etYear, month: etMonth, day: 1 });
+    const gregStart = startEtObj.getGregorian();
+    const startDate = new Date(gregStart.year, gregStart.month - 1, gregStart.day, 0, 0, 0);
+
+    const maxDays = getDaysInEthiopianMonth(etYear, etMonth);
+    const endEtObj = new Kenat({ year: etYear, month: etMonth, day: maxDays });
+    const gregEnd = endEtObj.getGregorian();
+    const endDate = new Date(gregEnd.year, gregEnd.month - 1, gregEnd.day, 23, 59, 59);
+
+    const activeLeases = await prisma.lease.findMany({
+      where: {
+        status: { in: ["ACTIVE", "EXPIRED", "TERMINATED"] },
+        startDate: { lte: endDate },
+        endDate: { gte: startDate },
+        unit: {
+          companyOwned: false,
+          ...(propertyIds && propertyIds.length > 0 ? {
+            propertyId: { in: propertyIds }
+          } : {})
+        }
+      },
+      include: {
+        unit: true,
+        payments: true
+      }
+    });
+
+    const filteredLeases = activeLeases.filter(lease => {
+      if (lease.status === "TERMINATED" && lease.updatedAt < startDate) {
+        return false;
+      }
+      return true;
+    });
+
+    const expected = filteredLeases.reduce((sum, lease) => sum + lease.unit.rentAmount, 0);
+
+    let collected = 0;
+    for (const lease of filteredLeases) {
+      const approvedMonthPayments = lease.payments.filter((p: any) => 
+        p.status === "APPROVED" &&
+        new Date(p.dueDate) >= startDate &&
+        new Date(p.dueDate) <= endDate
+      );
+      collected += approvedMonthPayments.reduce((sum: number, p: any) => sum + p.amount, 0);
+    }
+
+    const uncollected = Math.max(0, expected - collected);
+    const rate = expected > 0 ? Math.round((collected / expected) * 100) : 0;
+
+    const ET_MONTHS = ["Meskerem", "Tikimt", "Hidar", "Tahsas", "Tir", "Yekatit", "Megabit", "Miazia", "Ginbot", "Sene", "Hamle", "Nehase", "Pagume"];
+    const monthName = ET_MONTHS[etMonth - 1];
+
+    result.push({
+      name: monthName,
+      expected,
+      collected,
+      uncollected,
+      rate
+    });
+  }
+
+  return result;
 }

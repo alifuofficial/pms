@@ -17,11 +17,11 @@ import {
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { RevenueChart, OccupancyChart, PaymentTypeChart } from "@/components/shared/dashboard-charts";
+import { RevenueChart, OccupancyChart, PaymentTypeChart, EthiopianRevenueChart } from "@/components/shared/dashboard-charts";
 import { PenaltyList } from "@/components/shared/penalty-list";
 import { Badge } from "@/components/ui/badge";
 import { getSystemToday } from "@/lib/calendar";
-import { getRevenueAnalytics, getOccupancyAnalytics, getRecentAuditLogs, getPaymentTypeBreakdown } from "@/lib/actions/analytics";
+import { getRevenueAnalytics, getOccupancyAnalytics, getRecentAuditLogs, getPaymentTypeBreakdown, getEthiopianRevenueAnalytics } from "@/lib/actions/analytics";
 import { getPendingPenalties } from "@/lib/actions/penalties";
 import { getLeaseUncollectedBalance } from "@/lib/arrears";
 import { formatDistanceToNow } from "date-fns";
@@ -35,12 +35,14 @@ export default async function AdminDashboard() {
     occupancyData,
     paymentBreakdown,
     auditLogs,
+    ethiopianRevenueData,
     stats
   ] = await Promise.all([
     getRevenueAnalytics(),
     getOccupancyAnalytics(),
     getPaymentTypeBreakdown(),
     getRecentAuditLogs(10),
+    getEthiopianRevenueAnalytics(),
     (async () => ({
       totalProperties: await prisma.property.count(),
       activeTenants: await prisma.user.count({ where: { role: "TENANT" } }),
@@ -186,6 +188,22 @@ export default async function AdminDashboard() {
                   </Badge>
                 </div>
               )}
+            </CardContent>
+          </Card>
+
+          {/* Ethiopian Revenue Chart */}
+          <Card className="border border-slate-200 shadow-none bg-white rounded-xl">
+            <CardHeader className="p-5 flex flex-row items-center justify-between space-y-0 border-b border-slate-50">
+              <div className="space-y-0.5">
+                <CardTitle className="text-sm font-semibold">Ethiopian Calendar Revenue Trend</CardTitle>
+                <p className="text-[10px] text-slate-400 font-medium uppercase tracking-wider">Expected vs Collected vs Uncollected</p>
+              </div>
+              <Badge variant="outline" className="text-indigo-600 border-indigo-100 bg-indigo-50 font-bold text-[9px] uppercase tracking-wide">
+                Ethiopian Calendar
+              </Badge>
+            </CardHeader>
+            <CardContent className="p-5">
+              <EthiopianRevenueChart data={ethiopianRevenueData} />
             </CardContent>
           </Card>
 
