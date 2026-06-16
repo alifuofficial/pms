@@ -94,6 +94,32 @@ export function ReportsView({ metrics, currency, calendarType, startDate, endDat
     document.body.removeChild(link);
   };
 
+  const handleExportAdvanceCSV = () => {
+    const headers = ["Tenant Name", "Payment Date", "Property", "Unit Number", "Coverage Details", `Amount (${currency})`];
+    const rows = metrics.advancePayments.map(p => [
+      p.tenantName,
+      formatSystemDate(new Date(p.date), calendarType),
+      p.propertyName,
+      p.unitNumber,
+      p.advanceUntil ? `Covers until ${formatSystemDate(new Date(p.advanceUntil), calendarType)}` : "Next Month Only",
+      p.amount
+    ]);
+
+    const csvContent = [
+      headers.join(","),
+      ...rows.map(row => row.map(val => `"${String(val).replace(/"/g, '""')}"`).join(","))
+    ].join("\n");
+
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `advance_collections_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
     <div className="space-y-6 animate-in fade-in duration-500 pb-10 print:bg-white print:p-0">
       
@@ -402,12 +428,24 @@ export function ReportsView({ metrics, currency, calendarType, startDate, endDat
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-none print:mt-8">
         <div className="p-5 border-b border-slate-100 flex items-center justify-between">
           <div>
-            <h2 className="text-sm font-bold text-indigo-600">Advance Collections</h2>
+            <div className="flex items-center gap-2">
+              <h2 className="text-sm font-bold text-indigo-600">Advance Collections</h2>
+              <Badge className="bg-indigo-50 text-indigo-600 border-indigo-100 uppercase text-[9px] h-5 py-0 px-2 rounded-full font-bold shadow-none">
+                {metrics.advancePayments.length} Records
+              </Badge>
+            </div>
             <p className="text-xs text-slate-500 font-medium mt-0.5">List of tenants who paid for future months.</p>
           </div>
-          <Badge className="bg-indigo-50 text-indigo-600 border-indigo-100 uppercase text-[10px]">
-            {metrics.advancePayments.length} Records
-          </Badge>
+          <div className="flex items-center gap-2 print:hidden">
+            <Button
+              onClick={handleExportAdvanceCSV}
+              variant="outline"
+              size="sm"
+              className="h-8 border-slate-200 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 flex items-center gap-1.5 shadow-none"
+            >
+              <FileSpreadsheet size={13} className="text-emerald-600" /> Export CSV (Excel)
+            </Button>
+          </div>
         </div>
         <table className="w-full text-left">
           <thead className="bg-slate-50/50 text-[10px] text-slate-400 font-bold uppercase tracking-widest border-b border-slate-200">
@@ -446,6 +484,16 @@ export function ReportsView({ metrics, currency, calendarType, startDate, endDat
                   </td>
                 </tr>
               ))
+            )}
+            {metrics.advancePayments.length > 0 && (
+              <tr className="bg-slate-100/60 font-bold border-t-2 border-slate-200">
+                <td className="py-4 px-6 font-bold text-slate-900" colSpan={3}>
+                  Total Advance Collected
+                </td>
+                <td className="py-4 px-6 text-right font-black text-indigo-600">
+                  {currency} {metrics.advancePayments.reduce((sum, p) => sum + p.amount, 0).toLocaleString()}
+                </td>
+              </tr>
             )}
           </tbody>
         </table>
