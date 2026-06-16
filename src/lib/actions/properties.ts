@@ -162,7 +162,10 @@ export async function updateUnit(id: string, data: {
 
     await prisma.unit.update({
       where: { id },
-      data,
+      data: {
+        ...data,
+        mergedIntoId: data.mergedIntoId === "" ? null : data.mergedIntoId
+      },
     });
     revalidatePath("/admin/properties");
     revalidatePath("/manager/properties");
