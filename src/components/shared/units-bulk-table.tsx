@@ -16,7 +16,7 @@ const formatFloor = (f: number) => {
   return `${f}${s} Floor`;
 };
 
-type BulkField = "floor" | "status" | "type" | "rentAmount" | "qrPrinted" | "penaltyExempt" | "companyOwned" | "merge";
+type BulkField = "floor" | "status" | "type" | "rentAmount" | "qrPrinted" | "penaltyExempt" | "companyOwned" | "hasMeter" | "merge";
 
 const BULK_FIELDS: { value: BulkField; label: string }[] = [
   { value: "floor",      label: "Floor" },
@@ -26,6 +26,7 @@ const BULK_FIELDS: { value: BulkField; label: string }[] = [
   { value: "qrPrinted",  label: "QR Code Printed Status" },
   { value: "penaltyExempt", label: "Late Penalty Exemption" },
   { value: "companyOwned",  label: "Company Ownership" },
+  { value: "hasMeter",      label: "Utility Meter Status (Has Meter)" },
   { value: "merge",      label: "Merge Units (Set Parent)" },
 ];
 
@@ -87,6 +88,7 @@ export function UnitsBulkTable({ units, currency }: { units: any[]; currency: st
       if (bulkField === "qrPrinted")   data.qrPrinted = bulkValue === "true";
       if (bulkField === "penaltyExempt") data.penaltyExempt = bulkValue === "true";
       if (bulkField === "companyOwned")  data.companyOwned = bulkValue === "true";
+      if (bulkField === "hasMeter")      data.hasMeter = bulkValue === "true";
 
       const result = await bulkUpdateUnits(ids, data);
       if (result.success) {
@@ -123,6 +125,7 @@ export function UnitsBulkTable({ units, currency }: { units: any[]; currency: st
                 else if (f === "qrPrinted") setBulkValue("true");
                 else if (f === "penaltyExempt") setBulkValue("true");
                 else if (f === "companyOwned") setBulkValue("true");
+                else if (f === "hasMeter") setBulkValue("true");
                 else if (f === "merge") {
                   const firstId = Array.from(selected)[0] || "";
                   setBulkValue(firstId);
@@ -214,6 +217,17 @@ export function UnitsBulkTable({ units, currency }: { units: any[]; currency: st
               >
                 <option value="true" className="text-slate-900">Mark as Company Owned</option>
                 <option value="false" className="text-slate-900">Mark as Regular Unit</option>
+              </select>
+            )}
+
+            {bulkField === "hasMeter" && (
+              <select
+                className="h-8 rounded-lg bg-white/10 border border-white/20 text-white text-xs font-semibold px-2 outline-none"
+                value={bulkValue}
+                onChange={(e) => setBulkValue(e.target.value)}
+              >
+                <option value="true" className="text-slate-900">Has Utility Meter</option>
+                <option value="false" className="text-slate-900">No Utility Meter (Flat Rate)</option>
               </select>
             )}
 
@@ -316,6 +330,11 @@ export function UnitsBulkTable({ units, currency }: { units: any[]; currency: st
                           {unit.companyOwned && (
                             <span className="bg-blue-100 text-blue-800 text-[9px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider select-none shrink-0 border border-blue-200">
                               Company Owned
+                            </span>
+                          )}
+                          {unit.hasMeter === false && (
+                            <span className="bg-purple-100 text-purple-800 text-[9px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider select-none shrink-0 border border-purple-200">
+                              Flat Rate
                             </span>
                           )}
                         </div>

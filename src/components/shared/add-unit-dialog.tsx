@@ -38,6 +38,7 @@ export function AddUnitDialog({
     rentAmount: "",
     penaltyExempt: false,
     companyOwned: false,
+    hasMeter: true,
   });
 
   useEffect(() => {
@@ -70,6 +71,7 @@ export function AddUnitDialog({
       rentAmount: parseFloat(formData.rentAmount),
       penaltyExempt: formData.penaltyExempt,
       companyOwned: formData.companyOwned,
+      hasMeter: formData.hasMeter,
     });
     setIsLoading(false);
     
@@ -84,7 +86,8 @@ export function AddUnitDialog({
         type: "Studio", 
         rentAmount: "",
         penaltyExempt: false,
-        companyOwned: false
+        companyOwned: false,
+        hasMeter: true,
       });
     } else {
       toast.error(result.error || "Failed to add unit.");
@@ -221,6 +224,19 @@ export function AddUnitDialog({
                 />
                 <Label htmlFor="companyOwned" className="text-xs font-semibold text-slate-700 cursor-pointer select-none">
                   Company-Owned Unit (No rent paid, exclude from reports)
+                </Label>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <input 
+                  type="checkbox"
+                  id="hasMeter"
+                  checked={formData.hasMeter}
+                  onChange={(e) => setFormData({ ...formData, hasMeter: e.target.checked })}
+                  className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900 cursor-pointer"
+                />
+                <Label htmlFor="hasMeter" className="text-xs font-semibold text-slate-700 cursor-pointer select-none">
+                  Unit has Utility Meter (Electricity/Water)
                 </Label>
               </div>
             </div>

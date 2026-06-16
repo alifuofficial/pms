@@ -298,7 +298,8 @@ export async function getUnitsWithLatestReadings(propertyId: string, type: "ELEC
       leaseId: activeLease.id,
       tenantId: activeLease.tenant.id,
       tenantName: activeLease.tenant.name || "Resident",
-      latestReading: latestBill?.currentReading || 0
+      latestReading: latestBill?.currentReading || 0,
+      hasMeter: unit.hasMeter !== false
     });
   }
 

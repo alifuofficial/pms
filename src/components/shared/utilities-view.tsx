@@ -119,9 +119,19 @@ export function UtilitiesView({
     setIsLoadingUnits(true);
     try {
       const data = await getUnitsWithLatestReadings(selectedPropertyId, utilityType);
+      
+      // Filter based on billingMode and whether the unit has a meter
+      const filteredData = data.filter(u => {
+        if (billingMode === "METER") {
+          return u.hasMeter !== false;
+        } else {
+          return u.hasMeter === false;
+        }
+      });
+
       // Map to form input states
       setUnitsData(
-        data.map(u => ({
+        filteredData.map(u => ({
           unitId: u.unitId,
           unitNumber: u.unitNumber,
           leaseId: u.leaseId,
@@ -271,14 +281,24 @@ export function UtilitiesView({
       return;
     }
 
-    const headers = ["Unit Number", "Resident Name", "Previous Reading", "Current Reading", "Rate"];
-    const rows = unitsData.map(u => [
-      u.unitNumber,
-      u.tenantName,
-      u.previousReading,
-      "", // Empty for the manager to fill in
-      u.rate
-    ]);
+    const headers = billingMode === "METER"
+      ? ["Unit Number", "Resident Name", "Previous Reading", "Current Reading", "Rate"]
+      : ["Unit Number", "Resident Name", "Amount"];
+
+    const rows = unitsData.map(u => billingMode === "METER"
+      ? [
+          u.unitNumber,
+          u.tenantName,
+          u.previousReading,
+          "", // Empty for the manager to fill in
+          u.rate
+        ]
+      : [
+          u.unitNumber,
+          u.tenantName,
+          u.amount
+        ]
+    );
 
     const escapeCSV = (val: any) => {
       const str = String(val === null || val === undefined ? "" : val);
@@ -302,7 +322,11 @@ export function UtilitiesView({
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    toast.success("CSV Template downloaded successfully! Open in Excel, fill in the 'Current Reading' column, and upload.");
+
+    const successMsg = billingMode === "METER"
+      ? "CSV Template downloaded successfully! Open in Excel, fill in the 'Current Reading' column, and upload."
+      : "CSV Template downloaded successfully! Open in Excel, fill in the 'Amount' column, and upload.";
+    toast.success(successMsg);
   };
 
   const handleUploadCSV = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -328,12 +352,20 @@ export function UtilitiesView({
         
         // Find indices
         const unitNumIdx = headers.findIndex(h => h.toLowerCase().includes("unit"));
-        const currReadIdx = headers.findIndex(h => h.toLowerCase().includes("current"));
+        const currReadIdx = headers.findIndex(h => h.toLowerCase().includes("current") || h.toLowerCase().includes("reading"));
+        const amountIdx = headers.findIndex(h => h.toLowerCase().includes("amount") || h.toLowerCase().includes("cost") || h.toLowerCase().includes("value") || h.toLowerCase().includes("rate"));
         const rateIdx = headers.findIndex(h => h.toLowerCase().includes("rate"));
 
-        if (unitNumIdx === -1 || currReadIdx === -1) {
-          toast.error("CSV must contain 'Unit Number' and 'Current Reading' columns.");
-          return;
+        if (billingMode === "METER") {
+          if (unitNumIdx === -1 || currReadIdx === -1) {
+            toast.error("CSV must contain 'Unit Number' and 'Current Reading' columns.");
+            return;
+          }
+        } else {
+          if (unitNumIdx === -1 || amountIdx === -1) {
+            toast.error("CSV must contain 'Unit Number' and 'Amount' columns.");
+            return;
+          }
         }
 
         let importedCount = 0;
@@ -366,10 +398,15 @@ export function UtilitiesView({
             if (cells.length < 2) continue;
 
             const csvUnitNum = cells[unitNumIdx];
-            const csvCurrentReading = cells[currReadIdx];
+            const csvCurrentReading = currReadIdx !== -1 ? cells[currReadIdx] : null;
+            const csvAmount = amountIdx !== -1 ? cells[amountIdx] : null;
             const csvRate = rateIdx !== -1 ? cells[rateIdx] : null;
 
-            if (!csvUnitNum || !csvCurrentReading) continue;
+            if (billingMode === "METER") {
+              if (!csvUnitNum || !csvCurrentReading) continue;
+            } else {
+              if (!csvUnitNum || !csvAmount) continue;
+            }
 
             // Fuzzy matching
             const clean = (s: string) => s.replace(/\D/g, "");
@@ -381,14 +418,23 @@ export function UtilitiesView({
             );
 
             if (unitIdx !== -1) {
-              const currentVal = parseFloat(csvCurrentReading);
-              if (!isNaN(currentVal)) {
-                updated[unitIdx].currentReading = csvCurrentReading;
-                if (csvRate && !isNaN(parseFloat(csvRate))) {
-                  updated[unitIdx].rate = csvRate;
+              if (billingMode === "METER") {
+                const currentVal = parseFloat(csvCurrentReading || "");
+                if (!isNaN(currentVal)) {
+                  updated[unitIdx].currentReading = csvCurrentReading;
+                  if (csvRate && !isNaN(parseFloat(csvRate))) {
+                    updated[unitIdx].rate = csvRate;
+                  }
+                  updated[unitIdx].included = true;
+                  importedCount++;
                 }
-                updated[unitIdx].included = true;
-                importedCount++;
+              } else {
+                const amountVal = parseFloat(csvAmount || "");
+                if (!isNaN(amountVal)) {
+                  updated[unitIdx].amount = csvAmount;
+                  updated[unitIdx].included = true;
+                  importedCount++;
+                }
               }
             } else {
               unmatchedUnits.push(csvUnitNum);
@@ -402,9 +448,15 @@ export function UtilitiesView({
         e.target.value = "";
 
         if (importedCount > 0) {
-          toast.success(`Successfully populated readings for ${importedCount} units! Please verify the computed values in the table below before saving.`);
+          const successMsg = billingMode === "METER"
+            ? `Successfully populated readings for ${importedCount} units! Please verify the computed values in the table below before saving.`
+            : `Successfully populated manual amounts for ${importedCount} units! Please verify the values in the table below before saving.`;
+          toast.success(successMsg);
         } else {
-          toast.error("No valid readings could be imported. Make sure to fill in 'Current Reading' as numeric values.");
+          const errorMsg = billingMode === "METER"
+            ? "No valid readings could be imported. Make sure to fill in 'Current Reading' as numeric values."
+            : "No valid amounts could be imported. Make sure to fill in 'Amount' as numeric values.";
+          toast.error(errorMsg);
         }
 
         if (unmatchedUnits.length > 0) {
@@ -603,43 +655,41 @@ export function UtilitiesView({
               </div>
 
               {/* CSV Import/Export Actions */}
-              {billingMode === "METER" && (
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 bg-slate-50 rounded-xl border border-slate-100 text-xs">
-                  <div className="flex items-center gap-1.5 text-slate-650 font-bold uppercase tracking-wider text-[10px]">
-                    <FileText size={14} className="text-indigo-500 shrink-0" />
-                    <span>Bulk CSV Utilities Processing:</span>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 bg-slate-50 rounded-xl border border-slate-100 text-xs">
+                <div className="flex items-center gap-1.5 text-slate-650 font-bold uppercase tracking-wider text-[10px]">
+                  <FileText size={14} className="text-indigo-500 shrink-0" />
+                  <span>Bulk CSV Utilities Processing:</span>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleDownloadCSVTemplate}
+                    disabled={unitsData.length === 0}
+                    className="h-9 text-[10px] font-bold uppercase tracking-widest border-slate-200 text-slate-600 hover:text-slate-800 hover:bg-slate-50 rounded-lg shadow-none"
+                  >
+                    <Download className="mr-1.5 h-3.5 w-3.5" /> Download Template
+                  </Button>
+                  
+                  <div className="relative">
+                    <input
+                      type="file"
+                      accept=".csv"
+                      onChange={handleUploadCSV}
+                      disabled={unitsData.length === 0}
+                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10 disabled:cursor-not-allowed"
+                    />
                     <Button
                       type="button"
                       variant="outline"
-                      onClick={handleDownloadCSVTemplate}
                       disabled={unitsData.length === 0}
-                      className="h-9 text-[10px] font-bold uppercase tracking-widest border-slate-200 text-slate-600 hover:text-slate-800 hover:bg-slate-50 rounded-lg shadow-none"
+                      className="h-9 text-[10px] font-bold uppercase tracking-widest border-indigo-200 text-indigo-650 bg-indigo-50/50 hover:bg-indigo-100 rounded-lg shadow-none"
                     >
-                      <Download className="mr-1.5 h-3.5 w-3.5" /> Download Template
+                      <Upload className="mr-1.5 h-3.5 w-3.5" /> Upload CSV
                     </Button>
-                    
-                    <div className="relative">
-                      <input
-                        type="file"
-                        accept=".csv"
-                        onChange={handleUploadCSV}
-                        disabled={unitsData.length === 0}
-                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10 disabled:cursor-not-allowed"
-                      />
-                      <Button
-                        type="button"
-                        variant="outline"
-                        disabled={unitsData.length === 0}
-                        className="h-9 text-[10px] font-bold uppercase tracking-widest border-indigo-200 text-indigo-650 bg-indigo-50/50 hover:bg-indigo-100 rounded-lg shadow-none"
-                      >
-                        <Upload className="mr-1.5 h-3.5 w-3.5" /> Upload CSV
-                      </Button>
-                    </div>
                   </div>
                 </div>
-              )}
+              </div>
 
               {/* Batch Entries Table */}
               <div className="border border-slate-155 rounded-xl overflow-hidden">
