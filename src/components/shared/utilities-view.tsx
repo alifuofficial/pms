@@ -81,6 +81,7 @@ export function UtilitiesView({
   const billingMonth = `${selectedEtMonth} ${selectedEtYear}`;
   const [dueDate, setDueDate] = useState("");
   const [defaultRate, setDefaultRate] = useState(utilityType === "ELECTRICITY" ? "5" : "15");
+  const [billingMode, setBillingMode] = useState<"METER" | "MANUAL">("METER");
   const [unitsData, setUnitsData] = useState<any[]>([]);
   const [isLoadingUnits, setIsLoadingUnits] = useState(false);
   const [isSubmittingBatch, setIsSubmittingBatch] = useState(false);
@@ -95,12 +96,12 @@ export function UtilitiesView({
   const [selectedBill, setSelectedBill] = useState<any | null>(null);
   const [isVerifying, setIsVerifying] = useState(false);
 
-  // Load occupied units and pre-populate previous readings when property or utility type changes
+  // Load occupied units and pre-populate previous readings when property, utility type or billing mode changes
   useEffect(() => {
     if (activeTab === "billing" && selectedPropertyId) {
       loadUnitsForBilling();
     }
-  }, [selectedPropertyId, utilityType, activeTab]);
+  }, [selectedPropertyId, utilityType, activeTab, billingMode]);
 
   // Load history when tab or filter changes
   useEffect(() => {
@@ -128,7 +129,8 @@ export function UtilitiesView({
           tenantName: u.tenantName,
           previousReading: u.latestReading,
           currentReading: "",
-          rate: defaultRate,
+          rate: billingMode === "METER" ? defaultRate : "1",
+          amount: billingMode === "MANUAL" ? defaultRate : "",
           included: true
         }))
       );
@@ -160,9 +162,12 @@ export function UtilitiesView({
     }
   };
 
-  const handleRateChangeForAll = (newRate: string) => {
-    setDefaultRate(newRate);
-    setUnitsData(prev => prev.map(u => ({ ...u, rate: newRate })));
+  const handleRateChangeForAll = (newValue: string) => {
+    setDefaultRate(newValue);
+    setUnitsData(prev => prev.map(u => ({
+      ...u,
+      ...(billingMode === "METER" ? { rate: newValue } : { amount: newValue })
+    })));
   };
 
   const handleUnitDataChange = (index: number, field: string, value: any) => {
@@ -186,13 +191,23 @@ export function UtilitiesView({
       return;
     }
 
-    // Validate readings
-    for (const b of selectedBills) {
-      const prev = parseFloat(b.previousReading) || 0;
-      const curr = parseFloat(b.currentReading) || 0;
-      if (curr <= prev) {
-        toast.error(`Unit ${b.unitNumber}: Current reading must be greater than previous reading (${prev}).`);
-        return;
+    // Validate inputs
+    if (billingMode === "METER") {
+      for (const b of selectedBills) {
+        const prev = parseFloat(b.previousReading) || 0;
+        const curr = parseFloat(b.currentReading) || 0;
+        if (curr <= prev) {
+          toast.error(`Unit ${b.unitNumber}: Current reading must be greater than previous reading (${prev}).`);
+          return;
+        }
+      }
+    } else {
+      for (const b of selectedBills) {
+        const amt = parseFloat(b.amount) || 0;
+        if (amt <= 0) {
+          toast.error(`Unit ${b.unitNumber}: Manual amount must be greater than 0.`);
+          return;
+        }
       }
     }
 
@@ -203,21 +218,34 @@ export function UtilitiesView({
         type: utilityType,
         dueDate: new Date(dueDate),
         bills: selectedBills.map(b => {
-          const prev = parseFloat(b.previousReading) || 0;
-          const curr = parseFloat(b.currentReading) || 0;
-          const r = parseFloat(b.rate) || 0;
-          const usage = curr - prev;
-          const amount = usage * r;
+          if (billingMode === "METER") {
+            const prev = parseFloat(b.previousReading) || 0;
+            const curr = parseFloat(b.currentReading) || 0;
+            const r = parseFloat(b.rate) || 0;
+            const usage = curr - prev;
+            const amount = usage * r;
 
-          return {
-            leaseId: b.leaseId,
-            tenantId: b.tenantId,
-            previousReading: prev,
-            currentReading: curr,
-            usage,
-            rate: r,
-            amount
-          };
+            return {
+              leaseId: b.leaseId,
+              tenantId: b.tenantId,
+              previousReading: prev,
+              currentReading: curr,
+              usage,
+              rate: r,
+              amount
+            };
+          } else {
+            const amt = parseFloat(b.amount) || 0;
+            return {
+              leaseId: b.leaseId,
+              tenantId: b.tenantId,
+              previousReading: undefined,
+              currentReading: undefined,
+              usage: 1,
+              rate: amt,
+              amount: amt
+            };
+          }
         })
       };
 
@@ -506,7 +534,23 @@ export function UtilitiesView({
             <CardContent className="p-5 space-y-6">
               
               {/* Configuration Panel */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 p-4 bg-slate-50 rounded-xl border border-slate-100">
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 p-4 bg-slate-50 rounded-xl border border-slate-100">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Billing Mode</label>
+                  <Select value={billingMode} onValueChange={(val) => {
+                    const mode = val as "METER" | "MANUAL";
+                    setBillingMode(mode);
+                    setDefaultRate(mode === "METER" ? (utilityType === "ELECTRICITY" ? "5" : "15") : "150");
+                  }}>
+                    <SelectTrigger className="h-9 text-xs bg-white font-bold">
+                      <SelectValue placeholder="Mode" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="METER">Meter Reading</SelectItem>
+                      <SelectItem value="MANUAL">Manual/Fixed Amount</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Billing Month (Ethiopian)</label>
                   <div className="grid grid-cols-2 gap-2">
@@ -543,82 +587,92 @@ export function UtilitiesView({
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Default Rate ({currency} / Unit)</label>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">
+                    {billingMode === "METER" ? `Default Rate (${currency} / Unit)` : `Default Amount (${currency})`}
+                  </label>
                   <Input 
                     required 
                     type="number"
                     step="0.01" 
                     value={defaultRate} 
                     onChange={e => handleRateChangeForAll(e.target.value)} 
-                    placeholder="e.g. 5.0"
+                    placeholder={billingMode === "METER" ? "e.g. 5.0" : "e.g. 150"}
                     className="bg-white h-9 text-xs font-bold"
                   />
                 </div>
               </div>
 
               {/* CSV Import/Export Actions */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 bg-slate-50 rounded-xl border border-slate-100 text-xs">
-                <div className="flex items-center gap-1.5 text-slate-650 font-bold uppercase tracking-wider text-[10px]">
-                  <FileText size={14} className="text-indigo-500 shrink-0" />
-                  <span>Bulk CSV Utilities Processing:</span>
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={handleDownloadCSVTemplate}
-                    disabled={unitsData.length === 0}
-                    className="h-9 text-[10px] font-bold uppercase tracking-widest border-slate-200 text-slate-600 hover:text-slate-800 hover:bg-slate-50 rounded-lg shadow-none"
-                  >
-                    <Download className="mr-1.5 h-3.5 w-3.5" /> Download Template
-                  </Button>
-                  
-                  <div className="relative">
-                    <input
-                      type="file"
-                      accept=".csv"
-                      onChange={handleUploadCSV}
-                      disabled={unitsData.length === 0}
-                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10 disabled:cursor-not-allowed"
-                    />
+              {billingMode === "METER" && (
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 bg-slate-50 rounded-xl border border-slate-100 text-xs">
+                  <div className="flex items-center gap-1.5 text-slate-650 font-bold uppercase tracking-wider text-[10px]">
+                    <FileText size={14} className="text-indigo-500 shrink-0" />
+                    <span>Bulk CSV Utilities Processing:</span>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
                     <Button
                       type="button"
                       variant="outline"
+                      onClick={handleDownloadCSVTemplate}
                       disabled={unitsData.length === 0}
-                      className="h-9 text-[10px] font-bold uppercase tracking-widest border-indigo-200 text-indigo-650 bg-indigo-50/50 hover:bg-indigo-100 rounded-lg shadow-none"
+                      className="h-9 text-[10px] font-bold uppercase tracking-widest border-slate-200 text-slate-600 hover:text-slate-800 hover:bg-slate-50 rounded-lg shadow-none"
                     >
-                      <Upload className="mr-1.5 h-3.5 w-3.5" /> Upload CSV
+                      <Download className="mr-1.5 h-3.5 w-3.5" /> Download Template
                     </Button>
+                    
+                    <div className="relative">
+                      <input
+                        type="file"
+                        accept=".csv"
+                        onChange={handleUploadCSV}
+                        disabled={unitsData.length === 0}
+                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10 disabled:cursor-not-allowed"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        disabled={unitsData.length === 0}
+                        className="h-9 text-[10px] font-bold uppercase tracking-widest border-indigo-200 text-indigo-650 bg-indigo-50/50 hover:bg-indigo-100 rounded-lg shadow-none"
+                      >
+                        <Upload className="mr-1.5 h-3.5 w-3.5" /> Upload CSV
+                      </Button>
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
 
               {/* Batch Entries Table */}
-              <div className="border border-slate-150 rounded-xl overflow-hidden">
+              <div className="border border-slate-155 rounded-xl overflow-hidden">
                 <Table>
                   <TableHeader className="bg-slate-50/70">
                     <TableRow>
                       <TableHead className="w-12 text-center">Active</TableHead>
                       <TableHead className="px-5">Unit Number</TableHead>
                       <TableHead>Resident Name</TableHead>
-                      <TableHead className="w-32">Previous Reading</TableHead>
-                      <TableHead className="w-36">Current Reading</TableHead>
-                      <TableHead className="w-24">Unit Rate</TableHead>
-                      <TableHead>Consumption</TableHead>
+                      {billingMode === "METER" ? (
+                        <>
+                          <TableHead className="w-32">Previous Reading</TableHead>
+                          <TableHead className="w-36">Current Reading</TableHead>
+                          <TableHead className="w-24">Unit Rate</TableHead>
+                          <TableHead>Consumption</TableHead>
+                        </>
+                      ) : (
+                        <TableHead className="w-48">Manual Amount</TableHead>
+                      )}
                       <TableHead className="text-right px-5">Owed Cost</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {isLoadingUnits ? (
                       <TableRow>
-                        <TableCell colSpan={8} className="text-center p-8">
+                        <TableCell colSpan={billingMode === "METER" ? 8 : 5} className="text-center p-8">
                           <Loader2 className="h-6 w-6 animate-spin text-slate-400 mx-auto" />
                           <span className="text-xs text-slate-400 mt-2 block">Loading unit baseline readings...</span>
                         </TableCell>
                       </TableRow>
                     ) : unitsData.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={8} className="text-center p-8 text-xs text-slate-400 italic font-medium">
+                        <TableCell colSpan={billingMode === "METER" ? 8 : 5} className="text-center p-8 text-xs text-slate-400 italic font-medium">
                           No occupied units found for this property.
                         </TableCell>
                       </TableRow>
@@ -628,7 +682,7 @@ export function UtilitiesView({
                         const curr = parseFloat(unit.currentReading) || 0;
                         const rate = parseFloat(unit.rate) || 0;
                         const consumption = curr > prev ? curr - prev : 0;
-                        const cost = consumption * rate;
+                        const cost = billingMode === "METER" ? consumption * rate : parseFloat(unit.amount) || 0;
 
                         return (
                           <TableRow key={unit.unitId} className={cn("hover:bg-slate-50/30", !unit.included && "opacity-50")}>
@@ -644,32 +698,49 @@ export function UtilitiesView({
                               Unit {unit.unitNumber}
                             </TableCell>
                             <TableCell className="text-xs text-slate-600 font-semibold">{unit.tenantName}</TableCell>
-                            <TableCell className="font-mono text-xs text-slate-700">{unit.previousReading.toLocaleString()} {utilityType === "ELECTRICITY" ? "kWh" : "m³"}</TableCell>
-                            <TableCell>
-                              <Input 
-                                type="number"
-                                required={unit.included}
-                                disabled={!unit.included}
-                                value={unit.currentReading}
-                                onChange={e => handleUnitDataChange(index, "currentReading", e.target.value)}
-                                className="h-8 text-xs font-mono w-28 bg-white border-slate-250 focus:border-indigo-400"
-                                placeholder="Meter value..."
-                              />
-                            </TableCell>
-                            <TableCell>
-                              <Input 
-                                type="number"
-                                step="0.01"
-                                required={unit.included}
-                                disabled={!unit.included}
-                                value={unit.rate}
-                                onChange={e => handleUnitDataChange(index, "rate", e.target.value)}
-                                className="h-8 text-xs font-mono w-20 bg-white border-slate-250"
-                              />
-                            </TableCell>
-                            <TableCell className="font-mono text-xs font-bold text-indigo-600">
-                              {consumption > 0 ? `${consumption.toLocaleString()} ${utilityType === "ELECTRICITY" ? "kWh" : "m³"}` : "—"}
-                            </TableCell>
+                            {billingMode === "METER" ? (
+                              <>
+                                <TableCell className="font-mono text-xs text-slate-700">{unit.previousReading.toLocaleString()} {utilityType === "ELECTRICITY" ? "kWh" : "m³"}</TableCell>
+                                <TableCell>
+                                  <Input 
+                                    type="number"
+                                    required={unit.included && billingMode === "METER"}
+                                    disabled={!unit.included}
+                                    value={unit.currentReading}
+                                    onChange={e => handleUnitDataChange(index, "currentReading", e.target.value)}
+                                    className="h-8 text-xs font-mono w-28 bg-white border-slate-250 focus:border-indigo-400"
+                                    placeholder="Meter value..."
+                                  />
+                                </TableCell>
+                                <TableCell>
+                                  <Input 
+                                    type="number"
+                                    step="0.01"
+                                    required={unit.included && billingMode === "METER"}
+                                    disabled={!unit.included}
+                                    value={unit.rate}
+                                    onChange={e => handleUnitDataChange(index, "rate", e.target.value)}
+                                    className="h-8 text-xs font-mono w-20 bg-white border-slate-250"
+                                  />
+                                </TableCell>
+                                <TableCell className="font-mono text-xs font-bold text-indigo-600">
+                                  {consumption > 0 ? `${consumption.toLocaleString()} ${utilityType === "ELECTRICITY" ? "kWh" : "m³"}` : "—"}
+                                </TableCell>
+                              </>
+                            ) : (
+                              <TableCell>
+                                <Input 
+                                  type="number"
+                                  step="0.01"
+                                  required={unit.included && billingMode === "MANUAL"}
+                                  disabled={!unit.included}
+                                  value={unit.amount}
+                                  onChange={e => handleUnitDataChange(index, "amount", e.target.value)}
+                                  className="h-8 text-xs font-mono w-40 bg-white border-slate-250 focus:border-indigo-400"
+                                  placeholder={`Amount in ${currency}...`}
+                                />
+                              </TableCell>
+                            )}
                             <TableCell className="text-right px-5 font-mono text-xs font-black text-slate-800">
                               {cost > 0 ? `${cost.toLocaleString()} ${currency}` : "—"}
                             </TableCell>
@@ -768,12 +839,25 @@ export function UtilitiesView({
                           <span className="text-[10px] text-slate-400 font-semibold">{bill.tenant?.name}</span>
                         </TableCell>
                         <TableCell>
-                          <span className="font-mono text-xs text-slate-700 block">
-                            {bill.usage.toLocaleString()} {bill.type === "ELECTRICITY" ? "kWh" : "m³"}
-                          </span>
-                          <span className="text-[9px] text-slate-400 font-mono block">
-                            {prev} → {curr} (@ {bill.rate} {currency})
-                          </span>
+                          {bill.previousReading === null || bill.currentReading === null ? (
+                            <>
+                              <span className="font-semibold text-xs text-indigo-650 block">
+                                Flat Rate Billing
+                              </span>
+                              <span className="text-[9px] text-slate-400 font-mono block">
+                                Manual amount entry
+                              </span>
+                            </>
+                          ) : (
+                            <>
+                              <span className="font-mono text-xs text-slate-700 block">
+                                {bill.usage.toLocaleString()} {bill.type === "ELECTRICITY" ? "kWh" : "m³"}
+                              </span>
+                              <span className="text-[9px] text-slate-400 font-mono block">
+                                {prev} → {curr} (@ {bill.rate} {currency})
+                              </span>
+                            </>
+                          )}
                         </TableCell>
                         <TableCell className="text-xs text-slate-600 font-semibold">
                           {formatSystemDate(new Date(bill.dueDate), calendarType)}
@@ -858,7 +942,11 @@ export function UtilitiesView({
                     </div>
                     <div className="flex justify-between">
                       <span className="text-slate-500">Consumption:</span>
-                      <span className="font-bold text-slate-800">{selectedBill.usage.toLocaleString()} {selectedBill.type === "ELECTRICITY" ? "kWh" : "m³"}</span>
+                      <span className="font-bold text-slate-800">
+                        {selectedBill.previousReading === null || selectedBill.currentReading === null 
+                          ? "Manual Flat Rate" 
+                          : `${selectedBill.usage.toLocaleString()} ${selectedBill.type === "ELECTRICITY" ? "kWh" : "m³"}`}
+                      </span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-slate-500">Billing Amount:</span>
