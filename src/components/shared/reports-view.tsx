@@ -519,6 +519,25 @@ export function ReportsView({ metrics, currency, calendarType, startDate, endDat
                 </tr>
               ))
             )}
+            {metrics.uncollectedTenants.length > 0 && (
+              <tr className="bg-slate-100/60 font-bold border-t-2 border-slate-200">
+                <td className="py-4 px-6 font-bold text-slate-900" colSpan={2}>
+                  Total Outstanding
+                </td>
+                <td className="py-4 px-6 text-right text-slate-900 font-extrabold">
+                  {currency} {metrics.uncollectedTenants.reduce((sum, t) => sum + t.rentUncollected, 0).toLocaleString()}
+                </td>
+                <td className="py-4 px-6 text-right text-slate-900 font-extrabold">
+                  {currency} {metrics.uncollectedTenants.reduce((sum, t) => sum + t.penaltiesUncollected, 0).toLocaleString()}
+                </td>
+                <td className="py-4 px-6 text-right text-slate-900 font-extrabold">
+                  {currency} {metrics.uncollectedTenants.reduce((sum, t) => sum + t.utilitiesUncollected, 0).toLocaleString()}
+                </td>
+                <td className="py-4 px-6 text-right font-black text-red-600">
+                  {currency} {metrics.uncollectedTenants.reduce((sum, t) => sum + t.totalUncollected, 0).toLocaleString()}
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>
