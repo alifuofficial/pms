@@ -83,21 +83,54 @@ export async function getOccupancyAnalytics(months: number = 6, propertyIds?: st
 
   for (let i = months - 1; i >= 0; i--) {
     const date = subMonths(now, i);
-    
-    const unitWhere = propertyIds && propertyIds.length > 0 
-      ? { propertyId: { in: propertyIds } }
-      : {};
+    const start = startOfMonth(date);
+    const end = endOfMonth(date);
 
-    const totalUnits = await prisma.unit.count({
+    // Filter units (excluding companyOwned)
+    const unitWhere = {
+      companyOwned: false,
+      createdAt: { lte: end },
+      ...(propertyIds && propertyIds.length > 0 ? { propertyId: { in: propertyIds } } : {})
+    };
+
+    let totalUnits = await prisma.unit.count({
       where: unitWhere
     });
-    
-    const occupiedUnits = await prisma.unit.count({
+
+    // Fallback if no units were created by that historical date (to avoid 0/0)
+    if (totalUnits === 0) {
+      totalUnits = await prisma.unit.count({
+        where: {
+          companyOwned: false,
+          ...(propertyIds && propertyIds.length > 0 ? { propertyId: { in: propertyIds } } : {})
+        }
+      });
+    }
+
+    // Find leases that were active during this month
+    const activeLeases = await prisma.lease.findMany({
       where: {
-        ...unitWhere,
-        status: "OCCUPIED",
-      },
+        status: { in: ["ACTIVE", "EXPIRED", "TERMINATED"] },
+        startDate: { lte: end },
+        endDate: { gte: start },
+        unit: {
+          companyOwned: false,
+          ...(propertyIds && propertyIds.length > 0 ? { propertyId: { in: propertyIds } } : {})
+        }
+      }
     });
+
+    const filteredLeases = activeLeases.filter(lease => {
+      // Exclude leases that were terminated before the start of the month
+      if (lease.status === "TERMINATED" && lease.updatedAt < start) {
+        return false;
+      }
+      return true;
+    });
+
+    // Unique units that were occupied
+    const occupiedUnitIds = new Set(filteredLeases.map(lease => lease.unitId));
+    const occupiedUnits = occupiedUnitIds.size;
 
     const occupancyRate = totalUnits > 0 ? Math.round((occupiedUnits / totalUnits) * 100) : 0;
 

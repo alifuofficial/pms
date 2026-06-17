@@ -345,3 +345,90 @@ export function EthiopianRevenueChart({ data = [] }: { data?: ChartData[] }) {
     </div>
   );
 }
+
+export function RevenueAnalyticsTabs({
+  gregorianData = [],
+  ethiopianData = [],
+  currency = "USD",
+  bestMonth,
+}: {
+  gregorianData?: ChartData[];
+  ethiopianData?: ChartData[];
+  currency?: string;
+  bestMonth?: { name: string; collected: number; expected: number; rate: number };
+}) {
+  const [activeTab, setActiveTab] = useState<"gregorian" | "ethiopian">("gregorian");
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+        <div className="space-y-0.5">
+          <h3 className="text-sm font-semibold text-slate-900">Revenue Analysis</h3>
+          <p className="text-[10px] text-slate-400 font-medium uppercase tracking-wider">
+            {activeTab === "gregorian"
+              ? "Monthly Gregorian Collections (Expected vs Collected)"
+              : "Ethiopian Calendar Revenue Trend (Expected vs Collected vs Uncollected)"}
+          </p>
+        </div>
+        <div className="flex bg-slate-100/80 p-0.5 rounded-lg border border-slate-200/50">
+          <button
+            onClick={() => setActiveTab("gregorian")}
+            className={`px-3 py-1 text-[10px] font-bold uppercase tracking-wider rounded-md transition-all duration-200 ${
+              activeTab === "gregorian"
+                ? "bg-white text-slate-900 shadow-sm"
+                : "text-slate-500 hover:text-slate-900"
+            }`}
+          >
+            Gregorian
+          </button>
+          <button
+            onClick={() => setActiveTab("ethiopian")}
+            className={`px-3 py-1 text-[10px] font-bold uppercase tracking-wider rounded-md transition-all duration-200 ${
+              activeTab === "ethiopian"
+                ? "bg-white text-slate-900 shadow-sm"
+                : "text-slate-500 hover:text-slate-900"
+            }`}
+          >
+            Ethiopian
+          </button>
+        </div>
+      </div>
+
+      <div className="relative">
+        <div
+          className={`transition-all duration-300 transform ${
+            activeTab === "gregorian"
+              ? "opacity-100 translate-y-0 relative visible"
+              : "opacity-0 -translate-y-2 absolute invisible pointer-events-none w-full"
+          }`}
+        >
+          <RevenueChart data={gregorianData} />
+          {bestMonth && (
+            <div className="mt-4 p-3 bg-blue-50/50 border border-blue-100 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+              <div className="flex items-center gap-2">
+                <span className="flex h-2 w-2 rounded-full bg-blue-500 animate-pulse" />
+                <span className="font-semibold text-slate-700">
+                  Collection Peak Month Comparison: <strong className="text-blue-700 font-bold">{bestMonth.name}</strong> is the highest collecting month, yielding <strong className="text-blue-700 font-bold">{bestMonth.collected?.toLocaleString()} {currency}</strong> out of {bestMonth.expected?.toLocaleString()} {currency} expected (<strong className="text-emerald-700 font-bold">{bestMonth.rate}% collected</strong>).
+                </span>
+              </div>
+              <span className="text-[9px] font-bold text-blue-600 border border-blue-200 bg-blue-50 uppercase whitespace-nowrap px-2 py-0.5 rounded shadow-none self-start sm:self-auto">
+                Peak Month
+              </span>
+            </div>
+          )}
+        </div>
+
+        <div
+          className={`transition-all duration-300 transform ${
+            activeTab === "ethiopian"
+              ? "opacity-100 translate-y-0 relative visible"
+              : "opacity-0 -translate-y-2 absolute invisible pointer-events-none w-full"
+          }`}
+        >
+          <EthiopianRevenueChart data={ethiopianData} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
