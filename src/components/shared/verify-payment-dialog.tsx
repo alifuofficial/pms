@@ -27,7 +27,7 @@ import {
   DollarSign,
   Upload
 } from "lucide-react";
-import { approvePayment, rejectPayment, togglePenaltyPaid, changePaymentAttachment } from "@/lib/actions/payments";
+import { approvePayment, rejectPayment, togglePenaltyPaid, changePaymentAttachment, updateApprovedPaymentAmount } from "@/lib/actions/payments";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -98,6 +98,18 @@ export function VerifyPaymentDialog({ payment, currency }: VerifyPaymentDialogPr
       setOpen(false);
     } else {
       toast.error(result.error || "Failed to reject payment.");
+    }
+  };
+
+  const handleUpdateAmount = async () => {
+    setIsLoading(true);
+    const result = await updateApprovedPaymentAmount(payment.id, actualAmount);
+    setIsLoading(false);
+    if (result.success) {
+      toast.success("Approved payment amount updated successfully.");
+      setOpen(false);
+    } else {
+      toast.error(result.error || "Failed to update payment amount.");
     }
   };
 
@@ -332,25 +344,41 @@ export function VerifyPaymentDialog({ payment, currency }: VerifyPaymentDialogPr
         </div>
 
         <DialogFooter className="p-6 bg-slate-50 border-t border-slate-100 gap-3 sticky bottom-0 z-10">
-          <Button 
-            variant="outline" 
-            disabled={isLoading}
-            onClick={handleReject}
-            className="flex-1 h-12 rounded-xl border-slate-200 text-red-600 font-bold hover:bg-red-50 hover:border-red-100 transition-all shadow-none"
-          >
-            {isLoading ? <Loader2 className="animate-spin" /> : "Reject Payment"}
-          </Button>
-          <Button 
-            disabled={isLoading || payment.status === "APPROVED"}
-            onClick={handleApprove}
-            className="flex-1 h-12 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold transition-all shadow-lg shadow-slate-900/20"
-          >
-            {isLoading ? <Loader2 className="animate-spin" /> : (
-              <div className="flex items-center gap-2">
-                <CheckCircle2 size={18} /> Approve & Post
-              </div>
-            )}
-          </Button>
+          {payment.status === "APPROVED" ? (
+            <Button 
+              disabled={isLoading || actualAmount === payment.amount}
+              onClick={handleUpdateAmount}
+              className="w-full h-12 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold transition-all shadow-lg shadow-blue-600/20"
+            >
+              {isLoading ? <Loader2 className="animate-spin" /> : (
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 size={18} /> Update Approved Amount
+                </div>
+              )}
+            </Button>
+          ) : (
+            <>
+              <Button 
+                variant="outline" 
+                disabled={isLoading}
+                onClick={handleReject}
+                className="flex-1 h-12 rounded-xl border-slate-200 text-red-600 font-bold hover:bg-red-50 hover:border-red-100 transition-all shadow-none"
+              >
+                {isLoading ? <Loader2 className="animate-spin" /> : "Reject Payment"}
+              </Button>
+              <Button 
+                disabled={isLoading}
+                onClick={handleApprove}
+                className="flex-1 h-12 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold transition-all shadow-lg shadow-slate-900/20"
+              >
+                {isLoading ? <Loader2 className="animate-spin" /> : (
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 size={18} /> Approve & Post
+                  </div>
+                )}
+              </Button>
+            </>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

@@ -123,12 +123,24 @@ export async function approvePayment(
 
     let clearedAllArrears = true;
     for (const gd of gapMonths) {
-      if (fundsRemaining <= 0) {
+      if (fundsRemaining >= monthlyRent) {
+        fundsRemaining -= monthlyRent;
+        monthsCovered++;
+      } else {
         clearedAllArrears = false;
         break;
       }
+    }
+    
+    if (clearedAllArrears && fundsRemaining >= monthlyRent) {
+      const extraMonths = Math.floor(fundsRemaining / monthlyRent);
+      monthsCovered += extraMonths;
+      fundsRemaining = fundsRemaining % monthlyRent;
+    }
+
+    for (const gd of gapMonths) {
+      if (fundsRemaining <= 0) break;
       
-      const diffDays = getDaysPastEthiopianExpiry(gd);
       const leaseStartDate = new Date(currentPayment.lease.startDate);
       const startEt = toEthiopian(leaseStartDate);
       const gdEt = toEthiopian(gd);
@@ -141,25 +153,12 @@ export async function approvePayment(
       const dbPenalty = dbPenaltyMap.get(monthKey);
       
       let currentPenaltyOwed = penaltyAmount;
-      let currentPenaltyPaid = 0;
-      
       if (dbPenalty) {
         currentPenaltyOwed = dbPenalty.amount - dbPenalty.paidAmount;
       }
       
-      // 1. Settle rent for this month first
-      if (fundsRemaining >= monthlyRent) {
-        fundsRemaining -= monthlyRent;
-        monthsCovered++;
-      } else {
-        clearedAllArrears = false;
-        break;
-      }
-
-      // 2. Settle penalty for this month using any remaining funds
       if (currentPenaltyOwed > 0 && fundsRemaining > 0) {
         const toPay = Math.min(currentPenaltyOwed, fundsRemaining);
-        currentPenaltyPaid = toPay;
         actualPenaltyPaid += toPay;
         fundsRemaining -= toPay;
         
@@ -178,12 +177,6 @@ export async function approvePayment(
           });
         }
       }
-    }
-    
-    if (clearedAllArrears && fundsRemaining >= monthlyRent) {
-      const extraMonths = Math.floor(fundsRemaining / monthlyRent);
-      monthsCovered += extraMonths;
-      fundsRemaining = fundsRemaining % monthlyRent;
     }
     
     const newAdvanceBalance = fundsRemaining;
@@ -512,12 +505,24 @@ export async function approvePaymentSystem(
 
     let clearedAllArrears = true;
     for (const gd of gapMonths) {
-      if (fundsRemaining <= 0) {
+      if (fundsRemaining >= monthlyRent) {
+        fundsRemaining -= monthlyRent;
+        monthsCovered++;
+      } else {
         clearedAllArrears = false;
         break;
       }
+    }
+    
+    if (clearedAllArrears && fundsRemaining >= monthlyRent) {
+      const extraMonths = Math.floor(fundsRemaining / monthlyRent);
+      monthsCovered += extraMonths;
+      fundsRemaining = fundsRemaining % monthlyRent;
+    }
+
+    for (const gd of gapMonths) {
+      if (fundsRemaining <= 0) break;
       
-      const diffDays = getDaysPastEthiopianExpiry(gd);
       const leaseStartDate = new Date(currentPayment.lease.startDate);
       const startEt = toEthiopian(leaseStartDate);
       const gdEt = toEthiopian(gd);
@@ -530,25 +535,12 @@ export async function approvePaymentSystem(
       const dbPenalty = dbPenaltyMap.get(monthKey);
       
       let currentPenaltyOwed = penaltyAmount;
-      let currentPenaltyPaid = 0;
-      
       if (dbPenalty) {
         currentPenaltyOwed = dbPenalty.amount - dbPenalty.paidAmount;
       }
       
-      // 1. Settle rent for this month first
-      if (fundsRemaining >= monthlyRent) {
-        fundsRemaining -= monthlyRent;
-        monthsCovered++;
-      } else {
-        clearedAllArrears = false;
-        break;
-      }
-
-      // 2. Settle penalty for this month using any remaining funds
       if (currentPenaltyOwed > 0 && fundsRemaining > 0) {
         const toPay = Math.min(currentPenaltyOwed, fundsRemaining);
-        currentPenaltyPaid = toPay;
         actualPenaltyPaid += toPay;
         fundsRemaining -= toPay;
         
@@ -567,12 +559,6 @@ export async function approvePaymentSystem(
           });
         }
       }
-    }
-    
-    if (clearedAllArrears && fundsRemaining >= monthlyRent) {
-      const extraMonths = Math.floor(fundsRemaining / monthlyRent);
-      monthsCovered += extraMonths;
-      fundsRemaining = fundsRemaining % monthlyRent;
     }
     
     const newAdvanceBalance = fundsRemaining;
@@ -776,6 +762,243 @@ export async function changePaymentAttachment(paymentId: string, formData: FormD
   } catch (error: any) {
     console.error("Change Payment Attachment Error:", error);
     return { success: false, error: error.message || "Failed to update attachment" };
+  }
+}
+
+export async function recalculateLeaseStateInternal(leaseId: string, tx: any) {
+  // 1. Reset all late fee penalties for this lease to UNPAID
+  await tx.penalty.updateMany({
+    where: { leaseId },
+    data: {
+      status: "UNPAID",
+      paidAmount: 0,
+      paidAt: null
+    }
+  });
+
+  // 2. Fetch all APPROVED payments for this lease sorted chronologically by dueDate, then createdAt
+  const approvedPayments = await tx.payment.findMany({
+    where: { leaseId, status: "APPROVED" },
+    orderBy: [
+      { dueDate: "asc" },
+      { createdAt: "asc" }
+    ]
+  });
+
+  // 3. Simulate sequential approval
+  const lease = await tx.lease.findUnique({
+    where: { id: leaseId },
+    include: { unit: true }
+  });
+  if (!lease) throw new Error("Lease not found");
+
+  const monthlyRent = lease.unit.rentAmount;
+  const settings = await tx.systemSettings.findUnique({ where: { id: "global" } });
+  const leaseStartDate = new Date(lease.startDate);
+
+  let currentAdvanceBalance = 0;
+  const processedPayments: any[] = [];
+
+  for (const p of approvedPayments) {
+    const gapMonths = getLeaseArrearMonths(leaseStartDate, processedPayments);
+    gapMonths.sort((a, b) => a.getTime() - b.getTime());
+
+    let fundsRemaining = p.amount + currentAdvanceBalance;
+    let actualPenaltyPaid = 0;
+    let monthsCovered = 0;
+
+    // Fetch penalties that exist in the database (they were reset to 0 in step 1, but might have been partially paid by previous iterations)
+    const currentPenalties = await tx.penalty.findMany({
+      where: { leaseId }
+    });
+    const dbPenaltyMap = new Map();
+    for (const pen of currentPenalties) {
+      const d = new Date(pen.dueDate);
+      dbPenaltyMap.set(`${d.getFullYear()}-${d.getMonth()}`, pen);
+    }
+
+    const finalizedPenaltiesToCreate: any[] = [];
+    const finalizedPenaltiesToUpdate: any[] = [];
+
+    let clearedAllArrears = true;
+    for (const gd of gapMonths) {
+      if (fundsRemaining >= monthlyRent) {
+        fundsRemaining -= monthlyRent;
+        monthsCovered++;
+      } else {
+        clearedAllArrears = false;
+        break;
+      }
+    }
+    
+    if (clearedAllArrears && fundsRemaining >= monthlyRent) {
+      const extraMonths = Math.floor(fundsRemaining / monthlyRent);
+      monthsCovered += extraMonths;
+      fundsRemaining = fundsRemaining % monthlyRent;
+    }
+
+    for (const gd of gapMonths) {
+      if (fundsRemaining <= 0) break;
+      
+      const gdEt = toEthiopian(gd);
+      const startEt = toEthiopian(leaseStartDate);
+      const isStartMonth = gdEt.year === startEt.year && gdEt.month === startEt.month;
+      
+      const hasPenalty = !lease.unit.penaltyExempt && hasLatePenalty(gd, settings) && !(isStartMonth && processedPayments.length === 0);
+      const penaltyAmount = hasPenalty ? (monthlyRent * ((settings?.lateFeePercentage || 5) / 100)) : 0;
+      
+      const monthKey = `${gd.getFullYear()}-${gd.getMonth()}`;
+      const dbPenalty = dbPenaltyMap.get(monthKey);
+      
+      let currentPenaltyOwed = penaltyAmount;
+      if (dbPenalty) {
+        currentPenaltyOwed = dbPenalty.amount - dbPenalty.paidAmount;
+      }
+      
+      if (currentPenaltyOwed > 0 && fundsRemaining > 0) {
+        const toPay = Math.min(currentPenaltyOwed, fundsRemaining);
+        actualPenaltyPaid += toPay;
+        fundsRemaining -= toPay;
+        
+        if (dbPenalty) {
+          finalizedPenaltiesToUpdate.push({
+            id: dbPenalty.id,
+            paidAmount: dbPenalty.paidAmount + toPay,
+            status: (dbPenalty.paidAmount + toPay) >= dbPenalty.amount ? "PAID" : "PARTIAL"
+          });
+        } else {
+          finalizedPenaltiesToCreate.push({
+            amount: penaltyAmount,
+            paidAmount: toPay,
+            status: toPay >= penaltyAmount ? "PAID" : "PARTIAL",
+            dueDate: gd
+          });
+        }
+      }
+    }
+    
+    currentAdvanceBalance = fundsRemaining;
+
+    let currentCoverageEnd;
+    if (processedPayments.length > 0) {
+      const sortedApproved = processedPayments.map(ap => ({
+        coverageEnd: getEthiopianMonthEnd(new Date(ap.advanceUntil || ap.dueDate))
+      })).sort((a, b) => b.coverageEnd.getTime() - a.coverageEnd.getTime());
+      currentCoverageEnd = sortedApproved[0].coverageEnd;
+    } else {
+      const startEt = toEthiopian(leaseStartDate);
+      const maxDays = getDaysInEthiopianMonth(startEt.year, startEt.month);
+      if (startEt.day === maxDays) {
+        currentCoverageEnd = leaseStartDate;
+      } else {
+        currentCoverageEnd = addEthiopianMonths(leaseStartDate, -1);
+      }
+    }
+
+    let finalAdvanceUntil = currentCoverageEnd;
+    if (monthsCovered > 0) {
+      finalAdvanceUntil = addEthiopianMonths(new Date(currentCoverageEnd), monthsCovered);
+    }
+
+    // Update payment record in database
+    await tx.payment.update({
+      where: { id: p.id },
+      data: {
+        penalty: actualPenaltyPaid,
+        advanceUntil: finalAdvanceUntil
+      }
+    });
+
+    // Create or update penalties
+    for (const pToCreate of finalizedPenaltiesToCreate) {
+      await tx.penalty.create({
+        data: {
+          leaseId,
+          tenantId: lease.tenantId,
+          amount: pToCreate.amount,
+          paidAmount: pToCreate.paidAmount,
+          status: pToCreate.status,
+          dueDate: pToCreate.dueDate,
+          paidAt: new Date()
+        }
+      });
+    }
+
+    for (const pToUpdate of finalizedPenaltiesToUpdate) {
+      await tx.penalty.update({
+        where: { id: pToUpdate.id },
+        data: {
+          paidAmount: pToUpdate.paidAmount,
+          status: pToUpdate.status,
+          paidAt: new Date()
+        }
+      });
+    }
+
+    processedPayments.push({
+      ...p,
+      penalty: actualPenaltyPaid,
+      advanceUntil: finalAdvanceUntil
+    });
+  }
+
+  // Update lease advanceBalance in database
+  await tx.lease.update({
+    where: { id: leaseId },
+    data: { advanceBalance: currentAdvanceBalance }
+  });
+}
+
+export async function updateApprovedPaymentAmount(paymentId: string, newAmount: number) {
+  try {
+    const sessionUser = await resolveSessionUser();
+    if (!sessionUser || (sessionUser.role !== "ACCOUNTANT" && sessionUser.role !== "ADMIN")) {
+      return { success: false, error: "Unauthorized" };
+    }
+
+    const payment = await prisma.payment.findUnique({
+      where: { id: paymentId }
+    });
+    if (!payment) return { success: false, error: "Payment not found" };
+    if (payment.status !== "APPROVED") {
+      return { success: false, error: "Payment is not approved yet" };
+    }
+
+    await prisma.$transaction(async (tx) => {
+      // 1. Update the payment amount
+      await tx.payment.update({
+        where: { id: paymentId },
+        data: { amount: newAmount }
+      });
+
+      // 2. Recalculate lease chronological states
+      await recalculateLeaseStateInternal(payment.leaseId, tx);
+
+      // 3. Create an audit log
+      await tx.auditLog.create({
+        data: {
+          userId: sessionUser.id,
+          action: `Updated approved payment INV-${paymentId.slice(0, 8).toUpperCase()} amount from ${payment.amount} to ${newAmount}. Triggered chronological lease state recalculation.`,
+          actionType: "PAYMENT_APPROVAL",
+          oldValue: JSON.stringify({ amount: payment.amount }),
+          newValue: JSON.stringify({ amount: newAmount }),
+          metadata: JSON.stringify({ paymentId, oldAmount: payment.amount, newAmount })
+        }
+      });
+    });
+
+    revalidatePath("/admin/payments");
+    revalidatePath("/accountant/payments");
+    revalidatePath("/admin/dashboard");
+    revalidatePath("/accountant/dashboard");
+    revalidatePath("/tenant/payments");
+    revalidatePath("/tenant/dashboard");
+    revalidatePath("/", "layout");
+
+    return { success: true };
+  } catch (error: any) {
+    console.error("Update Approved Payment Amount Error:", error);
+    return { success: false, error: error.message || "Failed to update payment amount" };
   }
 }
 
