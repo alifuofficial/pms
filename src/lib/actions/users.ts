@@ -487,9 +487,10 @@ export async function terminateLease(leaseId: string) {
       });
 
       if (activeLeases === 0) {
+        const u = await tx.unit.findUnique({ where: { id: lease.unitId } });
         await tx.unit.update({
           where: { id: lease.unitId },
-          data: { status: "AVAILABLE" }
+          data: { status: u?.companyOwned ? "COMPANY_OWNED" : "AVAILABLE" }
         });
       }
 
@@ -571,9 +572,10 @@ export async function updateLeaseUnit(leaseId: string, newUnitId: string) {
       });
 
       if (activeLeasesOldUnit === 0) {
+        const u = await tx.unit.findUnique({ where: { id: lease.unitId } });
         await tx.unit.update({
           where: { id: lease.unitId },
-          data: { status: "AVAILABLE" }
+          data: { status: u?.companyOwned ? "COMPANY_OWNED" : "AVAILABLE" }
         });
       }
 

@@ -118,6 +118,7 @@ export async function createUnit(propertyId: string, data: {
         ...data,
         propertyId,
         qrSlug: qrSlug || null,
+        status: data.companyOwned ? "COMPANY_OWNED" : "AVAILABLE",
       },
     });
     revalidatePath("/admin/properties");
@@ -136,7 +137,7 @@ export async function updateUnit(id: string, data: {
   size: number;
   type: string;
   rentAmount: number;
-  status: "AVAILABLE" | "OCCUPIED" | "MAINTENANCE";
+  status: "AVAILABLE" | "OCCUPIED" | "MAINTENANCE" | "COMPANY_OWNED";
   penaltyExempt?: boolean;
   companyOwned?: boolean;
   hasMeter?: boolean;
@@ -162,10 +163,18 @@ export async function updateUnit(id: string, data: {
       }
     }
 
+    let finalStatus = data.status;
+    if (data.companyOwned === true) {
+      finalStatus = "COMPANY_OWNED";
+    } else if (data.companyOwned === false && current.status === "COMPANY_OWNED") {
+      finalStatus = "AVAILABLE";
+    }
+
     await prisma.unit.update({
       where: { id },
       data: {
         ...data,
+        status: finalStatus,
         mergedIntoId: data.mergedIntoId === "" ? null : data.mergedIntoId
       },
     });
@@ -181,7 +190,7 @@ export async function updateUnit(id: string, data: {
 
 export async function bulkUpdateUnits(ids: string[], data: {
   floor?: number;
-  status?: "AVAILABLE" | "OCCUPIED" | "MAINTENANCE";
+  status?: "AVAILABLE" | "OCCUPIED" | "MAINTENANCE" | "COMPANY_OWNED";
   type?: string;
   rentAmount?: number;
   qrPrinted?: boolean;
@@ -195,10 +204,41 @@ export async function bulkUpdateUnits(ids: string[], data: {
   if (ids.length === 0) return { success: false, error: "No units selected" };
 
   try {
-    await prisma.unit.updateMany({
-      where: { id: { in: ids } },
-      data,
-    });
+    let updateData = { ...data };
+    if (updateData.companyOwned === true) {
+      updateData.status = "COMPANY_OWNED";
+    } else if (updateData.companyOwned === false) {
+      updateData.status = "AVAILABLE";
+    }
+
+    if (updateData.status && updateData.status !== "COMPANY_OWNED") {
+      // If status is updated to AVAILABLE, OCCUPIED, or MAINTENANCE, 
+      // we must NOT allow updating units that are companyOwned (they must stay COMPANY_OWNED).
+      await prisma.$transaction(async (tx) => {
+        // Update status for non-companyOwned units
+        await tx.unit.updateMany({
+          where: {
+            id: { in: ids },
+            companyOwned: false
+          },
+          data: { status: updateData.status }
+        });
+        
+        // For other fields (excluding status), update all units
+        const { status, ...rest } = updateData;
+        if (Object.keys(rest).length > 0) {
+          await tx.unit.updateMany({
+            where: { id: { in: ids } },
+            data: rest
+          });
+        }
+      });
+    } else {
+      await prisma.unit.updateMany({
+        where: { id: { in: ids } },
+        data: updateData,
+      });
+    }
     revalidatePath("/admin/units");
     revalidatePath("/manager/units");
     revalidatePath("/admin/properties");

@@ -274,13 +274,20 @@ export function UnitActions({ unit }: { unit: any }) {
               <div className="space-y-1.5">
                 <Label className="text-[10px] font-semibold uppercase text-slate-400">Status</Label>
                 <select 
-                  className="w-full rounded-lg border border-slate-200 bg-white h-10 px-3 text-sm font-medium outline-none"
-                  value={editData.status}
+                  className="w-full rounded-lg border border-slate-200 bg-white h-10 px-3 text-sm font-medium outline-none disabled:bg-slate-50 disabled:opacity-70"
+                  value={editData.companyOwned ? "COMPANY_OWNED" : editData.status}
+                  disabled={editData.companyOwned}
                   onChange={(e) => setEditData({ ...editData, status: e.target.value as any })}
                 >
-                  <option value="AVAILABLE">Available</option>
-                  <option value="OCCUPIED">Occupied</option>
-                  <option value="MAINTENANCE">Maintenance</option>
+                  {editData.companyOwned ? (
+                    <option value="COMPANY_OWNED">Company Owned</option>
+                  ) : (
+                    <>
+                      <option value="AVAILABLE">Available</option>
+                      <option value="OCCUPIED">Occupied</option>
+                      <option value="MAINTENANCE">Maintenance</option>
+                    </>
+                  )}
                 </select>
               </div>
             </div>
@@ -304,7 +311,14 @@ export function UnitActions({ unit }: { unit: any }) {
                   type="checkbox"
                   id={`edit-companyOwned-${unit.id}`}
                   checked={editData.companyOwned}
-                  onChange={(e) => setEditData({ ...editData, companyOwned: e.target.checked })}
+                  onChange={(e) => {
+                    const isCompanyOwned = e.target.checked;
+                    setEditData({ 
+                      ...editData, 
+                      companyOwned: isCompanyOwned,
+                      status: isCompanyOwned ? "COMPANY_OWNED" : (editData.status === "COMPANY_OWNED" ? "AVAILABLE" : editData.status)
+                    });
+                  }}
                   className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900 cursor-pointer"
                 />
                 <Label htmlFor={`edit-companyOwned-${unit.id}`} className="text-xs font-semibold text-slate-700 cursor-pointer select-none">

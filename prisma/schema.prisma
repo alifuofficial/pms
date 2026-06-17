@@ -243,6 +243,7 @@ enum UnitStatus {
   AVAILABLE
   OCCUPIED
   MAINTENANCE
+  COMPANY_OWNED
 }
 
 enum LeaseStatus {

@@ -98,7 +98,7 @@ export async function exportUnitsCsv() {
       orderBy: [{ property: { name: 'asc' } }, { unitNumber: 'asc' }]
     });
 
-    const headers = ["PropertyName", "UnitNumber", "Type", "Floor", "Size", "RentAmount", "QrSlug", "PenaltyExempt", "MergedIntoUnitNumber"];
+    const headers = ["PropertyName", "UnitNumber", "Type", "Floor", "Size", "RentAmount", "QrSlug", "PenaltyExempt", "CompanyOwned", "MergedIntoUnitNumber"];
     const data = units.map(u => ({
       PropertyName: u.property.name,
       UnitNumber: u.unitNumber,
@@ -108,6 +108,7 @@ export async function exportUnitsCsv() {
       RentAmount: u.rentAmount.toString(),
       QrSlug: u.qrSlug || "",
       PenaltyExempt: u.penaltyExempt ? "true" : "false",
+      CompanyOwned: u.companyOwned ? "true" : "false",
       MergedIntoUnitNumber: u.mergedInto?.unitNumber || ""
     }));
 
@@ -244,6 +245,8 @@ export async function importUnitsCsv(csvString: string) {
           }
         }
 
+        const companyOwned = row["CompanyOwned"]?.trim()?.toLowerCase() === "true";
+
         await prisma.unit.create({
           data: {
             propertyId: propertyId,
@@ -252,9 +255,10 @@ export async function importUnitsCsv(csvString: string) {
             floor: row["Floor"] ? parseInt(row["Floor"]) : null,
             size: row["Size"] ? parseFloat(row["Size"]) : null,
             rentAmount: rentAmount,
-            status: "AVAILABLE",
+            status: companyOwned ? "COMPANY_OWNED" : "AVAILABLE",
             qrSlug: qrSlug,
-            penaltyExempt: row["PenaltyExempt"]?.trim()?.toLowerCase() === "true"
+            penaltyExempt: row["PenaltyExempt"]?.trim()?.toLowerCase() === "true",
+            companyOwned: companyOwned
           }
         });
         importedCount++;

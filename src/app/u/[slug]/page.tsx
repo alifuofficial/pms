@@ -119,7 +119,14 @@ export default async function PublicUnitPage({ params }: { params: Promise<{ slu
   let statusLabel = "VACANT";
   let daysLeft: number | null = null;
 
-  if (unit.status === "OCCUPIED" || lease) {
+  if (unit.status === "COMPANY_OWNED") {
+    status = "COMPANY_OWNED";
+    statusColor = "text-indigo-600 bg-indigo-50 border-indigo-100";
+    themeColor = "bg-indigo-900"; 
+    accentColor = "text-indigo-600";
+    statusIcon = <Building2 size={14} />;
+    statusLabel = "COMPANY OWNED";
+  } else if (unit.status === "OCCUPIED" || lease) {
     statusLabel = "OCCUPIED";
     statusColor = "text-blue-600 bg-blue-50 border-blue-100";
     themeColor = "bg-slate-900"; 
@@ -526,6 +533,16 @@ export default async function PublicUnitPage({ params }: { params: Promise<{ slu
                     </div>
                   </div>
                 </div>
+              </div>
+             ) : unit.status === "COMPANY_OWNED" ? (
+              <div className="p-12 text-center space-y-4 bg-indigo-50/50 rounded-[2.5rem] border border-dashed border-indigo-200">
+                 <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center mx-auto text-indigo-500 shadow-sm">
+                   <Building2 size={32} />
+                 </div>
+                 <div className="space-y-1">
+                    <p className="text-sm font-black text-indigo-900 uppercase tracking-tighter">Unit Status: Company Owned</p>
+                    <p className="text-[10px] text-indigo-500 font-bold uppercase tracking-widest">Reserved for Corporate Operations</p>
+                 </div>
               </div>
             ) : (
               <div className="p-12 text-center space-y-4 bg-slate-50 rounded-[2.5rem] border border-dashed border-slate-200">

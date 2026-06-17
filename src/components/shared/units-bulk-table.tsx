@@ -421,9 +421,11 @@ export function UnitsBulkTable({ units, currency }: { units: any[]; currency: st
                         ? "bg-emerald-50 text-emerald-600 border-emerald-100"
                         : unit.status === "MAINTENANCE"
                         ? "bg-slate-50 text-slate-500 border-slate-200"
+                        : unit.status === "COMPANY_OWNED"
+                        ? "bg-indigo-50 text-indigo-600 border-indigo-100"
                         : "bg-amber-50 text-amber-600 border-amber-100"
                     )}>
-                      {unit.status.toLowerCase()}
+                      {unit.status === "COMPANY_OWNED" ? "company owned" : unit.status.toLowerCase()}
                     </span>
                   </td>
                   <td className="py-3 px-4 text-right">

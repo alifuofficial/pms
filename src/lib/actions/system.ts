@@ -123,8 +123,14 @@ export async function granularResetSystem(options: {
           await tx.lease.deleteMany({ where: { tenant: { role: "TENANT" } } });
           
           // Revert all units back to AVAILABLE status since their tenants are deleted
+          // (Except for company-owned units, which should be COMPANY_OWNED)
           await tx.unit.updateMany({
+            where: { companyOwned: false },
             data: { status: "AVAILABLE" }
+          });
+          await tx.unit.updateMany({
+            where: { companyOwned: true },
+            data: { status: "COMPANY_OWNED" }
           });
         }
 
