@@ -24,6 +24,8 @@ import { getLeaseUncollectedBalance } from "@/lib/arrears";
 import { formatDistanceToNow } from "date-fns";
 import Link from "next/link";
 
+export const dynamic = "force-dynamic";
+
 export default async function AdminDashboard() {
   const settings = await prisma.systemSettings.findUnique({ where: { id: "global" } });
   
@@ -85,7 +87,7 @@ export default async function AdminDashboard() {
     orderBy: { createdAt: "desc" },
   });
 
-  const pendingPenalties = await getPendingPenalties({ take: 10 });
+  const pendingPenalties = await getPendingPenalties();
 
   const maxCollection = revenueData.length > 0 ? Math.max(...revenueData.map(d => d.collected || 0)) : 0;
   const bestMonth = revenueData.find(d => d.collected === maxCollection && d.collected > 0);
