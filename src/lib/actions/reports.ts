@@ -21,7 +21,7 @@ export async function getReportMetrics(startDate: Date, endDate: Date) {
 
     const activeLeases = await prisma.lease.findMany({
       where: {
-        status: { in: ["ACTIVE", "EXPIRED", "TERMINATED"] },
+        status: { in: ["ACTIVE", "EXPIRED", "TERMINATED", "LOCKED_OUT"] },
         startDate: { lte: end },
         endDate: { gte: start },
         unit: {
@@ -38,7 +38,8 @@ export async function getReportMetrics(startDate: Date, endDate: Date) {
     });
 
     const filteredLeases = activeLeases.filter(lease => {
-      if (lease.status === "TERMINATED" && lease.updatedAt < start) {
+      const capDate = lease.terminatedAt || lease.updatedAt;
+      if ((lease.status === "TERMINATED" || lease.status === "LOCKED_OUT") && capDate < start) {
         return false;
       }
       return true;
@@ -184,7 +185,7 @@ export async function getReportMetrics(startDate: Date, endDate: Date) {
   const settings = await prisma.systemSettings.findUnique({ where: { id: "global" } });
   const allLeases = await prisma.lease.findMany({
     where: {
-      status: { in: ["ACTIVE", "EXPIRED", "TERMINATED"] },
+      status: { in: ["ACTIVE", "EXPIRED", "TERMINATED", "LOCKED_OUT"] },
       unit: { companyOwned: false }
     },
     include: {

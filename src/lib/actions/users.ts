@@ -6,6 +6,8 @@ import { hash } from "bcryptjs";
 import { sendSMS } from "@/lib/sms";
 import { normalizePhoneNumber } from "@/lib/phone";
 import { resolveSessionUser } from "./auth-helper";
+import { toEthiopian, getDaysInEthiopianMonth } from "@/lib/calendar";
+import { getLeaseUncollectedBalance } from "@/lib/arrears";
 
 export async function createUser(data: {
   name: string;
@@ -626,5 +628,316 @@ export async function updateLeaseUnit(leaseId: string, newUnitId: string) {
     return { success: false, error: `Failed to update lease unit: ${error.message || error}` };
   }
 }
+
+export async function lockoutLease(
+  leaseId: string,
+  lockoutDateRaw: string | Date,
+  inventoryList: string,
+  storageLocation: string,
+  estimatedValue?: number
+) {
+  const sessionUser = await resolveSessionUser();
+  if (!sessionUser || (sessionUser.role !== "ADMIN" && sessionUser.role !== "MANAGER")) {
+    return { success: false, error: "Unauthorized" };
+  }
+
+  try {
+    const lockoutDate = new Date(lockoutDateRaw);
+    const lease = await prisma.lease.findUnique({
+      where: { id: leaseId },
+      include: {
+        unit: true,
+        tenant: true,
+        payments: true,
+        penalties: true,
+        utilityBills: true
+      }
+    });
+
+    if (!lease) return { success: false, error: "Lease not found" };
+    if (lease.status !== "ACTIVE" && lease.status !== "EXPIRED") {
+      return { success: false, error: `Lease is not in a lockable state (current status: ${lease.status})` };
+    }
+
+    const settings = await prisma.systemSettings.findUnique({ where: { id: "global" } });
+    const balance = getLeaseUncollectedBalance(lease, settings, lockoutDate);
+
+    // Apply pro-rated adjustment for the final month if lockout month is unpaid
+    let finalRentArrears = balance.rentUncollected;
+    const lockoutEt = toEthiopian(lockoutDate);
+
+    const approvedPayments = lease.payments.filter(p => p.status === "APPROVED");
+    const latestApproved = approvedPayments.length > 0
+      ? [...approvedPayments].sort((a, b) => new Date(a.advanceUntil || a.dueDate).getTime() - new Date(b.advanceUntil || b.dueDate).getTime())[approvedPayments.length - 1]
+      : null;
+
+    const coverageUntil = latestApproved ? new Date(latestApproved.advanceUntil || latestApproved.dueDate) : null;
+    let isLockoutMonthUnpaid = false;
+    if (!coverageUntil) {
+      isLockoutMonthUnpaid = true;
+    } else {
+      const covEt = toEthiopian(coverageUntil);
+      if (lockoutEt.year > covEt.year || (lockoutEt.year === covEt.year && lockoutEt.month > covEt.month)) {
+        isLockoutMonthUnpaid = true;
+      }
+    }
+
+    if (isLockoutMonthUnpaid) {
+      const daysInMonth = getDaysInEthiopianMonth(lockoutEt.year, lockoutEt.month);
+      const daysUsed = lockoutEt.day;
+      if (daysUsed < daysInMonth) {
+        const monthlyRent = lease.unit.rentAmount;
+        const fullMonthCharged = monthlyRent;
+        const proRatedRent = (daysUsed / daysInMonth) * monthlyRent;
+        const adjustment = fullMonthCharged - proRatedRent;
+        finalRentArrears = Math.max(0, finalRentArrears - adjustment);
+      }
+    }
+
+    const totalSettlementAmount = Math.round((finalRentArrears + balance.penaltiesUncollected) * 100) / 100;
+
+    await prisma.$transaction(async (tx) => {
+      // 1. Create static FINAL_SETTLEMENT payment
+      await tx.payment.create({
+        data: {
+          leaseId,
+          tenantId: lease.tenantId,
+          amount: totalSettlementAmount,
+          dueDate: lockoutDate,
+          status: "PENDING",
+          type: "FINAL_SETTLEMENT",
+          senderName: "System Eviction Lockout",
+          transactionId: `LOCK-${leaseId.slice(0, 4).toUpperCase()}`
+        }
+      });
+
+      // 2. Create SeizedProperty inventory record
+      await tx.seizedProperty.create({
+        data: {
+          leaseId,
+          tenantId: lease.tenantId,
+          lockoutDate,
+          inventoryList,
+          estimatedValue: estimatedValue || null,
+          storageLocation,
+          status: "STORED"
+        }
+      });
+
+      // 3. Update Lease: set status to LOCKED_OUT, terminatedAt, clear advanceBalance
+      await tx.lease.update({
+        where: { id: leaseId },
+        data: {
+          status: "LOCKED_OUT",
+          terminatedAt: lockoutDate,
+          advanceBalance: 0
+        }
+      });
+
+      // 4. Update Unit: set status to AVAILABLE (vacant)
+      await tx.unit.update({
+        where: { id: lease.unitId },
+        data: {
+          status: "AVAILABLE"
+        }
+      });
+
+      // 5. Reject any other pending payments for this lease
+      await tx.payment.updateMany({
+        where: {
+          leaseId,
+          status: "PENDING",
+          type: { not: "FINAL_SETTLEMENT" }
+        },
+        data: {
+          status: "REJECTED"
+        }
+      });
+
+      // 6. Create Audit Log
+      await tx.auditLog.create({
+        data: {
+          userId: sessionUser.id,
+          action: `Executed lockout & eviction on lease ${leaseId} for tenant ${lease.tenant.name}. Seized property stored at ${storageLocation}. Final settlement amount: ${totalSettlementAmount}.`,
+          actionType: "LEASE_UPDATE",
+          newValue: JSON.stringify({
+            status: "LOCKED_OUT",
+            terminatedAt: lockoutDate,
+            totalSettlementAmount,
+            storageLocation
+          })
+        }
+      });
+    });
+
+    revalidatePath("/admin/tenants");
+    revalidatePath("/admin/units");
+    revalidatePath("/admin/dashboard");
+    revalidatePath("/manager/tenants");
+    revalidatePath("/accountant/payments");
+    revalidatePath("/", "layout");
+
+    return { success: true };
+  } catch (error: any) {
+    console.error("Lockout Lease Error:", error);
+    return { success: false, error: `Failed to execute lease lockout: ${error.message || error}` };
+  }
+}
+
+export async function releaseSeizedProperty(propertyId: string) {
+  const sessionUser = await resolveSessionUser();
+  if (!sessionUser || (sessionUser.role !== "ADMIN" && sessionUser.role !== "MANAGER")) {
+    return { success: false, error: "Unauthorized" };
+  }
+
+  try {
+    const property = await prisma.seizedProperty.findUnique({
+      where: { id: propertyId },
+      include: { lease: { include: { payments: true } } }
+    });
+
+    if (!property) return { success: false, error: "Seized property record not found." };
+    if (property.status !== "STORED") {
+      return { success: false, error: `Property status is not stored (current: ${property.status})` };
+    }
+
+    // Ensure final settlement payment is paid / approved
+    const settlementPayment = property.lease.payments.find(
+      p => p.type === "FINAL_SETTLEMENT" && p.status === "APPROVED"
+    );
+
+    if (!settlementPayment) {
+      return { success: false, error: "Cannot release property. Outstanding final settlement payment is not paid." };
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.seizedProperty.update({
+        where: { id: propertyId },
+        data: {
+          status: "RETRIEVED",
+          updatedAt: new Date()
+        }
+      });
+
+      await tx.auditLog.create({
+        data: {
+          userId: sessionUser.id,
+          action: `Released seized property ${propertyId} back to tenant after settlement.`,
+          actionType: "LEASE_UPDATE"
+        }
+      });
+    });
+
+    revalidatePath("/admin/tenants");
+    revalidatePath("/manager/tenants");
+    return { success: true };
+  } catch (error: any) {
+    console.error("Release Seized Property Error:", error);
+    return { success: false, error: `Failed to release property: ${error.message || error}` };
+  }
+}
+
+export async function recordAuctionSale(
+  propertyId: string,
+  saleAmount: number,
+  buyerName: string
+) {
+  const sessionUser = await resolveSessionUser();
+  if (!sessionUser || (sessionUser.role !== "ADMIN" && sessionUser.role !== "MANAGER")) {
+    return { success: false, error: "Unauthorized" };
+  }
+
+  try {
+    const property = await prisma.seizedProperty.findUnique({
+      where: { id: propertyId },
+      include: { lease: { include: { payments: true } } }
+    });
+
+    if (!property) return { success: false, error: "Seized property record not found." };
+    if (property.status !== "STORED") {
+      return { success: false, error: `Property status is not stored (current: ${property.status})` };
+    }
+
+    const settlementPayment = property.lease.payments.find(
+      p => p.type === "FINAL_SETTLEMENT" && p.status !== "APPROVED"
+    );
+
+    if (!settlementPayment) {
+      return { success: false, error: "No unpaid final settlement payment found for this lease." };
+    }
+
+    const debtAmount = settlementPayment.amount;
+
+    await prisma.$transaction(async (tx) => {
+      let surplusRefundId = null;
+
+      if (saleAmount >= debtAmount) {
+        // Debt is fully covered by auction sale
+        await tx.payment.update({
+          where: { id: settlementPayment.id },
+          data: {
+            status: "APPROVED",
+            paidAt: new Date()
+          }
+        });
+
+        // Surplus is refunded to the tenant
+        const surplus = saleAmount - debtAmount;
+        if (surplus > 0) {
+          const refund = await tx.refund.create({
+            data: {
+              leaseId: property.leaseId,
+              tenantId: property.tenantId,
+              amount: surplus,
+              reason: `Auction sale surplus refund for seized inventory. (Total sale: ${saleAmount}, Debt paid: ${debtAmount})`,
+              status: "APPROVED", // Auto-approved surplus refund
+              approvedBy: sessionUser.id
+            }
+          });
+          surplusRefundId = refund.id;
+        }
+      } else {
+        // Partially cover the debt
+        const remainingDebt = debtAmount - saleAmount;
+        await tx.payment.update({
+          where: { id: settlementPayment.id },
+          data: {
+            amount: remainingDebt // Decrement the remaining owed amount
+          }
+        });
+      }
+
+      await tx.seizedProperty.update({
+        where: { id: propertyId },
+        data: {
+          status: "SOLD",
+          saleAmount,
+          soldAt: new Date(),
+          buyerName,
+          surplusRefundId,
+          updatedAt: new Date()
+        }
+      });
+
+      await tx.auditLog.create({
+        data: {
+          userId: sessionUser.id,
+          action: `Recorded auction sale of seized property ${propertyId} for ${saleAmount} ETB. Buyer: ${buyerName}.`,
+          actionType: "LEASE_UPDATE",
+          newValue: JSON.stringify({ saleAmount, buyerName, surplusRefundId })
+        }
+      });
+    });
+
+    revalidatePath("/admin/tenants");
+    revalidatePath("/manager/tenants");
+    revalidatePath("/accountant/payments");
+    return { success: true };
+  } catch (error: any) {
+    console.error("Record Auction Sale Error:", error);
+    return { success: false, error: `Failed to record auction sale: ${error.message || error}` };
+  }
+}
+
 
 

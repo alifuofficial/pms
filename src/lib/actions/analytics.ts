@@ -17,7 +17,7 @@ export async function getRevenueAnalytics(months: number = 6, propertyIds?: stri
     // Calculate expected rent based on active/rented leases in this month (excluding companyOwned)
     const activeLeases = await prisma.lease.findMany({
       where: {
-        status: { in: ["ACTIVE", "EXPIRED", "TERMINATED"] },
+        status: { in: ["ACTIVE", "EXPIRED", "TERMINATED", "LOCKED_OUT"] },
         startDate: { lte: end },
         endDate: { gte: start },
         unit: {
@@ -37,8 +37,8 @@ export async function getRevenueAnalytics(months: number = 6, propertyIds?: stri
     });
 
     const filteredLeases = activeLeases.filter(lease => {
-      // Exclude leases that were terminated before the start of the month
-      if (lease.status === "TERMINATED" && lease.updatedAt < start) {
+      const capDate = lease.terminatedAt || lease.updatedAt;
+      if ((lease.status === "TERMINATED" || lease.status === "LOCKED_OUT") && capDate < start) {
         return false;
       }
       return true;
@@ -110,7 +110,7 @@ export async function getOccupancyAnalytics(months: number = 6, propertyIds?: st
     // Find leases that were active during this month
     const activeLeases = await prisma.lease.findMany({
       where: {
-        status: { in: ["ACTIVE", "EXPIRED", "TERMINATED"] },
+        status: { in: ["ACTIVE", "EXPIRED", "TERMINATED", "LOCKED_OUT"] },
         startDate: { lte: end },
         endDate: { gte: start },
         unit: {
@@ -121,8 +121,8 @@ export async function getOccupancyAnalytics(months: number = 6, propertyIds?: st
     });
 
     const filteredLeases = activeLeases.filter(lease => {
-      // Exclude leases that were terminated before the start of the month
-      if (lease.status === "TERMINATED" && lease.updatedAt < start) {
+      const capDate = lease.terminatedAt || lease.updatedAt;
+      if ((lease.status === "TERMINATED" || lease.status === "LOCKED_OUT") && capDate < start) {
         return false;
       }
       return true;
@@ -244,7 +244,7 @@ export async function getEthiopianRevenueAnalytics(months: number = 6, propertyI
 
     const activeLeases = await prisma.lease.findMany({
       where: {
-        status: { in: ["ACTIVE", "EXPIRED", "TERMINATED"] },
+        status: { in: ["ACTIVE", "EXPIRED", "TERMINATED", "LOCKED_OUT"] },
         startDate: { lte: endDate },
         endDate: { gte: startDate },
         unit: {
@@ -261,7 +261,8 @@ export async function getEthiopianRevenueAnalytics(months: number = 6, propertyI
     });
 
     const filteredLeases = activeLeases.filter(lease => {
-      if (lease.status === "TERMINATED" && lease.updatedAt < startDate) {
+      const capDate = lease.terminatedAt || lease.updatedAt;
+      if ((lease.status === "TERMINATED" || lease.status === "LOCKED_OUT") && capDate < startDate) {
         return false;
       }
       return true;

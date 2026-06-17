@@ -27,6 +27,7 @@ model User {
   accountantProperties Property[] @relation("PropertyAccountant")
   managedProperties    Property[] @relation("PropertyManager")
   utilityBills         UtilityBill[] @relation("TenantUtilityBills")
+  seizedProperties     SeizedProperty[] @relation("TenantSeizedProperties")
 }
 
 model Property {
@@ -80,12 +81,14 @@ model Lease {
   updatedAt         DateTime    @updatedAt
   leaseAgreementUrl String?
   advanceBalance    Float       @default(0)
+  terminatedAt      DateTime?   // Cap date for evicted/terminated leases
   tenant            User        @relation("TenantLeases", fields: [tenantId], references: [id])
   unit              Unit        @relation(fields: [unitId], references: [id])
   payments          Payment[]
   penalties         Penalty[]
   refunds           Refund[]
   utilityBills      UtilityBill[]
+  seizedProperties  SeizedProperty[]
 }
 
 model Payment {
@@ -251,12 +254,14 @@ enum LeaseStatus {
   ACTIVE
   EXPIRED
   TERMINATED
+  LOCKED_OUT
 }
 
 enum PaymentType {
   MONTHLY
   ADVANCE
   PENALTY
+  FINAL_SETTLEMENT
 }
 
 enum PaymentStatus {
@@ -301,3 +306,33 @@ model UtilityBill {
   lease           Lease         @relation(fields: [leaseId], references: [id], onDelete: Cascade)
   tenant          User          @relation("TenantUtilityBills", fields: [tenantId], references: [id], onDelete: Cascade)
 }
+
+enum SeizedPropertyStatus {
+  STORED
+  RETRIEVED
+  SOLD
+  DISPOSED
+}
+
+model SeizedProperty {
+  id              String               @id @default(cuid())
+  leaseId         String
+  tenantId        String
+  lockoutDate     DateTime             @default(now())
+  inventoryList   String               // Text description of items
+  estimatedValue  Float?
+  status          SeizedPropertyStatus @default(STORED)
+  storageLocation String
+  
+  saleAmount      Float?
+  soldAt          DateTime?
+  buyerName       String?
+  surplusRefundId String?              // Links to Refund record if surplus exists
+  
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  lease           Lease                @relation(fields: [leaseId], references: [id], onDelete: Cascade)
+  tenant          User                 @relation("TenantSeizedProperties", fields: [tenantId], references: [id], onDelete: Cascade)
+}
+

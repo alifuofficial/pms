@@ -30,8 +30,9 @@ export function calcMonthPenalty(dueDate: Date, rentAmount: number, settings: an
  * Returns all months between leaseStart and now that are NOT covered by any approved payment.
  * Uses Ethiopian calendar stepping.
  */
-export function getArrearMonths(leaseStart: Date, payments: any[]): Date[] {
+export function getArrearMonths(leaseStart: Date, payments: any[], terminatedAt?: Date | null): Date[] {
   const now = new Date();
+  const limitDate = terminatedAt ? new Date(terminatedAt) : now;
   const arrears: Date[] = [];
   
   const coveredMonthKeys = new Set<string>();
@@ -62,7 +63,7 @@ export function getArrearMonths(leaseStart: Date, payments: any[]): Date[] {
   }
 
   const startEt = toEthiopian(leaseStart);
-  const nowEt = toEthiopian(now);
+  const nowEt = toEthiopian(limitDate);
 
   let tempYear = startEt.year;
   let tempMonth = startEt.month;
@@ -99,6 +100,27 @@ export function getArrearMonths(leaseStart: Date, payments: any[]): Date[] {
 }
 
 export function getLeaseUncollectedBalance(lease: any, settings: any, endDate?: Date) {
+  if (lease.status === "LOCKED_OUT") {
+    // For locked out leases, the dynamic rent calculations are frozen.
+    // The outstanding debt is simply the sum of unpaid FINAL_SETTLEMENT payments and utilities.
+    const unpaidFinalPayments = lease.payments
+      .filter((p: any) => p.type === "FINAL_SETTLEMENT" && p.status !== "APPROVED");
+      
+    const rentUncollected = unpaidFinalPayments.reduce((sum: number, p: any) => sum + p.amount, 0);
+    
+    const unpaidUtilities = lease.utilityBills
+      ? lease.utilityBills.filter((b: any) => b.status !== "PAID")
+      : [];
+    const utilitiesUncollected = unpaidUtilities.reduce((sum: number, b: any) => sum + b.amount, 0);
+    
+    return {
+      rentUncollected,
+      penaltiesUncollected: 0,
+      utilitiesUncollected,
+      totalUncollected: rentUncollected + utilitiesUncollected
+    };
+  }
+
   // Rent payments not approved (PENDING, REJECTED)
   const pendingPayments = lease.payments
     .filter((p: any) => p.status === "PENDING" || p.status === "REJECTED")
@@ -111,8 +133,8 @@ export function getLeaseUncollectedBalance(lease: any, settings: any, endDate?: 
     })
   );
 
-  // Unrecorded gap months
-  const gapMonthDates = getArrearMonths(new Date(lease.startDate), lease.payments)
+  // Unrecorded gap months (capped by lease.terminatedAt)
+  const gapMonthDates = getArrearMonths(new Date(lease.startDate), lease.payments, lease.terminatedAt)
     .filter(gd => !endDate || gd <= endDate);
 
   const dbPenaltyMap = new Map<string, any>();
