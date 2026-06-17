@@ -784,6 +784,90 @@ export async function lockoutLease(
   }
 }
 
+export async function getLeaseLockoutPreview(leaseId: string, lockoutDateRaw: string | Date) {
+  const sessionUser = await resolveSessionUser();
+  if (!sessionUser || (sessionUser.role !== "ADMIN" && sessionUser.role !== "MANAGER")) {
+    return { success: false, error: "Unauthorized" };
+  }
+
+  try {
+    const lockoutDate = new Date(lockoutDateRaw);
+    const lease = await prisma.lease.findUnique({
+      where: { id: leaseId },
+      include: {
+        unit: true,
+        tenant: true,
+        payments: true,
+        penalties: true,
+        utilityBills: true
+      }
+    });
+
+    if (!lease) return { success: false, error: "Lease not found" };
+
+    const settings = await prisma.systemSettings.findUnique({ where: { id: "global" } });
+    const balance = getLeaseUncollectedBalance(lease, settings, lockoutDate);
+
+    // Apply pro-rated adjustment for the final month if lockout month is unpaid
+    let finalRentArrears = balance.rentUncollected;
+    const lockoutEt = toEthiopian(lockoutDate);
+
+    const approvedPayments = lease.payments.filter(p => p.status === "APPROVED");
+    const latestApproved = approvedPayments.length > 0
+      ? [...approvedPayments].sort((a, b) => new Date(a.advanceUntil || a.dueDate).getTime() - new Date(b.advanceUntil || b.dueDate).getTime())[approvedPayments.length - 1]
+      : null;
+
+    const coverageUntil = latestApproved ? new Date(latestApproved.advanceUntil || latestApproved.dueDate) : null;
+    let isLockoutMonthUnpaid = false;
+    if (!coverageUntil) {
+      isLockoutMonthUnpaid = true;
+    } else {
+      const covEt = toEthiopian(coverageUntil);
+      if (lockoutEt.year > covEt.year || (lockoutEt.year === covEt.year && lockoutEt.month > covEt.month)) {
+        isLockoutMonthUnpaid = true;
+      }
+    }
+
+    let proRatedRent = 0;
+    let fullMonthRent = lease.unit.rentAmount;
+    let daysUsed = 0;
+    let daysInMonth = 0;
+
+    if (isLockoutMonthUnpaid) {
+      daysInMonth = getDaysInEthiopianMonth(lockoutEt.year, lockoutEt.month);
+      daysUsed = lockoutEt.day;
+      if (daysUsed < daysInMonth) {
+        proRatedRent = (daysUsed / daysInMonth) * fullMonthRent;
+        const adjustment = fullMonthRent - proRatedRent;
+        finalRentArrears = Math.max(0, finalRentArrears - adjustment);
+      } else {
+        proRatedRent = fullMonthRent;
+      }
+    }
+
+    const totalSettlementAmount = Math.round((finalRentArrears + balance.penaltiesUncollected) * 100) / 100;
+
+    // Separate full months arrears from pro-rated rent
+    const fullMonthsRentArrears = Math.max(0, finalRentArrears - proRatedRent);
+
+    return {
+      success: true,
+      data: {
+        isLockoutMonthUnpaid,
+        daysUsed,
+        daysInMonth,
+        proRatedRent,
+        fullMonthsRentArrears,
+        penaltiesUncollected: balance.penaltiesUncollected,
+        totalSettlementAmount
+      }
+    };
+  } catch (error: any) {
+    console.error("Lockout Preview Error:", error);
+    return { success: false, error: `Failed to calculate preview: ${error.message || error}` };
+  }
+}
+
 export async function releaseSeizedProperty(propertyId: string) {
   const sessionUser = await resolveSessionUser();
   if (!sessionUser || (sessionUser.role !== "ADMIN" && sessionUser.role !== "MANAGER")) {

@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { updateUnit, deleteUnit, vacateUnit, getUnitsByProperty, bulkUpdateUnits } from "@/lib/actions/properties";
 import { generateUnitQrSlug } from "@/lib/actions/qr";
+import { lockoutLease, getLeaseLockoutPreview } from "@/lib/actions/users";
 import { toast } from "sonner";
 import { QrCode, ExternalLink, Download, Copy, Check, LogOut, Link2Off } from "lucide-react";
 import QRCode from "react-qr-code";
@@ -40,6 +41,13 @@ export function UnitActions({ unit }: { unit: any }) {
   const [qrSlug, setQrSlug] = useState(unit.qrSlug || "");
   const [isCopied, setIsCopied] = useState(false);
   const [siblingUnits, setSiblingUnits] = useState<any[]>([]);
+  const [isLockingOut, setIsLockingOut] = useState(false);
+  const [lockoutDate, setLockoutDate] = useState(new Date().toISOString().split("T")[0]);
+  const [inventoryList, setInventoryList] = useState("");
+  const [storageLocation, setStorageLocation] = useState("");
+  const [estimatedValue, setEstimatedValue] = useState<number | undefined>(undefined);
+  const [previewData, setPreviewData] = useState<any>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
 
   // Sync with prop updates from server revalidation
   useEffect(() => {
@@ -118,6 +126,59 @@ export function UnitActions({ unit }: { unit: any }) {
     }
   };
 
+  useEffect(() => {
+    const activeLease = unit.leases?.[0];
+    if (isLockingOut && activeLease?.id && lockoutDate) {
+      setPreviewLoading(true);
+      getLeaseLockoutPreview(activeLease.id, new Date(lockoutDate))
+        .then((res) => {
+          if (res.success) {
+            setPreviewData(res.data);
+          } else {
+            toast.error(res.error || "Failed to calculate lockout preview.");
+          }
+        })
+        .catch((err) => {
+          console.error("Lockout preview fetch error:", err);
+        })
+        .finally(() => {
+          setPreviewLoading(false);
+        });
+    } else if (!isLockingOut) {
+      setInventoryList("");
+      setStorageLocation("");
+      setEstimatedValue(undefined);
+      setPreviewData(null);
+    }
+  }, [isLockingOut, lockoutDate, unit.leases]);
+
+  const handleLockout = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const activeLease = unit.leases?.[0];
+    if (!activeLease?.id) return;
+    if (!inventoryList || !storageLocation) {
+      toast.error("Inventory list and storage location are required.");
+      return;
+    }
+
+    setIsLoading(true);
+    const result = await lockoutLease(
+      activeLease.id,
+      new Date(lockoutDate),
+      inventoryList,
+      storageLocation,
+      estimatedValue
+    );
+    setIsLoading(false);
+
+    if (result.success) {
+      toast.success("Unit lockout completed. Tenant evicted and unit is now available.");
+      setIsLockingOut(false);
+    } else {
+      toast.error(result.error || "Failed to execute unit lockout.");
+    }
+  };
+
   const handleUnmerge = async () => {
     setIsLoading(true);
     const result = await bulkUpdateUnits([unit.id], { mergedIntoId: null });
@@ -182,12 +243,20 @@ export function UnitActions({ unit }: { unit: any }) {
             </DropdownMenuItem>
           )}
           {unit.status === "OCCUPIED" && (
-            <DropdownMenuItem 
-              onClick={() => setIsVacating(true)}
-              className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-amber-600 rounded-lg cursor-pointer hover:bg-amber-50"
-            >
-              <LogOut size={12} /> Vacate / Leave
-            </DropdownMenuItem>
+            <>
+              <DropdownMenuItem 
+                onClick={() => setIsVacating(true)}
+                className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-amber-600 rounded-lg cursor-pointer hover:bg-amber-50"
+              >
+                <LogOut size={12} /> Vacate / Leave
+              </DropdownMenuItem>
+              <DropdownMenuItem 
+                onClick={() => setIsLockingOut(true)}
+                className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-red-600 rounded-lg cursor-pointer hover:bg-red-50 border-t border-slate-50 mt-0.5"
+              >
+                <ShieldAlert size={12} /> Lockout / Evict
+              </DropdownMenuItem>
+            </>
           )}
           <DropdownMenuItem 
             onClick={() => setIsDeleting(true)}
@@ -532,6 +601,129 @@ export function UnitActions({ unit }: { unit: any }) {
               </Button>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Lockout & Evict Dialog */}
+      <Dialog open={isLockingOut} onOpenChange={setIsLockingOut}>
+        <DialogContent className="sm:max-w-[420px] bg-white rounded-2xl p-0 overflow-hidden border-none shadow-2xl flex flex-col max-h-[95vh]">
+          <DialogHeader className="p-6 pb-4 bg-slate-50 border-b border-slate-100 flex-shrink-0">
+            <div className="flex items-center gap-2 text-red-600">
+              <ShieldAlert size={20} />
+              <DialogTitle className="text-lg font-semibold text-slate-900">Lockout & Evict Unit</DialogTitle>
+            </div>
+            <DialogDescription className="text-xs font-medium text-slate-500">
+              Legal eviction and property seizure for Unit {unit.unitNumber}.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleLockout} className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar">
+            
+            {/* Calculation Preview Card */}
+            <div className="bg-red-50/50 rounded-xl border border-red-100/80 p-4 space-y-2.5">
+              <h4 className="text-[10px] font-bold uppercase tracking-wider text-red-600">
+                Eviction Debt Preview
+              </h4>
+              {previewLoading ? (
+                <div className="flex items-center justify-center py-4">
+                  <Loader2 size={16} className="animate-spin text-red-500" />
+                  <span className="text-xs text-slate-400 font-semibold ml-2">Calculating debt...</span>
+                </div>
+              ) : previewData ? (
+                <div className="space-y-1.5 text-xs">
+                  <div className="flex justify-between font-medium text-slate-600">
+                    <span>Rent (Past Full Months):</span>
+                    <span className="font-semibold text-slate-900">ETB {previewData.fullMonthsRentArrears.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  </div>
+                  {previewData.isLockoutMonthUnpaid && (
+                    <div className="flex justify-between font-medium text-slate-600">
+                      <span>Pro-rated Rent ({previewData.daysUsed}/{previewData.daysInMonth} days):</span>
+                      <span className="font-semibold text-slate-900">ETB {previewData.proRatedRent.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between font-medium text-slate-600">
+                    <span>Outstanding Penalties:</span>
+                    <span className="font-semibold text-slate-900">ETB {previewData.penaltiesUncollected.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  </div>
+                  <div className="h-px bg-red-100 my-1" />
+                  <div className="flex justify-between font-bold text-red-700 text-sm">
+                    <span>Total Eviction Debt:</span>
+                    <span>ETB {previewData.totalSettlementAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-xs text-slate-400 font-medium italic text-center py-2">
+                  Enter a lockout date to compute debt.
+                </p>
+              )}
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-[10px] font-semibold uppercase text-slate-400">Lockout Date</Label>
+              <Input
+                type="date"
+                required
+                value={lockoutDate}
+                onChange={(e) => setLockoutDate(e.target.value)}
+                className="rounded-lg border-slate-200 h-10 text-sm font-medium"
+              />
+              <p className="text-[10px] text-slate-400 font-medium leading-normal">
+                Pro-rated rent for the final active month will be calculated up to this date.
+              </p>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-[10px] font-semibold uppercase text-slate-400">Inventory List (Seized Property)</Label>
+              <textarea
+                required
+                rows={3}
+                placeholder="Catalog all seized physical items (e.g. 1x Acer Laptop, 1x Office Chair...)"
+                value={inventoryList}
+                onChange={(e) => setInventoryList(e.target.value)}
+                className="w-full rounded-lg border border-slate-200 p-2.5 text-sm font-medium focus:ring-slate-900 outline-none"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-[10px] font-semibold uppercase text-slate-400">Storage Location</Label>
+                <Input
+                  required
+                  placeholder="e.g. Warehouse A, Row 3"
+                  value={storageLocation}
+                  onChange={(e) => setStorageLocation(e.target.value)}
+                  className="rounded-lg border-slate-200 h-10 text-sm font-medium"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-[10px] font-semibold uppercase text-slate-400">Estimated Value (ETB)</Label>
+                <Input
+                  type="number"
+                  placeholder="e.g. 15000"
+                  value={estimatedValue === undefined ? "" : estimatedValue}
+                  onChange={(e) => setEstimatedValue(e.target.value ? parseFloat(e.target.value) : undefined)}
+                  className="rounded-lg border-slate-200 h-10 text-sm font-medium"
+                />
+              </div>
+            </div>
+
+            <DialogFooter className="pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="h-10 rounded-lg text-xs font-bold uppercase tracking-wider border-slate-200"
+                onClick={() => setIsLockingOut(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={isLoading || previewLoading}
+                className="h-10 bg-red-600 hover:bg-red-700 text-white text-xs font-bold uppercase tracking-wider rounded-lg shadow-lg shadow-red-600/15"
+              >
+                {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Confirm Lockout"}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
     </>
