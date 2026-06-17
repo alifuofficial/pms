@@ -191,14 +191,51 @@ export function ManageLeasesDialog({
                       </div>
                     </div>
                     <span className={cn(
-                      "text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider",
-                      lease.status === "ACTIVE" ? "bg-emerald-50 text-emerald-600" : "bg-amber-50 text-amber-600"
+                      "text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider border",
+                      lease.status === "ACTIVE" 
+                        ? "bg-emerald-50 text-emerald-600 border-emerald-100" 
+                        : lease.status === "PENDING"
+                        ? "bg-amber-50 text-amber-600 border-amber-100"
+                        : lease.status === "LOCKED_OUT"
+                        ? "bg-red-50 text-red-600 border-red-100"
+                        : "bg-slate-50 text-slate-500 border-slate-200"
                     )}>
-                      {lease.status}
+                      {lease.status === "LOCKED_OUT" ? "locked out" : lease.status.toLowerCase()}
                     </span>
                   </div>
 
-                  {isEditing ? (
+                  {lease.status === "LOCKED_OUT" || lease.status === "TERMINATED" ? (
+                    <div className="pt-3 border-t border-slate-200/60 space-y-2.5">
+                      <div className="grid grid-cols-2 gap-4 text-xs">
+                        <div>
+                          <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Lease Start</p>
+                          <p className="font-semibold text-slate-800">{formatSystemDate(new Date(lease.startDate), "ETHIOPIAN")}</p>
+                          <p className="text-[9px] text-slate-400 font-medium">Gregorian: {new Date(lease.startDate).toLocaleDateString()}</p>
+                        </div>
+                        <div>
+                          <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Original End</p>
+                          <p className="font-semibold text-slate-800">{formatSystemDate(new Date(lease.endDate), "ETHIOPIAN")}</p>
+                          <p className="text-[9px] text-slate-400 font-medium">Gregorian: {new Date(lease.endDate).toLocaleDateString()}</p>
+                        </div>
+                      </div>
+                      {lease.terminatedAt && (
+                        <div className="pt-2 border-t border-slate-100/60">
+                          <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">
+                            {lease.status === "LOCKED_OUT" ? "Lockout Date" : "Termination Date"}
+                          </p>
+                          <p className={cn(
+                            "text-xs font-black",
+                            lease.status === "LOCKED_OUT" ? "text-red-600" : "text-slate-600"
+                          )}>
+                            {formatSystemDate(new Date(lease.terminatedAt), "ETHIOPIAN")}
+                          </p>
+                          <p className="text-[9px] text-slate-400 font-medium">
+                            Gregorian: {new Date(lease.terminatedAt).toLocaleDateString()}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  ) : isEditing ? (
                     <div className="pt-3 border-t border-slate-200/60 space-y-4">
                       <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-1.5">

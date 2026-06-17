@@ -24,7 +24,6 @@ export default async function TenantsPage() {
     where: { role: "TENANT" },
     include: {
       leases: {
-        where: { status: { in: ["ACTIVE", "PENDING"] } },
         include: { unit: { include: { property: true } } }
       }
     },
@@ -68,7 +67,7 @@ export default async function TenantsPage() {
           </thead>
           <tbody className="divide-y divide-slate-50">
             {tenants.map((tenant) => {
-              const activeLease = tenant.leases[0];
+              const activeLeases = tenant.leases.filter((l: any) => l.status === "ACTIVE" || l.status === "PENDING");
               return (
                 <tr key={tenant.id} className="hover:bg-slate-50/50 transition-colors">
                   <td className="py-4 px-6">
@@ -86,8 +85,8 @@ export default async function TenantsPage() {
                   </td>
                   <td className="py-4 px-6">
                     <div className="space-y-3">
-                      {tenant.leases.length > 0 ? (
-                        tenant.leases.map((lease: any) => (
+                      {activeLeases.length > 0 ? (
+                        activeLeases.map((lease: any) => (
                           <div key={lease.id} className="space-y-1 pb-2 border-b border-slate-50 last:border-0 last:pb-0">
                             <div className="flex items-center justify-between gap-1.5">
                               <div className="flex items-center gap-1.5">
@@ -113,8 +112,8 @@ export default async function TenantsPage() {
                   </td>
                   <td className="py-4 px-6">
                     <div className="space-y-3">
-                      {tenant.leases.length > 0 ? (
-                        tenant.leases.map((lease: any) => (
+                      {activeLeases.length > 0 ? (
+                        activeLeases.map((lease: any) => (
                           <div key={lease.id} className="space-y-1 pb-2 border-b border-slate-50 last:border-0 last:pb-0">
                             <div className="flex items-center gap-1.5">
                               <Calendar size={12} className="text-slate-400" />

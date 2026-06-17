@@ -28,6 +28,8 @@ import {
 import { updateUnit, deleteUnit, vacateUnit, getUnitsByProperty, bulkUpdateUnits } from "@/lib/actions/properties";
 import { generateUnitQrSlug } from "@/lib/actions/qr";
 import { lockoutLease, getLeaseLockoutPreview } from "@/lib/actions/users";
+import { getEthiopianYearRange, getEthiopianMonths, getDaysInEthiopianMonth, toEthiopian } from "@/lib/calendar";
+import Kenat from "kenat";
 import { toast } from "sonner";
 import { QrCode, ExternalLink, Download, Copy, Check, LogOut, Link2Off } from "lucide-react";
 import QRCode from "react-qr-code";
@@ -42,7 +44,10 @@ export function UnitActions({ unit }: { unit: any }) {
   const [isCopied, setIsCopied] = useState(false);
   const [siblingUnits, setSiblingUnits] = useState<any[]>([]);
   const [isLockingOut, setIsLockingOut] = useState(false);
-  const [lockoutDate, setLockoutDate] = useState(new Date().toISOString().split("T")[0]);
+  const [ethLockout, setEthLockout] = useState(() => {
+    const et = toEthiopian(new Date());
+    return { year: et.year, month: et.month, day: et.day };
+  });
   const [inventoryList, setInventoryList] = useState("");
   const [storageLocation, setStorageLocation] = useState("");
   const [estimatedValue, setEstimatedValue] = useState<number | undefined>(undefined);
@@ -128,29 +133,38 @@ export function UnitActions({ unit }: { unit: any }) {
 
   useEffect(() => {
     const activeLease = unit.leases?.[0];
-    if (isLockingOut && activeLease?.id && lockoutDate) {
+    if (isLockingOut && activeLease?.id && ethLockout.year && ethLockout.month && ethLockout.day) {
       setPreviewLoading(true);
-      getLeaseLockoutPreview(activeLease.id, new Date(lockoutDate))
-        .then((res) => {
-          if (res.success) {
-            setPreviewData(res.data);
-          } else {
-            toast.error(res.error || "Failed to calculate lockout preview.");
-          }
-        })
-        .catch((err) => {
-          console.error("Lockout preview fetch error:", err);
-        })
-        .finally(() => {
-          setPreviewLoading(false);
-        });
+      try {
+        const s = new Kenat(`${ethLockout.year}/${ethLockout.month}/${ethLockout.day}`).getGregorian() as any;
+        const lockoutDate = new Date(s.year, s.month - 1, s.day, 12, 0, 0);
+        getLeaseLockoutPreview(activeLease.id, lockoutDate)
+          .then((res) => {
+            if (res.success) {
+              setPreviewData(res.data);
+            } else {
+              toast.error(res.error || "Failed to calculate lockout preview.");
+            }
+          })
+          .catch((err) => {
+            console.error("Lockout preview fetch error:", err);
+          })
+          .finally(() => {
+            setPreviewLoading(false);
+          });
+      } catch (err) {
+        setPreviewLoading(false);
+        console.error("Failed to parse date for preview:", err);
+      }
     } else if (!isLockingOut) {
       setInventoryList("");
       setStorageLocation("");
       setEstimatedValue(undefined);
       setPreviewData(null);
+      const et = toEthiopian(new Date());
+      setEthLockout({ year: et.year, month: et.month, day: et.day });
     }
-  }, [isLockingOut, lockoutDate, unit.leases]);
+  }, [isLockingOut, ethLockout, unit.leases]);
 
   const handleLockout = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -162,20 +176,29 @@ export function UnitActions({ unit }: { unit: any }) {
     }
 
     setIsLoading(true);
-    const result = await lockoutLease(
-      activeLease.id,
-      new Date(lockoutDate),
-      inventoryList,
-      storageLocation,
-      estimatedValue
-    );
-    setIsLoading(false);
+    try {
+      const s = new Kenat(`${ethLockout.year}/${ethLockout.month}/${ethLockout.day}`).getGregorian() as any;
+      const lockoutDate = new Date(s.year, s.month - 1, s.day, 12, 0, 0);
 
-    if (result.success) {
-      toast.success("Unit lockout completed. Tenant evicted and unit is now available.");
-      setIsLockingOut(false);
-    } else {
-      toast.error(result.error || "Failed to execute unit lockout.");
+      const result = await lockoutLease(
+        activeLease.id,
+        lockoutDate,
+        inventoryList,
+        storageLocation,
+        estimatedValue
+      );
+      setIsLoading(false);
+
+      if (result.success) {
+        toast.success("Unit lockout completed. Tenant evicted and unit is now available.");
+        setIsLockingOut(false);
+      } else {
+        toast.error(result.error || "Failed to execute unit lockout.");
+      }
+    } catch (err) {
+      setIsLoading(false);
+      toast.error("Failed to parse selected lockout date.");
+      console.error(err);
     }
   };
 
@@ -658,14 +681,32 @@ export function UnitActions({ unit }: { unit: any }) {
             </div>
 
             <div className="space-y-1.5">
-              <Label className="text-[10px] font-semibold uppercase text-slate-400">Lockout Date</Label>
-              <Input
-                type="date"
-                required
-                value={lockoutDate}
-                onChange={(e) => setLockoutDate(e.target.value)}
-                className="rounded-lg border-slate-200 h-10 text-sm font-medium"
-              />
+              <Label className="text-[10px] font-semibold uppercase text-slate-400">Lockout Date (Ethiopian)</Label>
+              <div className="flex gap-1">
+                <select 
+                  value={ethLockout.year} 
+                  onChange={e => setEthLockout({...ethLockout, year: parseInt(e.target.value)})}
+                  className="w-1/3 rounded-lg border border-slate-200 bg-white h-10 px-1 text-xs outline-none"
+                >
+                  {getEthiopianYearRange().map(y => <option key={y} value={y}>{y}</option>)}
+                </select>
+                <select 
+                  value={ethLockout.month} 
+                  onChange={e => setEthLockout({...ethLockout, month: parseInt(e.target.value)})}
+                  className="w-1/3 rounded-lg border border-slate-200 bg-white h-10 px-1 text-xs outline-none"
+                >
+                  {getEthiopianMonths().map(m => <option key={m.id} value={m.id}>{m.name.split(' ')[0]}</option>)}
+                </select>
+                <select 
+                  value={ethLockout.day} 
+                  onChange={e => setEthLockout({...ethLockout, day: parseInt(e.target.value)})}
+                  className="w-1/3 rounded-lg border border-slate-200 bg-white h-10 px-1 text-xs outline-none"
+                >
+                  {Array.from({length: getDaysInEthiopianMonth(ethLockout.year, ethLockout.month)}).map((_, i) => (
+                    <option key={i+1} value={i+1}>{i+1}</option>
+                  ))}
+                </select>
+              </div>
               <p className="text-[10px] text-slate-400 font-medium leading-normal">
                 Pro-rated rent for the final active month will be calculated up to this date.
               </p>
