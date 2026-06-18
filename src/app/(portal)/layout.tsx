@@ -19,22 +19,20 @@ export default async function DashboardLayout({
 
   return (
     <SidebarProvider>
-      <div className="flex min-h-screen w-full">
-        <SidebarNav role={user.role} user={user} />
-        <SidebarInset className="flex flex-col bg-background">
-          <header className="flex h-14 shrink-0 items-center gap-2 border-b bg-white/80 backdrop-blur-md px-4 sticky top-0 z-20">
-            <SidebarTrigger className="h-9 w-9" />
-            <div className="h-4 w-px bg-slate-200 mx-2" />
-            <div className="flex-1" />
-          </header>
-          <main className="flex-1 p-4 md:p-8 lg:p-10 overflow-y-auto">
-            <div className="max-w-[1400px] mx-auto">
-              <Breadcrumbs />
-              {children}
-            </div>
-          </main>
-        </SidebarInset>
-      </div>
+      <SidebarNav role={user.role} user={user} />
+      <SidebarInset className="flex flex-col bg-background">
+        <header className="flex h-14 shrink-0 items-center gap-2 border-b bg-white/80 backdrop-blur-md px-4 sticky top-0 z-20">
+          <SidebarTrigger className="h-9 w-9" />
+          <div className="h-4 w-px bg-slate-200 mx-2" />
+          <div className="flex-1" />
+        </header>
+        <main className="flex-1 p-4 md:p-8 lg:p-10 overflow-y-auto">
+          <div className="max-w-[1400px] mx-auto">
+            <Breadcrumbs />
+            {children}
+          </div>
+        </main>
+      </SidebarInset>
     </SidebarProvider>
   );
 }
