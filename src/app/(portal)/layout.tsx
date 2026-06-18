@@ -20,10 +20,11 @@ export default async function DashboardLayout({
     <div className="flex min-h-screen bg-slate-50">
       <SidebarNav role={user.role} user={user} />
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="flex h-14 shrink-0 items-center gap-2 border-b bg-white/80 backdrop-blur-md px-6 sticky top-0 z-20">
+        <header className="flex h-14 shrink-0 items-center border-b bg-white/80 backdrop-blur-md px-6 sticky top-0 z-20">
+          {/* spacer — hamburger button is rendered by SidebarNav on mobile */}
           <div className="flex-1" />
         </header>
-        <main className="flex-1 p-4 md:p-8 lg:p-10">
+        <main className="flex-1 p-4 md:p-8 lg:p-10 pt-16 md:pt-8 lg:pt-10">
           <div className="max-w-[1400px] mx-auto">
             <Breadcrumbs />
             {children}
