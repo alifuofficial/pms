@@ -142,7 +142,7 @@ export function SidebarNav({ role, user }: { role: string; user: any }) {
                   <SidebarMenuItem key={item.title + item.href}>
                     <SidebarMenuButton 
                       isActive={isActive}
-                      tooltip={item.title}
+                      tooltip={isCollapsed ? item.title : undefined}
                       className={cn(
                         "h-9 rounded-lg px-3 font-medium text-sm transition-all duration-200",
                         isActive 

@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 interface PaginationProps {
   totalPages: number;
@@ -28,46 +29,73 @@ export function Pagination({ totalPages, currentPage }: PaginationProps) {
         Page {currentPage} of {totalPages}
       </div>
       <div className="flex items-center space-x-2">
-        <Link href={createPageURL(1)} passHref>
-          <Button
-            variant="outline"
-            className="hidden h-8 w-8 p-0 lg:flex rounded-lg border-slate-200"
-            disabled={currentPage <= 1}
-          >
-            <span className="sr-only">Go to first page</span>
+        {/* First Page */}
+        {currentPage <= 1 ? (
+          <div className="hidden lg:flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-300 cursor-not-allowed opacity-50 select-none">
             <ChevronsLeft className="h-4 w-4" />
-          </Button>
-        </Link>
-        <Link href={createPageURL(currentPage - 1)} passHref>
-          <Button
-            variant="outline"
-            className="h-8 w-8 p-0 rounded-lg border-slate-200"
-            disabled={currentPage <= 1}
+          </div>
+        ) : (
+          <Link
+            href={createPageURL(1)}
+            className={cn(
+              buttonVariants({ variant: "outline" }),
+              "hidden lg:flex h-8 w-8 p-0 rounded-lg border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+            )}
           >
-            <span className="sr-only">Go to previous page</span>
+            <ChevronsLeft className="h-4 w-4" />
+          </Link>
+        )}
+
+        {/* Previous Page */}
+        {currentPage <= 1 ? (
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-300 cursor-not-allowed opacity-50 select-none">
             <ChevronLeft className="h-4 w-4" />
-          </Button>
-        </Link>
-        <Link href={createPageURL(currentPage + 1)} passHref>
-          <Button
-            variant="outline"
-            className="h-8 w-8 p-0 rounded-lg border-slate-200"
-            disabled={currentPage >= totalPages}
+          </div>
+        ) : (
+          <Link
+            href={createPageURL(currentPage - 1)}
+            className={cn(
+              buttonVariants({ variant: "outline" }),
+              "flex h-8 w-8 p-0 rounded-lg border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+            )}
           >
-            <span className="sr-only">Go to next page</span>
+            <ChevronLeft className="h-4 w-4" />
+          </Link>
+        )}
+
+        {/* Next Page */}
+        {currentPage >= totalPages ? (
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-300 cursor-not-allowed opacity-50 select-none">
             <ChevronRight className="h-4 w-4" />
-          </Button>
-        </Link>
-        <Link href={createPageURL(totalPages)} passHref>
-          <Button
-            variant="outline"
-            className="hidden h-8 w-8 p-0 lg:flex rounded-lg border-slate-200"
-            disabled={currentPage >= totalPages}
+          </div>
+        ) : (
+          <Link
+            href={createPageURL(currentPage + 1)}
+            className={cn(
+              buttonVariants({ variant: "outline" }),
+              "flex h-8 w-8 p-0 rounded-lg border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+            )}
           >
-            <span className="sr-only">Go to last page</span>
+            <ChevronRight className="h-4 w-4" />
+          </Link>
+        )}
+
+        {/* Last Page */}
+        {currentPage >= totalPages ? (
+          <div className="hidden lg:flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-300 cursor-not-allowed opacity-50 select-none">
             <ChevronsRight className="h-4 w-4" />
-          </Button>
-        </Link>
+          </div>
+        ) : (
+          <Link
+            href={createPageURL(totalPages)}
+            className={cn(
+              buttonVariants({ variant: "outline" }),
+              "hidden lg:flex h-8 w-8 p-0 rounded-lg border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+            )}
+          >
+            <ChevronsRight className="h-4 w-4" />
+          </Link>
+        )}
       </div>
     </div>
   );

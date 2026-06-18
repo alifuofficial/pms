@@ -496,6 +496,36 @@ const sidebarMenuButtonVariants = cva(
   }
 )
 
+const SidebarMenuButtonInner = React.forwardRef<
+  HTMLButtonElement,
+  React.ComponentProps<"button"> & {
+    render?: any
+    isActive?: boolean
+    variant?: any
+    size?: any
+  } & VariantProps<typeof sidebarMenuButtonVariants>
+>(({ render, isActive, variant, size, className, ...props }, ref) => {
+  const comp = useRender({
+    defaultTagName: "button",
+    props: mergeProps(
+      {
+        ref,
+        className: cn(sidebarMenuButtonVariants({ variant, size }), className),
+      },
+      props
+    ),
+    render: render,
+    state: {
+      slot: "sidebar-menu-button",
+      sidebar: "menu-button",
+      size,
+      active: isActive,
+    },
+  });
+  return comp;
+});
+SidebarMenuButtonInner.displayName = "SidebarMenuButtonInner";
+
 function SidebarMenuButton({
   render,
   isActive = false,
@@ -510,25 +540,18 @@ function SidebarMenuButton({
     tooltip?: string | React.ComponentProps<typeof TooltipContent>
   } & VariantProps<typeof sidebarMenuButtonVariants>) {
   const { isMobile, state } = useSidebar()
-  const comp = useRender({
-    defaultTagName: "button",
-    props: mergeProps<"button">(
-      {
-        className: cn(sidebarMenuButtonVariants({ variant, size }), className),
-      },
-      props
-    ),
-    render: render,
-    state: {
-      slot: "sidebar-menu-button",
-      sidebar: "menu-button",
-      size,
-      active: isActive,
-    },
-  })
 
   if (!tooltip) {
-    return comp
+    return (
+      <SidebarMenuButtonInner
+        render={render}
+        isActive={isActive}
+        variant={variant}
+        size={size}
+        className={className}
+        {...props}
+      />
+    )
   }
 
   if (typeof tooltip === "string") {
@@ -539,7 +562,17 @@ function SidebarMenuButton({
 
   return (
     <Tooltip>
-      <TooltipTrigger render={comp} />
+      <TooltipTrigger render={(triggerProps) => (
+        <SidebarMenuButtonInner
+          render={render}
+          isActive={isActive}
+          variant={variant}
+          size={size}
+          className={className}
+          {...props}
+          {...triggerProps}
+        />
+      )} />
       <TooltipContent
         side="right"
         align="center"

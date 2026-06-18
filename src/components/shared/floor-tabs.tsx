@@ -1,6 +1,7 @@
 "use client";
 
-import { useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { cn } from "@/lib/utils";
 
 const formatFloor = (f: number) => {
@@ -21,10 +22,9 @@ export function FloorTabs({
   currentFloor?: number;
   totalCount: number;
 }) {
-  const router = useRouter();
   const searchParams = useSearchParams();
 
-  const navigate = (floor?: number) => {
+  const createFloorURL = (floor?: number) => {
     const params = new URLSearchParams(searchParams.toString());
     if (floor === undefined) {
       params.delete("floor");
@@ -32,7 +32,7 @@ export function FloorTabs({
       params.set("floor", String(floor));
     }
     params.delete("page");
-    router.push(`?${params.toString()}`);
+    return `?${params.toString()}`;
   };
 
   if (floors.length === 0) return null;
@@ -40,8 +40,8 @@ export function FloorTabs({
   return (
     <div className="flex items-center gap-1.5 flex-wrap py-1">
       {/* All tab */}
-      <button
-        onClick={() => navigate(undefined)}
+      <Link
+        href={createFloorURL(undefined)}
         className={cn(
           "px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5",
           currentFloor === undefined
@@ -56,12 +56,12 @@ export function FloorTabs({
         )}>
           {totalCount}
         </span>
-      </button>
+      </Link>
 
       {floors.map((f) => (
-        <button
+        <Link
           key={f}
-          onClick={() => navigate(f)}
+          href={createFloorURL(f)}
           className={cn(
             "px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5",
             currentFloor === f
@@ -76,7 +76,7 @@ export function FloorTabs({
           )}>
             {counts[f] ?? 0}
           </span>
-        </button>
+        </Link>
       ))}
     </div>
   );
