@@ -13,7 +13,6 @@ import {
   ShieldAlert, 
   FileText,
   LogOut,
-  ChevronRight,
   Search,
   UserCog,
   MessageSquareText,
@@ -30,7 +29,6 @@ import {
   SidebarFooter, 
   SidebarHeader, 
   SidebarMenu, 
-  SidebarMenuButton, 
   SidebarMenuItem,
   useSidebar
 } from "@/components/ui/sidebar";
@@ -47,23 +45,19 @@ interface NavItem {
 const navItems: NavItem[] = [
   { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard, roles: ["ADMIN", "MANAGER", "ACCOUNTANT", "TENANT"], isShared: true, group: "Overview" },
   
-  // Property Management
   { title: "Properties", href: "/properties", icon: Building2, roles: ["ADMIN", "MANAGER"], isShared: true, group: "Management" },
   { title: "Units", href: "/units", icon: Home, roles: ["ADMIN", "MANAGER"], isShared: true, group: "Management" },
   { title: "Tenants", href: "/tenants", icon: Users, roles: ["ADMIN", "MANAGER"], isShared: true, group: "Management" },
   { title: "Lockout Portal", href: "/lockedout", icon: ShieldAlert, roles: ["ADMIN", "MANAGER"], isShared: true, group: "Management" },
   { title: "Utilities", href: "/utilities", icon: Zap, roles: ["ADMIN", "MANAGER", "ACCOUNTANT"], isShared: true, group: "Management" },
   
-  // Finance
   { title: "Payments", href: "/payments", icon: CreditCard, roles: ["ADMIN", "ACCOUNTANT"], isShared: true, group: "Finance" },
   { title: "Invoices", href: "/invoices", icon: FileText, roles: ["ADMIN", "ACCOUNTANT", "TENANT"], isShared: true, group: "Finance" },
   { title: "Reports", href: "/reports", icon: Activity, roles: ["ADMIN", "ACCOUNTANT"], isShared: true, group: "Finance" },
   
-  // Tenant
   { title: "Browse Units", href: "/browse", icon: Search, roles: ["TENANT"], isShared: true, group: "Marketplace" },
   { title: "My Leases", href: "/leases", icon: Home, roles: ["TENANT"], isShared: true, group: "Marketplace" },
   
-  // Admin
   { title: "Staff Management", href: "/users", icon: UserCog, roles: ["ADMIN"], isShared: true, group: "System" },
   { title: "File Archive", href: "/files", icon: FolderOpen, roles: ["ADMIN", "MANAGER"], isShared: true, group: "System" },
   { title: "Notification Templates", href: "/notify", icon: MessageSquareText, roles: ["ADMIN", "MANAGER"], isShared: true, group: "Communications" },
@@ -71,7 +65,6 @@ const navItems: NavItem[] = [
   { title: "Demo Sandbox", href: "/demo", icon: ShieldAlert, roles: ["ADMIN"], isShared: true, group: "System" },
   { title: "System Settings", href: "/settings", icon: Settings, roles: ["ADMIN"], isShared: true, group: "System" },
   { title: "Personal Settings", href: "/settings", icon: UserCog, roles: ["ACCOUNTANT", "MANAGER", "TENANT"], isShared: true, group: "System" },
-
 ];
 
 export function SidebarNav({ role, user }: { role: string; user: any }) {
@@ -84,7 +77,6 @@ export function SidebarNav({ role, user }: { role: string; user: any }) {
   const filteredItems = navItems.filter((item) => {
     if (!item.roles.includes(role)) return false;
     if (isDemo) {
-      // Show only simulated pages in Demo mode
       const allowedDemoHrefs = ["/dashboard", "/properties", "/units", "/tenants", "/payments", "/settings"];
       if (item.href === "/demo") return true;
       if (!allowedDemoHrefs.includes(item.href)) return false;
@@ -140,22 +132,19 @@ export function SidebarNav({ role, user }: { role: string; user: any }) {
                 
                 return (
                   <SidebarMenuItem key={item.title + item.href}>
-                    <SidebarMenuButton 
-                      isActive={isActive}
-                      tooltip={isCollapsed ? item.title : undefined}
+                    <Link
+                      href={finalHref}
                       className={cn(
-                        "h-9 rounded-lg px-3 font-medium text-sm transition-all duration-200",
+                        "flex w-full items-center gap-2 rounded-lg px-3 h-9 text-sm font-medium transition-all duration-200",
                         isActive 
                           ? "bg-slate-100 text-slate-900 font-semibold" 
-                          : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+                          : "text-slate-500 hover:bg-slate-50 hover:text-slate-900",
+                        isCollapsed && "justify-center px-0"
                       )}
-                      render={(props) => (
-                        <Link {...props} href={finalHref} className={cn("flex items-center gap-2", props.className)}>
-                          <item.icon className={cn("h-3.5 w-3.5", isActive ? "text-slate-900" : "text-slate-400")} />
-                          {!isCollapsed && <span>{item.title}</span>}
-                        </Link>
-                      )}
-                    />
+                    >
+                      <item.icon className={cn("h-3.5 w-3.5 shrink-0", isActive ? "text-slate-900" : "text-slate-400")} />
+                      {!isCollapsed && <span>{item.title}</span>}
+                    </Link>
                   </SidebarMenuItem>
                 );
               })}
