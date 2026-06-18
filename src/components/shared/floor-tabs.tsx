@@ -1,7 +1,6 @@
 "use client";
 
-import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import { useTransition } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { cn } from "@/lib/utils";
 
 const formatFloor = (f: number) => {
@@ -23,9 +22,7 @@ export function FloorTabs({
   totalCount: number;
 }) {
   const router = useRouter();
-  const pathname = usePathname();
   const searchParams = useSearchParams();
-  const [, startTransition] = useTransition();
 
   const navigate = (floor?: number) => {
     const params = new URLSearchParams(searchParams.toString());
@@ -35,7 +32,7 @@ export function FloorTabs({
       params.set("floor", String(floor));
     }
     params.delete("page");
-    startTransition(() => router.push(`${pathname}?${params.toString()}`));
+    router.push(`?${params.toString()}`);
   };
 
   if (floors.length === 0) return null;
