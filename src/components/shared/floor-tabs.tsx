@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { cn } from "@/lib/utils";
 
@@ -40,10 +39,10 @@ export function FloorTabs({
   return (
     <div className="flex items-center gap-1.5 flex-wrap py-1">
       {/* All tab */}
-      <Link
+      <a
         href={createFloorURL(undefined)}
         className={cn(
-          "px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5",
+          "px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer",
           currentFloor === undefined
             ? "bg-slate-900 text-white shadow-sm"
             : "bg-white border border-slate-200 text-slate-500 hover:border-slate-300 hover:text-slate-700"
@@ -56,14 +55,14 @@ export function FloorTabs({
         )}>
           {totalCount}
         </span>
-      </Link>
+      </a>
 
       {floors.map((f) => (
-        <Link
+        <a
           key={f}
           href={createFloorURL(f)}
           className={cn(
-            "px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5",
+            "px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer",
             currentFloor === f
               ? "bg-slate-900 text-white shadow-sm"
               : "bg-white border border-slate-200 text-slate-500 hover:border-slate-300 hover:text-slate-700"
@@ -76,7 +75,7 @@ export function FloorTabs({
           )}>
             {counts[f] ?? 0}
           </span>
-        </Link>
+        </a>
       ))}
     </div>
   );
