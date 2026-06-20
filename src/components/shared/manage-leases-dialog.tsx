@@ -204,38 +204,7 @@ export function ManageLeasesDialog({
                     </span>
                   </div>
 
-                  {lease.status === "LOCKED_OUT" || lease.status === "TERMINATED" ? (
-                    <div className="pt-3 border-t border-slate-200/60 space-y-2.5">
-                      <div className="grid grid-cols-2 gap-4 text-xs">
-                        <div>
-                          <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Lease Start</p>
-                          <p className="font-semibold text-slate-800">{formatSystemDate(new Date(lease.startDate), "ETHIOPIAN")}</p>
-                          <p className="text-[9px] text-slate-400 font-medium">Gregorian: {new Date(lease.startDate).toLocaleDateString()}</p>
-                        </div>
-                        <div>
-                          <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Original End</p>
-                          <p className="font-semibold text-slate-800">{formatSystemDate(new Date(lease.endDate), "ETHIOPIAN")}</p>
-                          <p className="text-[9px] text-slate-400 font-medium">Gregorian: {new Date(lease.endDate).toLocaleDateString()}</p>
-                        </div>
-                      </div>
-                      {lease.terminatedAt && (
-                        <div className="pt-2 border-t border-slate-100/60">
-                          <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">
-                            {lease.status === "LOCKED_OUT" ? "Lockout Date" : "Termination Date"}
-                          </p>
-                          <p className={cn(
-                            "text-xs font-black",
-                            lease.status === "LOCKED_OUT" ? "text-red-600" : "text-slate-600"
-                          )}>
-                            {formatSystemDate(new Date(lease.terminatedAt), "ETHIOPIAN")}
-                          </p>
-                          <p className="text-[9px] text-slate-400 font-medium">
-                            Gregorian: {new Date(lease.terminatedAt).toLocaleDateString()}
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                  ) : isEditing ? (
+                  {isEditing ? (
                     <div className="pt-3 border-t border-slate-200/60 space-y-4">
                       <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-1.5">
@@ -315,6 +284,72 @@ export function ManageLeasesDialog({
                           {isLoading ? <Loader2 size={12} className="animate-spin mr-1" /> : <Check size={12} className="mr-1" />} Save
                         </Button>
                       </div>
+                    </div>
+                  ) : lease.status === "LOCKED_OUT" ? (
+                    <div className="pt-3 border-t border-slate-200/60 space-y-3">
+                      <div className="grid grid-cols-2 gap-4 text-xs">
+                        <div>
+                          <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Lease Start</p>
+                          <p className="font-semibold text-slate-800">{formatSystemDate(new Date(lease.startDate), "ETHIOPIAN")}</p>
+                          <p className="text-[9px] text-slate-400 font-medium">Gregorian: {new Date(lease.startDate).toLocaleDateString()}</p>
+                        </div>
+                        <div>
+                          <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Original End</p>
+                          <p className="font-semibold text-slate-800">{formatSystemDate(new Date(lease.endDate), "ETHIOPIAN")}</p>
+                          <p className="text-[9px] text-slate-400 font-medium">Gregorian: {new Date(lease.endDate).toLocaleDateString()}</p>
+                        </div>
+                      </div>
+                      {lease.terminatedAt && (
+                        <div className="pt-2 border-t border-slate-100/60">
+                          <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Lockout Date</p>
+                          <p className="text-xs font-black text-red-600">
+                            {formatSystemDate(new Date(lease.terminatedAt), "ETHIOPIAN")}
+                          </p>
+                          <p className="text-[9px] text-slate-400 font-medium">
+                            Gregorian: {new Date(lease.terminatedAt).toLocaleDateString()}
+                          </p>
+                        </div>
+                      )}
+                      <div className="pt-2 border-t border-slate-100 flex justify-end">
+                        <Button 
+                          size="sm" 
+                          variant="ghost" 
+                          className="h-8 text-[10px] font-bold uppercase tracking-widest text-slate-600 bg-white hover:bg-slate-100 rounded-lg border border-slate-200/80 px-2.5"
+                          onClick={() => {
+                            startEditing(lease);
+                            setChangingLeaseId(null);
+                            setConfirmTerminateLeaseId(null);
+                          }}
+                        >
+                          <Edit size={12} className="mr-1" /> Edit Month
+                        </Button>
+                      </div>
+                    </div>
+                  ) : lease.status === "TERMINATED" ? (
+                    <div className="pt-3 border-t border-slate-200/60 space-y-2.5">
+                      <div className="grid grid-cols-2 gap-4 text-xs">
+                        <div>
+                          <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Lease Start</p>
+                          <p className="font-semibold text-slate-800">{formatSystemDate(new Date(lease.startDate), "ETHIOPIAN")}</p>
+                          <p className="text-[9px] text-slate-400 font-medium">Gregorian: {new Date(lease.startDate).toLocaleDateString()}</p>
+                        </div>
+                        <div>
+                          <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Original End</p>
+                          <p className="font-semibold text-slate-800">{formatSystemDate(new Date(lease.endDate), "ETHIOPIAN")}</p>
+                          <p className="text-[9px] text-slate-400 font-medium">Gregorian: {new Date(lease.endDate).toLocaleDateString()}</p>
+                        </div>
+                      </div>
+                      {lease.terminatedAt && (
+                        <div className="pt-2 border-t border-slate-100/60">
+                          <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Termination Date</p>
+                          <p className="text-xs font-black text-slate-600">
+                            {formatSystemDate(new Date(lease.terminatedAt), "ETHIOPIAN")}
+                          </p>
+                          <p className="text-[9px] text-slate-400 font-medium">
+                            Gregorian: {new Date(lease.terminatedAt).toLocaleDateString()}
+                          </p>
+                        </div>
+                      )}
                     </div>
                   ) : changingLeaseId === lease.id ? (
                     <div className="pt-3 border-t border-slate-200/60 space-y-4">
