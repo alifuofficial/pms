@@ -92,10 +92,7 @@ export default async function AdminDashboard() {
   const maxCollection = revenueData.length > 0 ? Math.max(...revenueData.map(d => d.collected || 0)) : 0;
   const bestMonth = revenueData.find(d => d.collected === maxCollection && d.collected > 0);
 
-  const isEthiopian = settings?.calendarType === "ETHIOPIAN";
-  const monthlyAnalytics = isEthiopian 
-    ? await getEthiopianRevenueAnalytics(2)
-    : await getRevenueAnalytics(2);
+  const monthlyAnalytics = await getEthiopianRevenueAnalytics(2);
 
   const currentMonthData = (monthlyAnalytics[1] || { name: "Current Month", expected: 0, collected: 0, uncollected: 0 }) as any;
   const previousMonthData = (monthlyAnalytics[0] || { name: "Previous Month", expected: 0, collected: 0, uncollected: 0 }) as any;
