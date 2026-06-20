@@ -33,6 +33,9 @@ export default async function AdminLockedOutPage() {
         },
       },
       refunds: true,
+      lockoutFees: {
+        orderBy: { createdAt: "desc" },
+      },
     },
     orderBy: {
       terminatedAt: "desc",

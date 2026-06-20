@@ -16,7 +16,9 @@ import {
   Info,
   PlusCircle,
   Zap,
-  BadgeDollarSign
+  BadgeDollarSign,
+  Trash2,
+  Receipt
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,7 +32,7 @@ import {
   DialogFooter
 } from "@/components/ui/dialog";
 import { formatSystemDate } from "@/lib/calendar";
-import { releaseSeizedProperty, recordAuctionSale, addLockedOutFee } from "@/lib/actions/users";
+import { releaseSeizedProperty, recordAuctionSale, addLockedOutFee, removeLockoutFee } from "@/lib/actions/users";
 import { toast } from "sonner";
 
 interface LockedOutViewProps {
@@ -62,6 +64,17 @@ export function LockedOutView({ lockedOutLeases, currency, isAdmin = false, isAc
   const [feeNote, setFeeNote] = useState("");
 
   const canAddFee = isAdmin || isAccountant;
+
+  const handleRemoveFee = (feeId: string, amount: number, note: string) => {
+    startTransition(async () => {
+      const result = await removeLockoutFee(feeId);
+      if (result.success) {
+        toast.success(`Fee of ${currency} ${amount.toLocaleString()} removed successfully.`);
+      } else {
+        toast.error(result.error || "Failed to remove fee.");
+      }
+    });
+  };
 
   // Stats calculation
   const totalLockedOutCount = lockedOutLeases.length;
@@ -358,7 +371,59 @@ export function LockedOutView({ lockedOutLeases, currency, isAdmin = false, isAc
 
                 {/* Body Details */}
                 <div className="p-6 space-y-5 flex-1">
-                  
+
+                  {/* Manually Added Fees */}
+                  {lease.lockoutFees && lease.lockoutFees.length > 0 && (
+                    <div className="space-y-2">
+                      <h5 className="text-[10px] font-black uppercase text-slate-400 tracking-wider flex items-center gap-1">
+                        <Receipt size={11} className="text-orange-500" /> Manually Added Fees
+                        <span className="ml-auto text-[9px] font-bold px-1.5 py-0.5 rounded bg-orange-50 text-orange-600 border border-orange-100">
+                          {lease.lockoutFees.length} fee{lease.lockoutFees.length !== 1 ? "s" : ""}
+                        </span>
+                      </h5>
+                      <div className="space-y-1.5">
+                        {lease.lockoutFees.map((fee: any) => (
+                          <div
+                            key={fee.id}
+                            className="flex items-start gap-2 bg-orange-50/60 border border-orange-100 rounded-xl px-3 py-2.5"
+                          >
+                            <div className="shrink-0 mt-0.5">
+                              {fee.feeType === "RENTAL" ? (
+                                <BadgeDollarSign size={13} className="text-orange-500" />
+                              ) : (
+                                <Zap size={13} className="text-orange-500" />
+                              )}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="text-[9px] font-black uppercase tracking-wider text-orange-700 bg-orange-100 px-1.5 py-0.5 rounded">
+                                  {fee.feeType === "RENTAL" ? "Rental" : "Utility"}
+                                </span>
+                                <span className="text-xs font-bold text-slate-900">
+                                  {currency} {fee.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                </span>
+                              </div>
+                              <p className="text-[10px] text-slate-600 font-medium mt-0.5 leading-snug">{fee.note}</p>
+                              <p className="text-[9px] text-slate-400 mt-0.5">
+                                Added by {fee.addedByName || "Staff"} · {formatSystemDate(new Date(fee.createdAt), "ETHIOPIAN")}
+                              </p>
+                            </div>
+                            {canAddFee && (
+                              <button
+                                onClick={() => handleRemoveFee(fee.id, fee.amount, fee.note)}
+                                disabled={isPending}
+                                title="Remove this fee"
+                                className="shrink-0 p-1 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 transition-colors disabled:opacity-50"
+                              >
+                                <Trash2 size={12} />
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                   {/* Financial Settlement Box */}
                   <div className="bg-slate-50/30 rounded-xl border border-slate-100 p-4 space-y-3">
                     <div className="flex justify-between items-center">

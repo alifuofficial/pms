@@ -1036,37 +1036,43 @@ export async function addLockedOutFee(
   try {
     const lease = await prisma.lease.findUnique({
       where: { id: leaseId },
-      include: {
-        payments: true,
-        tenant: true,
-      },
+      include: { payments: true, tenant: true },
     });
 
     if (!lease) return { success: false, error: "Lease not found." };
     if (lease.status !== "LOCKED_OUT") {
       return { success: false, error: "Can only add fees to locked-out leases." };
     }
-
     if (!amount || amount <= 0) {
       return { success: false, error: "Fee amount must be greater than zero." };
     }
 
-    // Find existing FINAL_SETTLEMENT payment (should always exist after lockout)
     const settlement = lease.payments.find((p) => p.type === "FINAL_SETTLEMENT");
 
     await prisma.$transaction(async (tx) => {
+      // 1. Create the individual LockoutFee record (the source of truth)
+      await tx.lockoutFee.create({
+        data: {
+          leaseId,
+          tenantId: lease.tenantId,
+          feeType,
+          amount,
+          note,
+          addedBy: sessionUser.id,
+          addedByName: sessionUser.name || sessionUser.email || "",
+        },
+      });
+
+      // 2. Reflect the fee in the FINAL_SETTLEMENT payment total
       if (settlement) {
-        // Increase the existing final settlement amount
         await tx.payment.update({
           where: { id: settlement.id },
           data: {
             amount: settlement.amount + amount,
-            // If it was already approved/settled, revert it to PENDING since new fee added
             ...(settlement.status === "APPROVED" ? { status: "PENDING", paidAt: null } : {}),
           },
         });
       } else {
-        // Create a new FINAL_SETTLEMENT record if somehow missing
         await tx.payment.create({
           data: {
             leaseId,
@@ -1098,3 +1104,58 @@ export async function addLockedOutFee(
     return { success: false, error: `Failed to add fee: ${error.message || error}` };
   }
 }
+
+export async function removeLockoutFee(feeId: string) {
+  const sessionUser = await resolveSessionUser();
+  if (!sessionUser || (sessionUser.role !== "ADMIN" && sessionUser.role !== "ACCOUNTANT")) {
+    return { success: false, error: "Unauthorized — only ADMIN or ACCOUNTANT can remove fees." };
+  }
+
+  try {
+    // Load the fee record with its lease's settlement payment
+    const fee = await prisma.lockoutFee.findUnique({
+      where: { id: feeId },
+      include: {
+        lease: {
+          include: { payments: true, tenant: true },
+        },
+      },
+    });
+
+    if (!fee) return { success: false, error: "Fee record not found." };
+
+    const settlement = fee.lease.payments.find((p) => p.type === "FINAL_SETTLEMENT");
+
+    await prisma.$transaction(async (tx) => {
+      // 1. Delete the LockoutFee record
+      await tx.lockoutFee.delete({ where: { id: feeId } });
+
+      // 2. Subtract from the FINAL_SETTLEMENT payment
+      if (settlement) {
+        const newAmount = Math.max(0, settlement.amount - fee.amount);
+        await tx.payment.update({
+          where: { id: settlement.id },
+          data: { amount: newAmount },
+        });
+      }
+
+      await tx.auditLog.create({
+        data: {
+          userId: sessionUser.id,
+          action: `Removed ${fee.feeType} fee of ${fee.amount} from locked-out lease ${fee.leaseId} (Tenant: ${fee.lease.tenant?.name}). Note was: "${fee.note}"`,
+          actionType: "LEASE_UPDATE",
+          oldValue: JSON.stringify({ feeId, feeType: fee.feeType, amount: fee.amount, note: fee.note }),
+        },
+      });
+    });
+
+    revalidatePath("/admin/lockedout");
+    revalidatePath("/admin/tenants");
+    revalidatePath("/accountant/payments");
+    return { success: true };
+  } catch (error: any) {
+    console.error("removeLockoutFee error:", error);
+    return { success: false, error: `Failed to remove fee: ${error.message || error}` };
+  }
+}
+

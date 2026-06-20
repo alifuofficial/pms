@@ -28,6 +28,8 @@ model User {
   managedProperties    Property[] @relation("PropertyManager")
   utilityBills         UtilityBill[] @relation("TenantUtilityBills")
   seizedProperties     SeizedProperty[] @relation("TenantSeizedProperties")
+  lockoutFees          LockoutFee[] @relation("TenantLockoutFees")
+  addedLockoutFees     LockoutFee[] @relation("AddedLockoutFees")
 }
 
 model Property {
@@ -89,6 +91,7 @@ model Lease {
   refunds           Refund[]
   utilityBills      UtilityBill[]
   seizedProperties  SeizedProperty[]
+  lockoutFees       LockoutFee[]
 }
 
 model Payment {
@@ -336,3 +339,18 @@ model SeizedProperty {
   tenant          User                 @relation("TenantSeizedProperties", fields: [tenantId], references: [id], onDelete: Cascade)
 }
 
+model LockoutFee {
+  id          String   @id @default(cuid())
+  leaseId     String
+  tenantId    String
+  feeType     String   // "RENTAL" | "UTILITY"
+  amount      Float
+  note        String
+  addedBy     String
+  addedByName String   @default("")
+  createdAt   DateTime @default(now())
+
+  lease       Lease    @relation(fields: [leaseId], references: [id], onDelete: Cascade)
+  tenant      User     @relation("TenantLockoutFees", fields: [tenantId], references: [id], onDelete: Cascade)
+  adder       User     @relation("AddedLockoutFees", fields: [addedBy], references: [id])
+}
