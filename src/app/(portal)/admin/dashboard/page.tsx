@@ -92,6 +92,24 @@ export default async function AdminDashboard() {
   const maxCollection = revenueData.length > 0 ? Math.max(...revenueData.map(d => d.collected || 0)) : 0;
   const bestMonth = revenueData.find(d => d.collected === maxCollection && d.collected > 0);
 
+  const isEthiopian = settings?.calendarType === "ETHIOPIAN";
+  const monthlyAnalytics = isEthiopian 
+    ? await getEthiopianRevenueAnalytics(2)
+    : await getRevenueAnalytics(2);
+
+  const currentMonthData = (monthlyAnalytics[1] || { name: "Current Month", expected: 0, collected: 0, uncollected: 0 }) as any;
+  const previousMonthData = (monthlyAnalytics[0] || { name: "Previous Month", expected: 0, collected: 0, uncollected: 0 }) as any;
+
+  const currentMonthExpected = currentMonthData.expected;
+  const currentMonthUncollected = currentMonthData.uncollected !== undefined 
+    ? currentMonthData.uncollected 
+    : Math.max(0, currentMonthData.expected - currentMonthData.collected);
+
+  const previousMonthExpected = previousMonthData.expected;
+  const previousMonthUncollected = previousMonthData.uncollected !== undefined 
+    ? previousMonthData.uncollected 
+    : Math.max(0, previousMonthData.expected - previousMonthData.collected);
+
   const totalExpected = stats.totalRevenue + stats.uncollectedBalance;
   const collectionRate = totalExpected > 0 ? Math.round((stats.totalRevenue / totalExpected) * 100) : 0;
   const currency = settings?.currency || "USD";
@@ -196,6 +214,43 @@ export default async function AdminDashboard() {
                     className="h-full bg-gradient-to-r from-emerald-500 to-teal-400 rounded-full transition-all duration-1000"
                     style={{ width: `${collectionRate}%` }}
                   />
+                </div>
+              </div>
+            </div>
+
+            {/* Monthly Breakdowns (Current vs Previous) */}
+            <div className="mt-6 pt-6 border-t border-white/10 grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+              {/* Previous Month */}
+              <div className="bg-white/5 rounded-xl p-3 border border-white/5 space-y-1.5">
+                <p className="text-[10px] font-bold text-indigo-300 uppercase tracking-widest flex items-center gap-1.5">
+                  <Clock size={11} className="text-indigo-400" /> {previousMonthData.name} (Previous Month)
+                </p>
+                <div className="grid grid-cols-2 gap-2 font-medium">
+                  <div>
+                    <span className="text-[9px] text-slate-400 uppercase">Expected</span>
+                    <p className="text-sm font-bold text-white">{currency} {previousMonthExpected.toLocaleString()}</p>
+                  </div>
+                  <div>
+                    <span className="text-[9px] text-slate-400 uppercase">Uncollected</span>
+                    <p className="text-sm font-bold text-rose-400">{currency} {previousMonthUncollected.toLocaleString()}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Current Month */}
+              <div className="bg-white/5 rounded-xl p-3 border border-white/5 space-y-1.5">
+                <p className="text-[10px] font-bold text-emerald-300 uppercase tracking-widest flex items-center gap-1.5">
+                  <Activity size={11} className="text-emerald-400" /> {currentMonthData.name} (Current Month)
+                </p>
+                <div className="grid grid-cols-2 gap-2 font-medium">
+                  <div>
+                    <span className="text-[9px] text-slate-400 uppercase">Expected</span>
+                    <p className="text-sm font-bold text-white">{currency} {currentMonthExpected.toLocaleString()}</p>
+                  </div>
+                  <div>
+                    <span className="text-[9px] text-slate-400 uppercase">Uncollected</span>
+                    <p className="text-sm font-bold text-rose-400">{currency} {currentMonthUncollected.toLocaleString()}</p>
+                  </div>
                 </div>
               </div>
             </div>

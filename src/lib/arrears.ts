@@ -106,18 +106,68 @@ export function getLeaseUncollectedBalance(lease: any, settings: any, endDate?: 
     const unpaidFinalPayments = lease.payments
       .filter((p: any) => p.type === "FINAL_SETTLEMENT" && p.status !== "APPROVED");
       
-    const rentUncollected = unpaidFinalPayments.reduce((sum: number, p: any) => sum + p.amount, 0);
-    
-    const unpaidUtilities = lease.utilityBills
-      ? lease.utilityBills.filter((b: any) => b.status !== "PAID")
+    const totalFinalSettlementAmount = unpaidFinalPayments.reduce((sum: number, p: any) => sum + p.amount, 0);
+
+    let rentUncollected = 0;
+    let penaltiesUncollected = 0;
+    let utilitiesUncollected = 0;
+
+    if (totalFinalSettlementAmount > 0) {
+      // 1. Sum up lockout fees
+      const lockoutFees = lease.lockoutFees || [];
+      let lockoutUtilities = 0;
+      let lockoutPenalties = 0;
+      let lockoutRent = 0;
+
+      for (const fee of lockoutFees) {
+        if (fee.feeType === "UTILITY") {
+          lockoutUtilities += fee.amount;
+        } else {
+          const isPenalty = fee.note && (fee.note.toLowerCase().includes("penalty") || fee.note.toLowerCase().includes("late"));
+          if (isPenalty) {
+            lockoutPenalties += fee.amount;
+          } else {
+            lockoutRent += fee.amount;
+          }
+        }
+      }
+
+      // 2. The base settlement represents the rent arrears and penalties up to the lockout date.
+      // Let's compute the rent portion of the base by running the standard calculation up to terminatedAt
+      const totalLockoutFeesAmount = lockoutUtilities + lockoutPenalties + lockoutRent;
+      const baseSettlementAmount = Math.max(0, totalFinalSettlementAmount - totalLockoutFeesAmount);
+
+      // Standard active calculation up to terminatedAt to find the rent portion of the base
+      const tempLease = {
+        ...lease,
+        status: "ACTIVE",
+        payments: lease.payments.filter((p: any) => p.type !== "FINAL_SETTLEMENT")
+      };
+      
+      const activeBalance = getLeaseUncollectedBalance(tempLease, settings, lease.terminatedAt || endDate);
+
+      // Adjust active rent to exclude manual rent lockout fees to avoid double counting
+      const adjustedRentUncollected = Math.max(0, activeBalance.rentUncollected - lockoutRent);
+      const rentBase = Math.min(baseSettlementAmount, adjustedRentUncollected);
+      const penaltiesBase = baseSettlementAmount - rentBase;
+
+      rentUncollected = rentBase + lockoutRent;
+      penaltiesUncollected = penaltiesBase + lockoutPenalties;
+      utilitiesUncollected = lockoutUtilities;
+    }
+
+    // Include other unpaid utility bills in the UtilityBill table
+    const unpaidUtilitiesTable = lease.utilityBills
+      ? lease.utilityBills.filter((b: any) => b.status !== "PAID" && (!endDate || new Date(b.dueDate) <= endDate))
       : [];
-    const utilitiesUncollected = unpaidUtilities.reduce((sum: number, b: any) => sum + b.amount, 0);
-    
+    const tableUtilitiesAmount = unpaidUtilitiesTable.reduce((sum: number, b: any) => sum + b.amount, 0);
+    utilitiesUncollected += tableUtilitiesAmount;
+
     return {
       rentUncollected,
-      penaltiesUncollected: 0,
+      penaltiesUncollected,
       utilitiesUncollected,
-      totalUncollected: rentUncollected + utilitiesUncollected
+      totalUncollected: rentUncollected + penaltiesUncollected + utilitiesUncollected
     };
   }
 

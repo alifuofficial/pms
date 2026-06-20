@@ -201,7 +201,8 @@ export async function getReportMetrics(startDate: Date, endDate: Date) {
       },
       payments: true,
       penalties: true,
-      utilityBills: true
+      utilityBills: true,
+      lockoutFees: true
     }
   });
 
