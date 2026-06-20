@@ -1022,6 +1022,79 @@ export async function recordAuctionSale(
     return { success: false, error: `Failed to record auction sale: ${error.message || error}` };
   }
 }
+export async function addLockedOutFee(
+  leaseId: string,
+  feeType: "RENTAL" | "UTILITY",
+  amount: number,
+  note: string
+) {
+  const sessionUser = await resolveSessionUser();
+  if (!sessionUser || (sessionUser.role !== "ADMIN" && sessionUser.role !== "ACCOUNTANT")) {
+    return { success: false, error: "Unauthorized — only ADMIN or ACCOUNTANT can add fees." };
+  }
 
+  try {
+    const lease = await prisma.lease.findUnique({
+      where: { id: leaseId },
+      include: {
+        payments: true,
+        tenant: true,
+      },
+    });
 
+    if (!lease) return { success: false, error: "Lease not found." };
+    if (lease.status !== "LOCKED_OUT") {
+      return { success: false, error: "Can only add fees to locked-out leases." };
+    }
 
+    if (!amount || amount <= 0) {
+      return { success: false, error: "Fee amount must be greater than zero." };
+    }
+
+    // Find existing FINAL_SETTLEMENT payment (should always exist after lockout)
+    const settlement = lease.payments.find((p) => p.type === "FINAL_SETTLEMENT");
+
+    await prisma.$transaction(async (tx) => {
+      if (settlement) {
+        // Increase the existing final settlement amount
+        await tx.payment.update({
+          where: { id: settlement.id },
+          data: {
+            amount: settlement.amount + amount,
+            // If it was already approved/settled, revert it to PENDING since new fee added
+            ...(settlement.status === "APPROVED" ? { status: "PENDING", paidAt: null } : {}),
+          },
+        });
+      } else {
+        // Create a new FINAL_SETTLEMENT record if somehow missing
+        await tx.payment.create({
+          data: {
+            leaseId,
+            tenantId: lease.tenantId,
+            amount,
+            dueDate: new Date(),
+            status: "PENDING",
+            type: "FINAL_SETTLEMENT",
+          },
+        });
+      }
+
+      await tx.auditLog.create({
+        data: {
+          userId: sessionUser.id,
+          action: `Added ${feeType} fee of ${amount} to locked-out lease ${leaseId} (Tenant: ${lease.tenant?.name}). Note: ${note}`,
+          actionType: "LEASE_UPDATE",
+          newValue: JSON.stringify({ leaseId, feeType, amount, note }),
+        },
+      });
+    });
+
+    revalidatePath("/admin/lockedout");
+    revalidatePath("/admin/tenants");
+    revalidatePath("/accountant/payments");
+    return { success: true };
+  } catch (error: any) {
+    console.error("addLockedOutFee error:", error);
+    return { success: false, error: `Failed to add fee: ${error.message || error}` };
+  }
+}

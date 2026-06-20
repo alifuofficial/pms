@@ -4,21 +4,19 @@ import { useState, useTransition } from "react";
 import { 
   ShieldAlert, 
   Search, 
-  Filter, 
   Calendar, 
   DollarSign, 
   Package, 
   MapPin, 
-  User, 
   Home, 
   CheckCircle2, 
-  AlertTriangle, 
   Gavel, 
   Loader2,
-  Lock,
   Coins,
-  History,
-  Info
+  Info,
+  PlusCircle,
+  Zap,
+  BadgeDollarSign
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -32,16 +30,17 @@ import {
   DialogFooter
 } from "@/components/ui/dialog";
 import { formatSystemDate } from "@/lib/calendar";
-import { releaseSeizedProperty, recordAuctionSale } from "@/lib/actions/users";
+import { releaseSeizedProperty, recordAuctionSale, addLockedOutFee } from "@/lib/actions/users";
 import { toast } from "sonner";
 
 interface LockedOutViewProps {
   lockedOutLeases: any[];
   currency: string;
   isAdmin?: boolean;
+  isAccountant?: boolean;
 }
 
-export function LockedOutView({ lockedOutLeases, currency, isAdmin = false }: LockedOutViewProps) {
+export function LockedOutView({ lockedOutLeases, currency, isAdmin = false, isAccountant = false }: LockedOutViewProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [propertyStatusFilter, setPropertyStatusFilter] = useState("ALL");
   const [paymentStatusFilter, setPaymentStatusFilter] = useState("ALL");
@@ -49,11 +48,20 @@ export function LockedOutView({ lockedOutLeases, currency, isAdmin = false }: Lo
 
   // Dialog States
   const [selectedProperty, setSelectedProperty] = useState<any>(null);
-  const [actionType, setActionType] = useState<"RELEASE" | "AUCTION" | null>(null);
+  const [actionType, setActionType] = useState<"RELEASE" | "AUCTION" | "ADD_FEE" | null>(null);
 
   // Auction form state
   const [saleAmount, setSaleAmount] = useState("");
   const [buyerName, setBuyerName] = useState("");
+
+  // Add Fee form state
+  const [feeLeaseId, setFeeLeaseId] = useState("");
+  const [feeTenantName, setFeeTenantName] = useState("");
+  const [feeType, setFeeType] = useState<"RENTAL" | "UTILITY">("RENTAL");
+  const [feeAmount, setFeeAmount] = useState("");
+  const [feeNote, setFeeNote] = useState("");
+
+  const canAddFee = isAdmin || isAccountant;
 
   // Stats calculation
   const totalLockedOutCount = lockedOutLeases.length;
@@ -117,6 +125,42 @@ export function LockedOutView({ lockedOutLeases, currency, isAdmin = false }: Lo
   const handleCloseDialogs = () => {
     setSelectedProperty(null);
     setActionType(null);
+    setFeeLeaseId("");
+    setFeeTenantName("");
+    setFeeAmount("");
+    setFeeNote("");
+    setFeeType("RENTAL");
+  };
+
+  const handleOpenAddFee = (lease: any) => {
+    setFeeLeaseId(lease.id);
+    setFeeTenantName(lease.tenant?.name || "Tenant");
+    setFeeAmount("");
+    setFeeNote("");
+    setFeeType("RENTAL");
+    setActionType("ADD_FEE");
+  };
+
+  const handleAddFeeSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const amount = parseFloat(feeAmount);
+    if (isNaN(amount) || amount <= 0) {
+      toast.error("Please enter a valid positive amount.");
+      return;
+    }
+    if (!feeNote.trim()) {
+      toast.error("Please enter a note/reason for this fee.");
+      return;
+    }
+    startTransition(async () => {
+      const result = await addLockedOutFee(feeLeaseId, feeType, amount, feeNote.trim());
+      if (result.success) {
+        toast.success(`${feeType === "RENTAL" ? "Rental" : "Utility"} fee of ${currency} ${amount.toLocaleString()} added to ${feeTenantName}'s settlement.`);
+        handleCloseDialogs();
+      } else {
+        toast.error(result.error || "Failed to add fee.");
+      }
+    });
   };
 
   const handleReleaseSubmit = async () => {
@@ -441,41 +485,56 @@ export function LockedOutView({ lockedOutLeases, currency, isAdmin = false }: Lo
                 </div>
 
                 {/* Card Actions */}
-                {seizedProp && seizedProp.status === "STORED" && (
-                  <div className="p-6 pt-0 border-t border-slate-50 bg-slate-50/20 flex flex-wrap gap-2 justify-end">
-                    {/* Record Auction Button */}
-                    <Button 
-                      variant="outline" 
+                <div className="p-4 border-t border-slate-100 bg-slate-50/30 flex flex-wrap gap-2 justify-between items-center">
+                  {/* Add Fee — ADMIN or ACCOUNTANT only */}
+                  {canAddFee && (
+                    <Button
+                      variant="outline"
                       size="sm"
-                      onClick={() => handleOpenAuction(lease, seizedProp)}
-                      className="h-9 rounded-lg border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50 flex items-center gap-1.5"
+                      onClick={() => handleOpenAddFee(lease)}
+                      className="h-8 rounded-lg border-orange-200 bg-orange-50 text-orange-700 hover:bg-orange-100 text-xs font-semibold flex items-center gap-1.5"
                     >
-                      <Gavel size={12} className="text-slate-500" /> Record Auction Sale
+                      <PlusCircle size={12} /> Add Fee
                     </Button>
+                  )}
 
-                    {/* Release Button */}
-                    <div className="relative group">
-                      <Button
-                        size="sm"
-                        disabled={!isSettled}
-                        onClick={() => handleOpenRelease(lease, seizedProp)}
-                        className={`h-9 rounded-lg text-xs font-semibold flex items-center gap-1.5 ${
-                          isSettled 
-                            ? "bg-slate-900 hover:bg-slate-800 text-white shadow-sm" 
-                            : "bg-slate-100 text-slate-400 border border-slate-100 cursor-not-allowed"
-                        }`}
-                      >
-                        <CheckCircle2 size={12} className={isSettled ? "text-emerald-400" : "text-slate-400"} /> Release Inventory
-                      </Button>
-                      
-                      {!isSettled && (
-                        <div className="absolute right-0 bottom-full mb-2 hidden group-hover:block bg-slate-900 text-white text-[9px] font-bold py-1 px-2.5 rounded shadow-lg w-48 text-center leading-normal z-50">
-                          Final settlement payment must be paid or covered before releasing inventory.
+                  <div className="flex flex-wrap gap-2 ml-auto">
+                    {seizedProp && seizedProp.status === "STORED" && (
+                      <>
+                        {/* Record Auction Button */}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleOpenAuction(lease, seizedProp)}
+                          className="h-8 rounded-lg border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50 flex items-center gap-1.5"
+                        >
+                          <Gavel size={12} className="text-slate-500" /> Auction Sale
+                        </Button>
+
+                        {/* Release Button */}
+                        <div className="relative group">
+                          <Button
+                            size="sm"
+                            disabled={!isSettled}
+                            onClick={() => handleOpenRelease(lease, seizedProp)}
+                            className={`h-8 rounded-lg text-xs font-semibold flex items-center gap-1.5 ${
+                              isSettled
+                                ? "bg-slate-900 hover:bg-slate-800 text-white shadow-sm"
+                                : "bg-slate-100 text-slate-400 border border-slate-100 cursor-not-allowed"
+                            }`}
+                          >
+                            <CheckCircle2 size={12} className={isSettled ? "text-emerald-400" : "text-slate-400"} /> Release
+                          </Button>
+                          {!isSettled && (
+                            <div className="absolute right-0 bottom-full mb-2 hidden group-hover:block bg-slate-900 text-white text-[9px] font-bold py-1 px-2.5 rounded shadow-lg w-48 text-center leading-normal z-50">
+                              Settlement must be paid before releasing inventory.
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </div>
+                      </>
+                    )}
                   </div>
-                )}
+                </div>
               </div>
             );
           })}
@@ -489,6 +548,106 @@ export function LockedOutView({ lockedOutLeases, currency, isAdmin = false }: Lo
           </p>
         </div>
       )}
+
+      {/* ── ADD FEE DIALOG ─────────────────────────────────────────── */}
+      <Dialog open={actionType === "ADD_FEE"} onOpenChange={handleCloseDialogs}>
+        <DialogContent className="sm:max-w-[440px] bg-white rounded-2xl p-0 overflow-hidden border-none shadow-2xl">
+          <DialogHeader className="p-6 pb-4 bg-orange-50 border-b border-orange-100">
+            <div className="flex items-center gap-2">
+              <PlusCircle size={18} className="text-orange-600" />
+              <DialogTitle className="text-base font-bold text-slate-900">Add Fee to Settlement</DialogTitle>
+            </div>
+            <DialogDescription className="text-xs font-medium text-slate-500 mt-0.5">
+              Adding fee for <span className="font-bold text-slate-800">{feeTenantName}</span>. This will increase the final settlement amount.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleAddFeeSubmit} className="p-6 space-y-4">
+            {/* Fee Type */}
+            <div className="space-y-1.5">
+              <Label className="text-[10px] font-bold uppercase text-slate-400">Fee Type *</Label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setFeeType("RENTAL")}
+                  className={`flex items-center gap-2 h-10 rounded-xl border px-3 text-xs font-semibold transition-all ${
+                    feeType === "RENTAL"
+                      ? "bg-slate-900 text-white border-slate-900"
+                      : "bg-white text-slate-600 border-slate-200 hover:border-slate-300"
+                  }`}
+                >
+                  <BadgeDollarSign size={13} /> Rental Fee
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFeeType("UTILITY")}
+                  className={`flex items-center gap-2 h-10 rounded-xl border px-3 text-xs font-semibold transition-all ${
+                    feeType === "UTILITY"
+                      ? "bg-slate-900 text-white border-slate-900"
+                      : "bg-white text-slate-600 border-slate-200 hover:border-slate-300"
+                  }`}
+                >
+                  <Zap size={13} /> Utility Fee
+                </button>
+              </div>
+            </div>
+
+            {/* Amount */}
+            <div className="space-y-1.5">
+              <Label className="text-[10px] font-bold uppercase text-slate-400">Amount ({currency}) *</Label>
+              <Input
+                required
+                type="number"
+                step="0.01"
+                min="0.01"
+                placeholder="e.g. 3500.00"
+                value={feeAmount}
+                onChange={(e) => setFeeAmount(e.target.value)}
+                className="rounded-lg border-slate-200 h-10 text-sm font-medium"
+                disabled={isPending}
+              />
+            </div>
+
+            {/* Note */}
+            <div className="space-y-1.5">
+              <Label className="text-[10px] font-bold uppercase text-slate-400">Note / Reason *</Label>
+              <Input
+                required
+                placeholder={feeType === "RENTAL" ? "e.g. 1 month unpaid rent — Hamle 2016" : "e.g. Electricity bill — Sene 2016"}
+                value={feeNote}
+                onChange={(e) => setFeeNote(e.target.value)}
+                className="rounded-lg border-slate-200 h-10 text-sm font-medium"
+                disabled={isPending}
+              />
+            </div>
+
+            {/* Warning */}
+            <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 text-[11px] font-medium text-amber-800 flex gap-2">
+              <Info size={13} className="shrink-0 mt-0.5 text-amber-500" />
+              This amount will be added to the tenant's final settlement balance. If already settled, it will be re-opened.
+            </div>
+
+            <DialogFooter className="pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="h-10 rounded-xl text-xs font-bold uppercase tracking-wider border-slate-200"
+                onClick={handleCloseDialogs}
+                disabled={isPending}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={isPending}
+                className="h-10 bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold uppercase tracking-wider rounded-xl flex items-center gap-2"
+              >
+                {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <><PlusCircle size={13} /> Add Fee</>}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       {/* dialog forms */}
       

@@ -8,11 +8,12 @@ export const dynamic = "force-dynamic";
 
 export default async function AdminLockedOutPage() {
   const session = await auth();
-  if (!session?.user || session.user.role !== "ADMIN") {
+  if (!session?.user || (session.user.role !== "ADMIN" && session.user.role !== "ACCOUNTANT")) {
     redirect("/auth/login");
   }
 
   const settings = await getSystemSettings();
+  const role = session.user.role;
 
   const lockedOutLeases = await prisma.lease.findMany({
     where: {
@@ -40,10 +41,11 @@ export default async function AdminLockedOutPage() {
 
   return (
     <div className="max-w-[1200px] mx-auto animate-in fade-in duration-700">
-      <LockedOutView 
-        lockedOutLeases={lockedOutLeases} 
-        currency={settings.currency} 
-        isAdmin={true} 
+      <LockedOutView
+        lockedOutLeases={lockedOutLeases}
+        currency={settings.currency}
+        isAdmin={role === "ADMIN"}
+        isAccountant={role === "ACCOUNTANT"}
       />
     </div>
   );

@@ -20,7 +20,6 @@ export default async function TenantsPage() {
   const settings = await getSystemSettings();
   
   const tenants = await prisma.user.findMany({
-
     where: { role: "TENANT" },
     include: {
       leases: {
@@ -68,6 +67,7 @@ export default async function TenantsPage() {
           <tbody className="divide-y divide-slate-50">
             {tenants.map((tenant) => {
               const activeLeases = tenant.leases.filter((l: any) => l.status === "ACTIVE" || l.status === "PENDING");
+              const lockedOutLease = tenant.leases.find((l: any) => l.status === "LOCKED_OUT");
               return (
                 <tr key={tenant.id} className="hover:bg-slate-50/50 transition-colors">
                   <td className="py-4 px-6">
@@ -105,6 +105,19 @@ export default async function TenantsPage() {
                             </p>
                           </div>
                         ))
+                      ) : lockedOutLease ? (
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-1.5">
+                            <Home size={12} className="text-red-400" />
+                            <p className="text-xs font-semibold text-slate-700">Unit {lockedOutLease.unit.unitNumber}</p>
+                            <span className="text-[9px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider bg-red-50 text-red-600 border border-red-100">
+                              Locked Out
+                            </span>
+                          </div>
+                          <p className="text-[10px] text-slate-400 font-medium truncate max-w-[150px]">
+                            {lockedOutLease.unit.property.name}
+                          </p>
+                        </div>
                       ) : (
                         <span className="text-[10px] font-bold text-slate-300 uppercase tracking-tighter">No Active Lease</span>
                       )}
@@ -126,6 +139,18 @@ export default async function TenantsPage() {
                             </p>
                           </div>
                         ))
+                      ) : lockedOutLease ? (
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-1.5">
+                            <Calendar size={12} className="text-red-400" />
+                            <p className="text-xs font-semibold text-red-700">
+                              Locked {formatSystemDate(new Date(lockedOutLease.terminatedAt ?? lockedOutLease.updatedAt), "ETHIOPIAN")}
+                            </p>
+                          </div>
+                          <p className="text-[10px] text-slate-400 font-medium">
+                            Was: {formatSystemDate(new Date(lockedOutLease.startDate), "ETHIOPIAN")} – {formatSystemDate(new Date(lockedOutLease.endDate), "ETHIOPIAN")}
+                          </p>
+                        </div>
                       ) : (
                         <span className="text-[10px] font-bold text-slate-300 uppercase tracking-tighter">—</span>
                       )}
