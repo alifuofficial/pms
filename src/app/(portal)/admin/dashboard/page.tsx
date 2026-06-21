@@ -49,6 +49,7 @@ export default async function AdminDashboard() {
           include: {
             leases: {
               include: {
+                unit: true,
                 payments: true,
                 penalties: true,
                 utilityBills: true,
