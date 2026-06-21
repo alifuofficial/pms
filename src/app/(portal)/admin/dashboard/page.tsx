@@ -35,6 +35,7 @@ export default async function AdminDashboard() {
     paymentBreakdown,
     auditLogs,
     ethiopianRevenueData,
+    properties,
     stats
   ] = await Promise.all([
     getRevenueAnalytics(),
@@ -42,6 +43,22 @@ export default async function AdminDashboard() {
     getPaymentTypeBreakdown(),
     getRecentAuditLogs(10),
     getEthiopianRevenueAnalytics(),
+    prisma.property.findMany({
+      include: {
+        units: {
+          include: {
+            leases: {
+              include: {
+                payments: true,
+                penalties: true,
+                utilityBills: true,
+                lockoutFees: true,
+              }
+            }
+          }
+        }
+      }
+    }),
     (async () => ({
       totalProperties: await prisma.property.count(),
       activeTenants: await prisma.user.count({ where: { role: "TENANT" } }),
@@ -106,6 +123,53 @@ export default async function AdminDashboard() {
   const previousMonthUncollected = previousMonthData.uncollected !== undefined 
     ? previousMonthData.uncollected 
     : Math.max(0, previousMonthData.expected - previousMonthData.collected);
+
+  const propertyStats = properties.map(property => {
+    let collected = 0;
+    let uncollected = 0;
+    const unitsCount = property.units.length;
+
+    for (const unit of property.units) {
+      for (const lease of unit.leases) {
+        // Rent
+        const approvedRent = lease.payments
+          .filter(p => p.status === "APPROVED")
+          .reduce((sum, p) => sum + p.amount, 0);
+        collected += approvedRent;
+
+        // Penalties
+        const paidPenalties = lease.penalties
+          .filter(p => p.status === "PAID")
+          .reduce((sum, p) => sum + p.paidAmount, 0);
+        collected += paidPenalties;
+
+        // Utilities
+        const paidUtilities = lease.utilityBills
+          .filter(b => b.status === "PAID")
+          .reduce((sum, b) => sum + b.amount, 0);
+        collected += paidUtilities;
+
+        // Uncollected balance (only if active or locked out)
+        if (lease.status === "ACTIVE" || lease.status === "LOCKED_OUT" || lease.status === "EXPIRED") {
+          const balance = getLeaseUncollectedBalance(lease, settings);
+          uncollected += balance.totalUncollected;
+        }
+      }
+    }
+
+    const expected = collected + uncollected;
+    const collectionRate = expected > 0 ? Math.round((collected / expected) * 100) : 0;
+
+    return {
+      id: property.id,
+      name: property.name,
+      unitsCount,
+      expected,
+      collected,
+      uncollected,
+      collectionRate
+    };
+  }).sort((a, b) => b.expected - a.expected);
 
   const totalExpected = stats.totalRevenue + stats.uncollectedBalance;
   const collectionRate = totalExpected > 0 ? Math.round((stats.totalRevenue / totalExpected) * 100) : 0;
@@ -251,6 +315,47 @@ export default async function AdminDashboard() {
                 </div>
               </div>
             </div>
+
+            {/* Property Comparison (Only if > 2 properties) */}
+            {properties.length > 2 && (
+              <div className="mt-6 pt-6 border-t border-white/10 space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-[10px] font-bold text-indigo-300 uppercase tracking-widest flex items-center gap-1.5">
+                    <Building2 size={11} className="text-indigo-400" /> Property Comparison
+                  </p>
+                  <span className="text-[9px] text-slate-400 font-bold uppercase">{properties.length} properties</span>
+                </div>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[300px] overflow-y-auto custom-scrollbar pr-1">
+                  {propertyStats.map((prop) => (
+                    <div 
+                      key={prop.id} 
+                      className="bg-white/5 rounded-xl p-3 border border-white/5 space-y-2 hover:bg-white/10 transition-colors duration-200"
+                    >
+                      <div className="flex justify-between items-start">
+                        <div className="min-w-0">
+                          <p className="font-bold text-xs text-white truncate">{prop.name}</p>
+                          <p className="text-[9.5px] text-slate-405 font-semibold mt-0.5">
+                            {prop.unitsCount} unit{prop.unitsCount !== 1 ? 's' : ''} · Collection: <span className="text-emerald-400 font-bold">{prop.collectionRate}%</span>
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2 text-[10.5px] font-medium text-slate-300">
+                        <div>
+                          <span className="text-[8.5px] text-slate-500 uppercase tracking-tight">Expected</span>
+                          <p className="text-xs font-bold text-white mt-0.5">{currency} {prop.expected.toLocaleString()}</p>
+                        </div>
+                        <div>
+                          <span className="text-[8.5px] text-slate-500 uppercase tracking-tight">Uncollected</span>
+                          <p className="text-xs font-bold text-rose-400 mt-0.5">{currency} {prop.uncollected.toLocaleString()}</p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Revenue Tabs Card (Gregorian & Ethiopian Switcher) */}
