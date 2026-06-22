@@ -333,7 +333,7 @@ export async function vacateUnit(unitId: string) {
       // 1. Terminate any active leases
       prisma.lease.updateMany({
         where: { unitId, status: "ACTIVE" },
-        data: { status: "TERMINATED" }
+        data: { status: "TERMINATED", terminatedAt: new Date() }
       }),
       // 2. Set unit to AVAILABLE
       prisma.unit.update({

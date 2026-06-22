@@ -470,7 +470,7 @@ export async function terminateLease(leaseId: string) {
       // 1. Update lease status to TERMINATED
       await tx.lease.update({
         where: { id: leaseId },
-        data: { status: "TERMINATED" }
+        data: { status: "TERMINATED", terminatedAt: new Date() }
       });
 
       // 2. Reject any pending payments associated with this lease
