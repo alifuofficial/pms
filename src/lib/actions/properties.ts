@@ -170,6 +170,10 @@ export async function updateUnit(id: string, data: {
       finalStatus = "AVAILABLE";
     }
 
+    if (current.status === "OCCUPIED" && finalStatus === "AVAILABLE") {
+      return { success: false, error: "Occupied units cannot be marked vacant directly. Please initiate the leave request and clearance process instead." };
+    }
+
     await prisma.unit.update({
       where: { id },
       data: {
@@ -209,6 +213,18 @@ export async function bulkUpdateUnits(ids: string[], data: {
       updateData.status = "COMPANY_OWNED";
     } else if (updateData.companyOwned === false) {
       updateData.status = "AVAILABLE";
+    }
+
+    if (updateData.status === "AVAILABLE") {
+      const occupiedUnits = await prisma.unit.count({
+        where: {
+          id: { in: ids },
+          status: "OCCUPIED"
+        }
+      });
+      if (occupiedUnits > 0) {
+        return { success: false, error: "Cannot mark occupied units as vacant directly. Please use the leave & clearance process." };
+      }
     }
 
     if (updateData.status && updateData.status !== "COMPANY_OWNED") {
@@ -329,6 +345,13 @@ export async function vacateUnit(unitId: string) {
   }
 
   try {
+    const unit = await prisma.unit.findUnique({ where: { id: unitId } });
+    if (!unit) return { success: false, error: "Unit not found" };
+
+    if (unit.status === "OCCUPIED") {
+      return { success: false, error: "Occupied units cannot be marked vacant directly. Please use the leave & clearance process instead." };
+    }
+
     await prisma.$transaction([
       prisma.lease.updateMany({
         where: { unitId, status: { in: ["ACTIVE", "SEALED"] } },

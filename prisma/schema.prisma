@@ -30,6 +30,8 @@ model User {
   seizedProperties     SeizedProperty[] @relation("TenantSeizedProperties")
   lockoutFees          LockoutFee[] @relation("TenantLockoutFees")
   addedLockoutFees     LockoutFee[] @relation("AddedLockoutFees")
+  leaveRequests        LeaveRequest[] @relation("TenantLeaveRequests")
+  approvedLeaveRequests LeaveRequest[] @relation("LeaveRequestApprovals")
 }
 
 model Property {
@@ -92,6 +94,7 @@ model Lease {
   utilityBills      UtilityBill[]
   seizedProperties  SeizedProperty[]
   lockoutFees       LockoutFee[]
+  leaveRequests     LeaveRequest[]
 }
 
 model Payment {
@@ -355,4 +358,32 @@ model LockoutFee {
   lease       Lease    @relation(fields: [leaseId], references: [id], onDelete: Cascade)
   tenant      User     @relation("TenantLockoutFees", fields: [tenantId], references: [id], onDelete: Cascade)
   adder       User     @relation("AddedLockoutFees", fields: [addedBy], references: [id])
+}
+
+model LeaveRequest {
+  id                  String            @id @default(cuid())
+  leaseId             String
+  tenantId            String
+  requestedMoveOutDate DateTime
+  reason              String?
+  status              LeaveRequestStatus @default(PENDING)
+  shortNoticeFee      Float             @default(0)
+  shortNoticePaid     Boolean           @default(false)
+  adminNote           String?
+  approvedBy          String?
+  approvedAt          DateTime?
+  clearanceIssuedAt   DateTime?
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+  lease               Lease             @relation(fields: [leaseId], references: [id], onDelete: Cascade)
+  tenant              User              @relation("TenantLeaveRequests", fields: [tenantId], references: [id], onDelete: Cascade)
+  approver            User?             @relation("LeaveRequestApprovals", fields: [approvedBy], references: [id])
+}
+
+enum LeaveRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CLEARANCE_ISSUED
+  COMPLETED
 }

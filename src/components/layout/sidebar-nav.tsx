@@ -43,6 +43,7 @@ const navItems: NavItem[] = [
   { title: "Units", href: "/units", icon: Home, roles: ["ADMIN", "MANAGER"], isShared: true, group: "Management" },
   { title: "Tenants", href: "/tenants", icon: Users, roles: ["ADMIN", "MANAGER"], isShared: true, group: "Management" },
   { title: "Lockout Portal", href: "/lockedout", icon: ShieldAlert, roles: ["ADMIN", "MANAGER"], isShared: true, group: "Management" },
+  { title: "Leave & Clearance", href: "/leave-clearance", icon: FileText, roles: ["ADMIN", "MANAGER"], isShared: true, group: "Management" },
   { title: "Utilities", href: "/utilities", icon: Zap, roles: ["ADMIN", "MANAGER", "ACCOUNTANT"], isShared: true, group: "Management" },
 
   { title: "Payments", href: "/payments", icon: CreditCard, roles: ["ADMIN", "ACCOUNTANT"], isShared: true, group: "Finance" },

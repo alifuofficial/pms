@@ -1,15 +1,52 @@
-import { FileText } from "lucide-react";
+import { prisma } from "@/lib/prisma";
+import { auth } from "@/auth";
+import { redirect } from "next/navigation";
+import { getSystemSettings } from "@/lib/actions/settings";
+import { TenantLeasesView } from "@/components/shared/tenant-leases-view";
 
-export default function LeasesPage() {
+export const dynamic = "force-dynamic";
+
+export const metadata = {
+  title: "My Leases | Tenant",
+  description: "Manage your active lease contract, outstanding balances, and vacancy requests.",
+};
+
+export default async function TenantLeasesPage() {
+  const session = await auth();
+  if (!session?.user || session.user.role !== "TENANT") {
+    redirect("/auth/login");
+  }
+
+  const settings = await getSystemSettings();
+
+  const [leases, leaveRequests] = await Promise.all([
+    prisma.lease.findMany({
+      where: { tenantId: session.user.id },
+      include: {
+        unit: {
+          include: {
+            property: true,
+          },
+        },
+        payments: true,
+        penalties: true,
+        utilityBills: true,
+      },
+      orderBy: { startDate: "desc" },
+    }),
+    prisma.leaveRequest.findMany({
+      where: { tenantId: session.user.id },
+      orderBy: { createdAt: "desc" },
+    }),
+  ]);
+
   return (
-    <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4 animate-in fade-in duration-700">
-      <div className="p-6 bg-slate-100 rounded-[2.5rem] text-slate-400">
-        <FileText size={64} strokeWidth={1} />
-      </div>
-      <div className="text-center space-y-1">
-        <h1 className="text-2xl font-black text-slate-900 tracking-tight">My Leases</h1>
-        <p className="text-slate-500 font-medium max-w-xs">Access your digital lease agreements. Generating documents...</p>
-      </div>
+    <div className="pb-10 animate-in fade-in duration-700">
+      <TenantLeasesView
+        leases={leases}
+        leaveRequests={leaveRequests}
+        currency={settings.currency}
+      />
     </div>
   );
 }
