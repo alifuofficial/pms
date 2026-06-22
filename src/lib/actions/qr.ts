@@ -243,7 +243,7 @@ export async function getPublicUnitStatus(slug: string) {
     );
 
     const unpaidPenalties = penalties
-      .filter(p => p.amount - p.paidAmount > 0)
+      .filter(p => p.amount - p.paidAmount > 0 && p.status !== "WAIVED")
       .filter(p => {
         const d = new Date(p.dueDate);
         return !arrearsMonthKeys.has(`${d.getFullYear()}-${d.getMonth()}`);

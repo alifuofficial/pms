@@ -253,7 +253,7 @@ export function getLeaseUncollectedBalance(lease: any, settings: any, endDate?: 
   );
 
   const unpaidPenaltiesList = lease.penalties
-    .filter((p: any) => p.amount - p.paidAmount > 0)
+    .filter((p: any) => p.amount - p.paidAmount > 0 && p.status !== "WAIVED")
     .filter((p: any) => {
       const d = new Date(p.dueDate);
       return !arrearsMonthKeys.has(`${d.getFullYear()}-${d.getMonth()}`) && (!endDate || d <= endDate);

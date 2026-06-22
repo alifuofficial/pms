@@ -98,7 +98,7 @@ export function TenantLeasesView({ leases, leaveRequests, currency }: TenantLeas
 
   const getOutstandingSummary = (lease: any) => {
     const unpaidPayments = lease.payments.filter((p: any) => p.status === "PENDING");
-    const unpaidPenalties = lease.penalties.filter((p: any) => p.status !== "PAID");
+    const unpaidPenalties = lease.penalties.filter((p: any) => p.status !== "PAID" && p.status !== "WAIVED");
     const unpaidUtilities = lease.utilityBills.filter((u: any) => u.status !== "PAID");
 
     const totalUnpaid = 

@@ -216,7 +216,7 @@ export function LeaveClearanceView({
   // Utility to count outstanding items
   const getOutstandingDetails = (lease: any) => {
     const unpaidPayments = lease.payments.filter((p: any) => p.status === "PENDING");
-    const unpaidPenalties = lease.penalties.filter((p: any) => p.status !== "PAID");
+    const unpaidPenalties = lease.penalties.filter((p: any) => p.status !== "PAID" && p.status !== "WAIVED");
     const unpaidUtilities = lease.utilityBills.filter((u: any) => u.status !== "PAID");
 
     const totalUnpaidAmount = 
