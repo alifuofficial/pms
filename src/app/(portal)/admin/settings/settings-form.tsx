@@ -1141,6 +1141,19 @@ export function SettingsForm({
                       />
                     </div>
 
+                    <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-100">
+                      <div className="space-y-0.5">
+                        <Label className="text-sm font-semibold text-slate-900">Enable Strict Legal Lease Rules</Label>
+                        <p className="text-[10px] text-slate-500 font-medium">Enforce 5-day grace period, day 6 penalty, day 10 shop sealing, and 2-month lockout limits.</p>
+                      </div>
+                      <input 
+                        type="checkbox" 
+                        checked={formData.strictLeaseRules || false}
+                        onChange={(e) => setFormData({ ...formData, strictLeaseRules: e.target.checked })}
+                        className="h-5 w-5 rounded border-slate-300 text-slate-900 focus:ring-slate-900"
+                      />
+                    </div>
+
                     <div className="space-y-4">
                       {/* Tier 1 & Tier 2 side by side */}
                       <div className="grid grid-cols-2 gap-4">

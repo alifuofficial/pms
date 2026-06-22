@@ -10,7 +10,7 @@ export async function getPendingPenalties(options?: { propertyIds?: string[]; ta
     // 1. Fetch active leases with necessary relations
     const activeLeases = await prisma.lease.findMany({
       where: {
-        status: "ACTIVE",
+        status: { in: ["ACTIVE", "SEALED"] },
         ...(options?.propertyIds && options.propertyIds.length > 0 ? {
           unit: { propertyId: { in: options.propertyIds } }
         } : {})

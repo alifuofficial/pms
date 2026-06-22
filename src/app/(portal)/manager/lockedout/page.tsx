@@ -3,6 +3,7 @@ import { auth } from "@/auth";
 import { redirect } from "next/navigation";
 import { getSystemSettings } from "@/lib/actions/settings";
 import { LockedOutView } from "@/components/shared/locked-out-view";
+import { getLeaseUncollectedBalance } from "@/lib/arrears";
 
 export const dynamic = "force-dynamic";
 
@@ -21,9 +22,9 @@ export default async function ManagerLockedOutPage() {
   });
   const propertyIds = managedProperties.map(p => p.id);
 
-  const lockedOutLeases = await prisma.lease.findMany({
+  const rawLeases = await prisma.lease.findMany({
     where: {
-      status: "LOCKED_OUT",
+      status: { in: ["LOCKED_OUT", "SEALED"] },
       unit: {
         propertyId: { in: propertyIds }
       }
@@ -36,16 +37,28 @@ export default async function ManagerLockedOutPage() {
         },
       },
       seizedProperties: true,
-      payments: {
-        where: {
-          type: "FINAL_SETTLEMENT",
-        },
-      },
+      payments: true,
+      penalties: true,
+      utilityBills: true,
       refunds: true,
+      lockoutFees: {
+        orderBy: { createdAt: "desc" }
+      }
     },
     orderBy: {
-      terminatedAt: "desc",
+      updatedAt: "desc",
     },
+  });
+
+  const lockedOutLeases = rawLeases.map(lease => {
+    const balance = getLeaseUncollectedBalance(lease, settings);
+    return {
+      ...lease,
+      totalUncollected: balance.totalUncollected,
+      rentUncollected: balance.rentUncollected,
+      penaltiesUncollected: balance.penaltiesUncollected,
+      utilitiesUncollected: balance.utilitiesUncollected
+    };
   });
 
   return (

@@ -330,9 +330,8 @@ export async function vacateUnit(unitId: string) {
 
   try {
     await prisma.$transaction([
-      // 1. Terminate any active leases
       prisma.lease.updateMany({
-        where: { unitId, status: "ACTIVE" },
+        where: { unitId, status: { in: ["ACTIVE", "SEALED"] } },
         data: { status: "TERMINATED", terminatedAt: new Date() }
       }),
       // 2. Set unit to AVAILABLE

@@ -64,7 +64,7 @@ export async function UnitsView({
         mergedInto: true,
         mergedUnits: true,
         leases: {
-          where: { status: "ACTIVE" },
+          where: { status: { in: ["ACTIVE", "SEALED"] } },
           include: { tenant: true },
           take: 1
         }

@@ -264,7 +264,7 @@ export async function getUnitsWithLatestReadings(propertyId: string, type: "ELEC
     },
     include: {
       leases: {
-        where: { status: "ACTIVE" },
+        where: { status: { in: ["ACTIVE", "SEALED"] } },
         include: {
           tenant: {
             select: {

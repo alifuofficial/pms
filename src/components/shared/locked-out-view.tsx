@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useEffect } from "react";
 import { 
   ShieldAlert, 
   Search, 
@@ -31,8 +31,9 @@ import {
   DialogDescription,
   DialogFooter
 } from "@/components/ui/dialog";
-import { formatSystemDate } from "@/lib/calendar";
-import { releaseSeizedProperty, recordAuctionSale, addLockedOutFee, removeLockoutFee } from "@/lib/actions/users";
+import { formatSystemDate, toEthiopian, getEthiopianYearRange, getEthiopianMonths, getDaysInEthiopianMonth } from "@/lib/calendar";
+import { releaseSeizedProperty, recordAuctionSale, addLockedOutFee, removeLockoutFee, unsealLease, lockoutLease, getLeaseLockoutPreview } from "@/lib/actions/users";
+import Kenat from "kenat";
 import { toast } from "sonner";
 
 interface LockedOutViewProps {
@@ -46,11 +47,12 @@ export function LockedOutView({ lockedOutLeases, currency, isAdmin = false, isAc
   const [searchQuery, setSearchQuery] = useState("");
   const [propertyStatusFilter, setPropertyStatusFilter] = useState("ALL");
   const [paymentStatusFilter, setPaymentStatusFilter] = useState("ALL");
+  const [activePortalTab, setActivePortalTab] = useState<"SEALED" | "LOCKED_OUT">("SEALED");
   const [isPending, startTransition] = useTransition();
 
   // Dialog States
   const [selectedProperty, setSelectedProperty] = useState<any>(null);
-  const [actionType, setActionType] = useState<"RELEASE" | "AUCTION" | "ADD_FEE" | null>(null);
+  const [actionType, setActionType] = useState<"RELEASE" | "AUCTION" | "ADD_FEE" | "LOCKOUT" | null>(null);
 
   // Auction form state
   const [saleAmount, setSaleAmount] = useState("");
@@ -63,7 +65,46 @@ export function LockedOutView({ lockedOutLeases, currency, isAdmin = false, isAc
   const [feeAmount, setFeeAmount] = useState("");
   const [feeNote, setFeeNote] = useState("");
 
+  // Lockout form state
+  const [lockoutLeaseId, setLockoutLeaseId] = useState("");
+  const [lockoutTenantName, setLockoutTenantName] = useState("");
+  const [lockoutInventory, setLockoutInventory] = useState("");
+  const [lockoutStorage, setLockoutStorage] = useState("");
+  const [lockoutValue, setLockoutValue] = useState("");
+  const [lockoutDateEth, setLockoutDateEth] = useState({ year: 2018, month: 10, day: 1 });
+  const [previewData, setPreviewData] = useState<any>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+
   const canAddFee = isAdmin || isAccountant;
+
+  useEffect(() => {
+    if (actionType === "LOCKOUT" && lockoutLeaseId && lockoutDateEth.year && lockoutDateEth.month && lockoutDateEth.day) {
+      setPreviewLoading(true);
+      try {
+        const s = new Kenat(`${lockoutDateEth.year}/${lockoutDateEth.month}/${lockoutDateEth.day}`).getGregorian() as any;
+        const lockoutDate = new Date(s.year, s.month - 1, s.day, 12, 0, 0);
+        getLeaseLockoutPreview(lockoutLeaseId, lockoutDate)
+          .then((res) => {
+            if (res.success) {
+              setPreviewData(res.data);
+            } else {
+              toast.error(res.error || "Failed to calculate lockout preview.");
+            }
+          })
+          .catch((err) => {
+            console.error("Lockout preview fetch error:", err);
+          })
+          .finally(() => {
+            setPreviewLoading(false);
+          });
+      } catch (err) {
+        setPreviewLoading(false);
+        console.error("Failed to parse date for preview:", err);
+      }
+    } else if (actionType !== "LOCKOUT") {
+      setPreviewData(null);
+    }
+  }, [actionType, lockoutLeaseId, lockoutDateEth]);
 
   const handleRemoveFee = (feeId: string, amount: number, note: string) => {
     startTransition(async () => {
@@ -77,30 +118,45 @@ export function LockedOutView({ lockedOutLeases, currency, isAdmin = false, isAc
   };
 
   // Stats calculation
-  const totalLockedOutCount = lockedOutLeases.length;
+  const totalLockedOutCount = lockedOutLeases.filter((l: any) => l.status === "LOCKED_OUT").length;
+  const totalSealedCount = lockedOutLeases.filter((l: any) => l.status === "SEALED").length;
 
-  const totalOutstandingDebt = lockedOutLeases.reduce((sum, lease) => {
-    const finalPayment = lease.payments.find((p: any) => p.type === "FINAL_SETTLEMENT");
-    if (finalPayment && finalPayment.status !== "APPROVED") {
-      return sum + finalPayment.amount;
-    }
-    return sum;
-  }, 0);
+  const sealedRentDue = lockedOutLeases
+    .filter((l: any) => l.status === "SEALED")
+    .reduce((sum, l) => sum + l.totalUncollected, 0);
 
-  const storedItemsCount = lockedOutLeases.reduce((sum, lease) => {
-    const stored = lease.seizedProperties.filter((sp: any) => sp.status === "STORED").length;
-    return sum + stored;
-  }, 0);
+  const lockedOutRentDue = lockedOutLeases
+    .filter((l: any) => l.status === "LOCKED_OUT")
+    .reduce((sum, lease) => {
+      const finalPayment = lease.payments.find((p: any) => p.type === "FINAL_SETTLEMENT");
+      if (finalPayment && finalPayment.status !== "APPROVED") {
+        return sum + finalPayment.amount;
+      }
+      return sum;
+    }, 0);
 
-  const totalSurplusRefunded = lockedOutLeases.reduce((sum, lease) => {
-    const refundSum = lease.refunds
-      .filter((r: any) => r.status === "APPROVED")
-      .reduce((s: number, r: any) => s + r.amount, 0);
-    return sum + refundSum;
-  }, 0);
+  const totalOutstandingDebt = activePortalTab === "SEALED" ? sealedRentDue : lockedOutRentDue;
+
+  const storedItemsCount = lockedOutLeases
+    .filter((l: any) => l.status === "LOCKED_OUT")
+    .reduce((sum, lease) => {
+      const stored = lease.seizedProperties.filter((sp: any) => sp.status === "STORED").length;
+      return sum + stored;
+    }, 0);
+
+  const totalSurplusRefunded = lockedOutLeases
+    .filter((l: any) => l.status === "LOCKED_OUT")
+    .reduce((sum, lease) => {
+      const refundSum = lease.refunds
+        .filter((r: any) => r.status === "APPROVED")
+        .reduce((s: number, r: any) => s + r.amount, 0);
+      return sum + refundSum;
+    }, 0);
 
   // Filter leases
   const filteredLeases = lockedOutLeases.filter((lease) => {
+    if (lease.status !== activePortalTab) return false;
+
     const tenantName = lease.tenant?.name?.toLowerCase() || "";
     const unitNumber = lease.unit?.unitNumber?.toLowerCase() || "";
     const propertyName = lease.unit?.property?.name?.toLowerCase() || "";
@@ -110,17 +166,29 @@ export function LockedOutView({ lockedOutLeases, currency, isAdmin = false, isAc
       unitNumber.includes(searchQuery.toLowerCase()) || 
       propertyName.includes(searchQuery.toLowerCase());
 
-    const finalPayment = lease.payments.find((p: any) => p.type === "FINAL_SETTLEMENT");
-    const matchesPaymentStatus = 
-      paymentStatusFilter === "ALL" || 
-      (paymentStatusFilter === "PENDING" && finalPayment?.status !== "APPROVED") ||
-      (paymentStatusFilter === "APPROVED" && finalPayment?.status === "APPROVED");
+    if (!matchesSearch) return false;
 
-    const hasMatchingPropertyStatus = lease.seizedProperties.some((sp: any) => {
-      return propertyStatusFilter === "ALL" || sp.status === propertyStatusFilter;
-    }) || (propertyStatusFilter === "ALL" && lease.seizedProperties.length === 0);
+    if (activePortalTab === "LOCKED_OUT") {
+      const finalPayment = lease.payments.find((p: any) => p.type === "FINAL_SETTLEMENT");
+      const matchesPaymentStatus = 
+        paymentStatusFilter === "ALL" || 
+        (paymentStatusFilter === "PENDING" && finalPayment?.status !== "APPROVED") ||
+        (paymentStatusFilter === "APPROVED" && finalPayment?.status === "APPROVED");
+      if (!matchesPaymentStatus) return false;
 
-    return matchesSearch && matchesPaymentStatus && hasMatchingPropertyStatus;
+      const hasMatchingPropertyStatus = lease.seizedProperties.some((sp: any) => {
+        return propertyStatusFilter === "ALL" || sp.status === propertyStatusFilter;
+      }) || (propertyStatusFilter === "ALL" && lease.seizedProperties.length === 0);
+      if (!hasMatchingPropertyStatus) return false;
+    } else {
+      const matchesPaymentStatus = 
+        paymentStatusFilter === "ALL" || 
+        (paymentStatusFilter === "PENDING" && lease.totalUncollected > 0) ||
+        (paymentStatusFilter === "APPROVED" && lease.totalUncollected === 0);
+      if (!matchesPaymentStatus) return false;
+    }
+
+    return true;
   });
 
   const handleOpenRelease = (lease: any, seizedProperty: any) => {
@@ -143,6 +211,56 @@ export function LockedOutView({ lockedOutLeases, currency, isAdmin = false, isAc
     setFeeAmount("");
     setFeeNote("");
     setFeeType("RENTAL");
+    setLockoutLeaseId("");
+    setLockoutTenantName("");
+    setLockoutInventory("");
+    setLockoutStorage("");
+    setLockoutValue("");
+  };
+
+  const handleUnseal = async (leaseId: string, tenantName: string) => {
+    startTransition(async () => {
+      const result = await unsealLease(leaseId);
+      if (result.success) {
+        toast.success(`Shop unsealed successfully for ${tenantName}. Lease status restored to Active.`);
+      } else {
+        toast.error(result.error || "Failed to unseal shop.");
+      }
+    });
+  };
+
+  const handleLockoutSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!lockoutInventory || !lockoutStorage) {
+      toast.error("Inventory list and storage location are required.");
+      return;
+    }
+    const val = lockoutValue ? parseFloat(lockoutValue) : undefined;
+
+    startTransition(async () => {
+      try {
+        const s = new Kenat({ year: lockoutDateEth.year, month: lockoutDateEth.month, day: lockoutDateEth.day });
+        const greg = s.getGregorian() as any;
+        const lockoutDate = new Date(Date.UTC(greg.year, greg.month - 1, greg.day, 12, 0, 0));
+
+        const result = await lockoutLease(
+          lockoutLeaseId,
+          lockoutDate,
+          lockoutInventory,
+          lockoutStorage,
+          val
+        );
+
+        if (result.success) {
+          toast.success(`Full lockout and eviction executed successfully for ${lockoutTenantName}.`);
+          handleCloseDialogs();
+        } else {
+          toast.error(result.error || "Failed to execute lockout.");
+        }
+      } catch (err: any) {
+        toast.error("Failed to parse Selected Ethiopian Date.");
+      }
+    });
   };
 
   const handleOpenAddFee = (lease: any) => {
@@ -225,24 +343,58 @@ export function LockedOutView({ lockedOutLeases, currency, isAdmin = false, isAc
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
         <div className="space-y-0.5">
           <h1 className="text-2xl font-semibold tracking-tight text-slate-900 flex items-center gap-2">
-            <ShieldAlert className="text-red-600 h-6 w-6" /> Lockout & Eviction Portal
+            <ShieldAlert className="text-red-600 h-6 w-6" /> Sealing & Lockout Portal
           </h1>
           <p className="text-sm text-slate-500 font-medium">
-            Monitor eviction settlements, catalog seized inventory, and process properties released or sold at auction.
+            Manage temporarily sealed tenant shops and catalog full evictions, seized warehouse properties, and auction sales.
           </p>
         </div>
       </div>
 
+      {/* Tab Selector */}
+      <div className="flex border-b border-slate-100 gap-6 text-sm font-semibold pt-2">
+        <button
+          onClick={() => {
+            setActivePortalTab("SEALED");
+            setPaymentStatusFilter("ALL");
+          }}
+          className={`pb-3 relative transition-all cursor-pointer ${
+            activePortalTab === "SEALED"
+              ? "text-slate-905 border-b-2 border-slate-900 font-bold"
+              : "text-slate-400 hover:text-slate-600"
+          }`}
+        >
+          Sealed Shops ({totalSealedCount})
+        </button>
+        <button
+          onClick={() => {
+            setActivePortalTab("LOCKED_OUT");
+            setPaymentStatusFilter("ALL");
+          }}
+          className={`pb-3 relative transition-all cursor-pointer ${
+            activePortalTab === "LOCKED_OUT"
+              ? "text-slate-905 border-b-2 border-slate-900 font-bold"
+              : "text-slate-400 hover:text-slate-600"
+          }`}
+        >
+          Locked Out & Evicted ({totalLockedOutCount})
+        </button>
+      </div>
+
       {/* High-Fidelity Stats Panel */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Card 1: Total Lockouts */}
+        {/* Card 1: Active Count */}
         <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center gap-4 hover:shadow-md transition-all">
           <div className="w-12 h-12 rounded-xl bg-red-50 text-red-600 flex items-center justify-center">
             <ShieldAlert size={22} />
           </div>
           <div>
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Locked Out Leases</p>
-            <h3 className="text-xl font-black text-slate-900 mt-0.5">{totalLockedOutCount}</h3>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+              {activePortalTab === "SEALED" ? "Sealed Shops" : "Locked Out Leases"}
+            </p>
+            <h3 className="text-xl font-black text-slate-900 mt-0.5">
+              {activePortalTab === "SEALED" ? totalSealedCount : totalLockedOutCount}
+            </h3>
           </div>
         </div>
 
@@ -252,33 +404,47 @@ export function LockedOutView({ lockedOutLeases, currency, isAdmin = false, isAc
             <Coins size={22} />
           </div>
           <div>
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Outstanding Debt</p>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+              {activePortalTab === "SEALED" ? "Sealed Rent Due" : "Settlement Arrears"}
+            </p>
             <h3 className="text-xl font-black text-amber-600 mt-0.5">
               {currency} {totalOutstandingDebt.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </h3>
           </div>
         </div>
 
-        {/* Card 3: Items in Storage */}
+        {/* Card 3: Items in Storage / Sealed Info */}
         <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center gap-4 hover:shadow-md transition-all">
           <div className="w-12 h-12 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
             <Package size={22} />
           </div>
           <div>
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Items In Storage</p>
-            <h3 className="text-xl font-black text-slate-900 mt-0.5">{storedItemsCount}</h3>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+              {activePortalTab === "SEALED" ? "Avg Rent / Month" : "Items In Storage"}
+            </p>
+            <h3 className="text-xl font-black text-slate-900 mt-0.5">
+              {activePortalTab === "SEALED" 
+                ? `${currency} ${(totalSealedCount > 0 ? Math.round(sealedRentDue / totalSealedCount) : 0).toLocaleString()}` 
+                : storedItemsCount
+              }
+            </h3>
           </div>
         </div>
 
-        {/* Card 4: Surplus Refunded */}
+        {/* Card 4: Surplus Refunded / Sealed Info */}
         <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center gap-4 hover:shadow-md transition-all">
           <div className="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
             <DollarSign size={22} />
           </div>
           <div>
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Surplus Refunded</p>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+              {activePortalTab === "SEALED" ? "Sealed Shop Pcts" : "Surplus Refunded"}
+            </p>
             <h3 className="text-xl font-black text-emerald-600 mt-0.5">
-              {currency} {totalSurplusRefunded.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              {activePortalTab === "SEALED" 
+                ? "100%" 
+                : `${currency} ${totalSurplusRefunded.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+              }
             </h3>
           </div>
         </div>
@@ -305,36 +471,134 @@ export function LockedOutView({ lockedOutLeases, currency, isAdmin = false, isAc
             className="w-full h-10 bg-white border border-slate-200 rounded-xl px-3 text-xs font-semibold text-slate-700 outline-none focus:border-slate-400"
           >
             <option value="ALL">Payment Status: All</option>
-            <option value="PENDING">Settlement Pending</option>
-            <option value="APPROVED">Settled (Paid)</option>
+            <option value="PENDING">{activePortalTab === "SEALED" ? "Rent Overdue" : "Settlement Pending"}</option>
+            <option value="APPROVED">{activePortalTab === "SEALED" ? "Paid up" : "Settled (Paid)"}</option>
           </select>
         </div>
 
-        {/* Property Status Filter */}
-        <div className="w-full sm:w-48">
-          <select
-            value={propertyStatusFilter}
-            onChange={(e) => setPropertyStatusFilter(e.target.value)}
-            className="w-full h-10 bg-white border border-slate-200 rounded-xl px-3 text-xs font-semibold text-slate-700 outline-none focus:border-slate-400"
-          >
-            <option value="ALL">Inventory Status: All</option>
-            <option value="STORED">Stored In Warehouse</option>
-            <option value="RETRIEVED">Returned to Tenant</option>
-            <option value="SOLD">Sold at Auction</option>
-            <option value="DISPOSED">Disposed</option>
-          </select>
-        </div>
+        {/* Property Status Filter (only show for LOCKED_OUT tab) */}
+        {activePortalTab === "LOCKED_OUT" && (
+          <div className="w-full sm:w-48">
+            <select
+              value={propertyStatusFilter}
+              onChange={(e) => setPropertyStatusFilter(e.target.value)}
+              className="w-full h-10 bg-white border border-slate-200 rounded-xl px-3 text-xs font-semibold text-slate-700 outline-none focus:border-slate-400"
+            >
+              <option value="ALL">Inventory Status: All</option>
+              <option value="STORED">Stored In Warehouse</option>
+              <option value="RETRIEVED">Returned to Tenant</option>
+              <option value="SOLD">Sold at Auction</option>
+              <option value="DISPOSED">Disposed</option>
+            </select>
+          </div>
+        )}
       </div>
 
-      {/* Grid of Eviction Cards */}
+      {/* Grid of Cards */}
       {filteredLeases.length > 0 ? (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {filteredLeases.map((lease) => {
+            if (activePortalTab === "SEALED") {
+              return (
+                <div 
+                  key={lease.id} 
+                  className="bg-white rounded-2xl border border-slate-100 overflow-hidden shadow-sm hover:shadow-md transition-all flex flex-col justify-between"
+                >
+                  {/* Header Section */}
+                  <div className="p-6 pb-4 bg-slate-50/50 border-b border-slate-100">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-amber-500 text-white flex items-center justify-center font-bold text-xs">
+                          {lease.tenant?.name?.[0] || "T"}
+                        </div>
+                        <div>
+                          <h4 className="text-sm font-bold text-slate-900">{lease.tenant?.name}</h4>
+                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tight flex items-center gap-1 mt-0.5">
+                            <Home size={10} className="text-slate-400" /> Unit {lease.unit?.unitNumber} — {lease.unit?.property?.name}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-[9px] font-black tracking-wider uppercase bg-amber-50 text-amber-600 border border-amber-100 px-2 py-0.5 rounded-md">
+                          SEALED SHOP
+                        </span>
+                        {lease.updatedAt && (
+                          <p className="text-[9.5px] font-semibold text-slate-400 flex items-center gap-1 justify-end mt-1.5">
+                            <Calendar size={9} /> Sealed: {formatSystemDate(new Date(lease.updatedAt), "ETHIOPIAN")}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Body Details */}
+                  <div className="p-6 space-y-5 flex-1">
+                    {/* Arrears Summary */}
+                    <div className="bg-slate-50/30 rounded-xl border border-slate-100 p-4 space-y-3">
+                      <h5 className="text-[10px] font-black uppercase text-slate-400 tracking-wider flex items-center gap-1">
+                        <Coins size={11} className="text-slate-500" /> Uncollected Balance Breakdown
+                      </h5>
+                      <div className="space-y-2 text-xs font-semibold text-slate-600">
+                        <div className="flex justify-between">
+                          <span className="text-slate-400">Rent Arrears:</span>
+                          <span className="text-slate-850 font-bold">{currency} {lease.rentUncollected.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-400">Late Fees / Penalties:</span>
+                          <span className="text-slate-850 font-bold">{currency} {lease.penaltiesUncollected.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-400">Utility Bills:</span>
+                          <span className="text-slate-850 font-bold">{currency} {lease.utilitiesUncollected.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                        </div>
+                        <div className="border-t border-slate-100 pt-2 flex justify-between text-sm font-extrabold">
+                          <span className="text-slate-900">Total Outstanding:</span>
+                          <span className="text-amber-600">{currency} {lease.totalUncollected.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Card Actions */}
+                  <div className="p-4 border-t border-slate-100 bg-slate-50/30 flex justify-end gap-2">
+                    {isAdmin || isAccountant ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleUnseal(lease.id, lease.tenant?.name)}
+                        disabled={isPending}
+                        className="h-8 rounded-lg border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <CheckCircle2 size={12} /> Unseal Shop
+                      </Button>
+                    ) : null}
+
+                    {isAdmin ? (
+                      <Button
+                        size="sm"
+                        onClick={() => {
+                          setLockoutLeaseId(lease.id);
+                          setLockoutTenantName(lease.tenant?.name);
+                          setLockoutInventory("");
+                          setLockoutStorage("");
+                          setLockoutValue("");
+                          const et = toEthiopian(new Date());
+                          setLockoutDateEth({ year: et.year, month: et.month, day: et.day });
+                          setActionType("LOCKOUT");
+                        }}
+                        className="h-8 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-semibold flex items-center gap-1.5 shadow-sm cursor-pointer"
+                      >
+                        <ShieldAlert size={12} /> Execute Lockout
+                      </Button>
+                    ) : null}
+                  </div>
+                </div>
+              );
+            }
+
             const finalPayment = lease.payments.find((p: any) => p.type === "FINAL_SETTLEMENT");
             const isSettled = finalPayment?.status === "APPROVED";
-            const seizedProp = lease.seizedProperties?.[0]; // Usually one main seized property collection per lease
-
-            // Refund information
+            const seizedProp = lease.seizedProperties?.[0];
             const approvedRefund = lease.refunds?.find((r: any) => r.status === "APPROVED");
 
             return (
@@ -413,7 +677,7 @@ export function LockedOutView({ lockedOutLeases, currency, isAdmin = false, isAc
                                 onClick={() => handleRemoveFee(fee.id, fee.amount, fee.note)}
                                 disabled={isPending}
                                 title="Remove this fee"
-                                className="shrink-0 p-1 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 transition-colors disabled:opacity-50"
+                                className="shrink-0 p-1 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 transition-colors disabled:opacity-50 cursor-pointer"
                               >
                                 <Trash2 size={12} />
                               </button>
@@ -557,7 +821,7 @@ export function LockedOutView({ lockedOutLeases, currency, isAdmin = false, isAc
                       variant="outline"
                       size="sm"
                       onClick={() => handleOpenAddFee(lease)}
-                      className="h-8 rounded-lg border-orange-200 bg-orange-50 text-orange-700 hover:bg-orange-100 text-xs font-semibold flex items-center gap-1.5"
+                      className="h-8 rounded-lg border-orange-200 bg-orange-50 text-orange-700 hover:bg-orange-100 text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
                     >
                       <PlusCircle size={12} /> Add Fee
                     </Button>
@@ -571,7 +835,7 @@ export function LockedOutView({ lockedOutLeases, currency, isAdmin = false, isAc
                           variant="outline"
                           size="sm"
                           onClick={() => handleOpenAuction(lease, seizedProp)}
-                          className="h-8 rounded-lg border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50 flex items-center gap-1.5"
+                          className="h-8 rounded-lg border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50 flex items-center gap-1.5 cursor-pointer"
                         >
                           <Gavel size={12} className="text-slate-500" /> Auction Sale
                         </Button>
@@ -582,7 +846,7 @@ export function LockedOutView({ lockedOutLeases, currency, isAdmin = false, isAc
                             size="sm"
                             disabled={!isSettled}
                             onClick={() => handleOpenRelease(lease, seizedProp)}
-                            className={`h-8 rounded-lg text-xs font-semibold flex items-center gap-1.5 ${
+                            className={`h-8 rounded-lg text-xs font-semibold flex items-center gap-1.5 cursor-pointer ${
                               isSettled
                                 ? "bg-slate-900 hover:bg-slate-800 text-white shadow-sm"
                                 : "bg-slate-100 text-slate-400 border border-slate-100 cursor-not-allowed"
@@ -607,9 +871,11 @@ export function LockedOutView({ lockedOutLeases, currency, isAdmin = false, isAc
       ) : (
         <div className="flex flex-col items-center justify-center py-16 bg-white rounded-2xl border border-slate-100 shadow-sm text-center">
           <ShieldAlert size={36} className="text-slate-300 mb-2" />
-          <h3 className="text-sm font-bold text-slate-800">No Locked-out Tenants Found</h3>
+          <h3 className="text-sm font-bold text-slate-800">
+            {activePortalTab === "SEALED" ? "No Sealed Shops Found" : "No Locked-out Tenants Found"}
+          </h3>
           <p className="text-xs text-slate-400 max-w-sm mt-1">
-            There are no tenant evictions matching your search queries or selected filter criteria.
+            There are no tenant records matching your search queries or selected filter criteria.
           </p>
         </div>
       )}
@@ -829,6 +1095,154 @@ export function LockedOutView({ lockedOutLeases, currency, isAdmin = false, isAc
                 className="h-10 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold uppercase tracking-wider rounded-xl shadow-lg shadow-blue-600/25 flex items-center justify-center"
               >
                 {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Record Sale"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* EXECUTE LOCKOUT DIALOG */}
+      <Dialog open={actionType === "LOCKOUT"} onOpenChange={handleCloseDialogs}>
+        <DialogContent className="sm:max-w-[420px] bg-white rounded-2xl p-0 overflow-hidden border-none shadow-2xl flex flex-col max-h-[95vh]">
+          <DialogHeader className="p-6 pb-4 bg-slate-50 border-b border-slate-100 flex-shrink-0">
+            <div className="flex items-center gap-2 text-red-600">
+              <ShieldAlert size={20} />
+              <DialogTitle className="text-lg font-semibold text-slate-900 font-bold">Lockout & Evict Tenant</DialogTitle>
+            </div>
+            <DialogDescription className="text-xs font-medium text-slate-500">
+              Legal eviction and property seizure for <span className="font-bold text-slate-700">{lockoutTenantName}</span>.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleLockoutSubmit} className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar">
+            
+            {/* Calculation Preview Card */}
+            <div className="bg-red-50/50 rounded-xl border border-red-100/80 p-4 space-y-2.5">
+              <h4 className="text-[10px] font-bold uppercase tracking-wider text-red-600">
+                Eviction Debt Preview
+              </h4>
+              {previewLoading ? (
+                <div className="flex items-center justify-center py-4">
+                  <Loader2 size={16} className="animate-spin text-red-500" />
+                  <span className="text-xs text-slate-400 font-semibold ml-2">Calculating debt...</span>
+                </div>
+              ) : previewData ? (
+                <div className="space-y-1.5 text-xs">
+                  <div className="flex justify-between font-medium text-slate-600">
+                    <span>Rent (Past Full Months):</span>
+                    <span className="font-semibold text-slate-900">{currency} {previewData.fullMonthsRentArrears.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  </div>
+                  {previewData.isLockoutMonthUnpaid && (
+                    <div className="flex justify-between font-medium text-slate-600">
+                      <span>Pro-rated Rent ({previewData.daysUsed}/{previewData.daysInMonth} days):</span>
+                      <span className="font-semibold text-slate-900">{currency} {previewData.proRatedRent.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between font-medium text-slate-600">
+                    <span>Outstanding Penalties:</span>
+                    <span className="font-semibold text-slate-900">{currency} {previewData.penaltiesUncollected.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  </div>
+                  <div className="h-px bg-red-100 my-1" />
+                  <div className="flex justify-between font-bold text-red-700 text-sm">
+                    <span>Total Eviction Debt:</span>
+                    <span>{currency} {previewData.totalSettlementAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-xs text-slate-400 font-medium italic text-center py-2">
+                  Enter a lockout date to compute debt.
+                </p>
+              )}
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-[10px] font-bold uppercase text-slate-400">Lockout Date (Ethiopian) *</Label>
+              <div className="flex gap-1">
+                <select 
+                  value={lockoutDateEth.year} 
+                  onChange={e => setLockoutDateEth({...lockoutDateEth, year: parseInt(e.target.value)})}
+                  className="w-1/3 rounded-lg border border-slate-200 bg-white h-10 px-1 text-xs outline-none"
+                  disabled={isPending}
+                >
+                  {getEthiopianYearRange().map(y => <option key={y} value={y}>{y}</option>)}
+                </select>
+                <select 
+                  value={lockoutDateEth.month} 
+                  onChange={e => setLockoutDateEth({...lockoutDateEth, month: parseInt(e.target.value)})}
+                  className="w-1/3 rounded-lg border border-slate-200 bg-white h-10 px-1 text-xs outline-none"
+                  disabled={isPending}
+                >
+                  {getEthiopianMonths().map(m => <option key={m.id} value={m.id}>{m.name.split(' ')[0]}</option>)}
+                </select>
+                <select 
+                  value={lockoutDateEth.day} 
+                  onChange={e => setLockoutDateEth({...lockoutDateEth, day: parseInt(e.target.value)})}
+                  className="w-1/3 rounded-lg border border-slate-200 bg-white h-10 px-1 text-xs outline-none"
+                  disabled={isPending}
+                >
+                  {Array.from({length: getDaysInEthiopianMonth(lockoutDateEth.year, lockoutDateEth.month)}).map((_, i) => (
+                    <option key={i+1} value={i+1}>{i+1}</option>
+                  ))}
+                </select>
+              </div>
+              <p className="text-[10px] text-slate-400 font-medium leading-normal">
+                Pro-rated rent for the final active month will be calculated up to this date.
+              </p>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-[10px] font-bold uppercase text-slate-400">Inventory List (Seized Property) *</Label>
+              <textarea
+                required
+                rows={3}
+                placeholder="Catalog all seized physical items (e.g. 1x Acer Laptop, 1x Office Chair...)"
+                value={lockoutInventory}
+                onChange={(e) => setLockoutInventory(e.target.value)}
+                className="w-full rounded-lg border border-slate-200 p-2.5 text-sm font-medium focus:ring-slate-900 outline-none"
+                disabled={isPending}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-[10px] font-bold uppercase text-slate-400">Storage Location *</Label>
+                <Input
+                  required
+                  placeholder="e.g. Warehouse A, Row 3"
+                  value={lockoutStorage}
+                  onChange={(e) => setLockoutStorage(e.target.value)}
+                  className="rounded-lg border-slate-200 h-10 text-sm font-medium"
+                  disabled={isPending}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-[10px] font-bold uppercase text-slate-400">Estimated Value ({currency})</Label>
+                <Input
+                  type="number"
+                  placeholder="e.g. 15000"
+                  value={lockoutValue}
+                  onChange={(e) => setLockoutValue(e.target.value)}
+                  className="rounded-lg border-slate-200 h-10 text-sm font-medium"
+                  disabled={isPending}
+                />
+              </div>
+            </div>
+
+            <DialogFooter className="pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="h-10 rounded-lg text-xs font-bold uppercase tracking-wider border-slate-200"
+                onClick={handleCloseDialogs}
+                disabled={isPending}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={isPending || previewLoading}
+                className="h-10 bg-red-600 hover:bg-red-700 text-white text-xs font-bold uppercase tracking-wider rounded-lg shadow-lg shadow-red-600/15"
+              >
+                {isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Confirm Lockout"}
               </Button>
             </DialogFooter>
           </form>

@@ -27,7 +27,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { updateUnit, deleteUnit, vacateUnit, getUnitsByProperty, bulkUpdateUnits } from "@/lib/actions/properties";
 import { generateUnitQrSlug } from "@/lib/actions/qr";
-import { lockoutLease, getLeaseLockoutPreview } from "@/lib/actions/users";
+import { lockoutLease, getLeaseLockoutPreview, sealLease, unsealLease } from "@/lib/actions/users";
+import { getSystemSettings } from "@/lib/actions/settings";
 import { getEthiopianYearRange, getEthiopianMonths, getDaysInEthiopianMonth, toEthiopian } from "@/lib/calendar";
 import Kenat from "kenat";
 import { toast } from "sonner";
@@ -53,11 +54,26 @@ export function UnitActions({ unit }: { unit: any }) {
   const [estimatedValue, setEstimatedValue] = useState<number | undefined>(undefined);
   const [previewData, setPreviewData] = useState<any>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [strictLeaseRules, setStrictLeaseRules] = useState(false);
+  const [isSealing, setIsSealing] = useState(false);
+  const [sealDateEth, setSealDateEth] = useState(() => {
+    const et = toEthiopian(new Date());
+    return { year: et.year, month: et.month, day: et.day };
+  });
+  const [sealNote, setSealNote] = useState("");
+  const [sealPreviewData, setSealPreviewData] = useState<any>(null);
+  const [sealPreviewLoading, setSealPreviewLoading] = useState(false);
 
   // Sync with prop updates from server revalidation
   useEffect(() => {
     if (unit.qrSlug) setQrSlug(unit.qrSlug);
   }, [unit.qrSlug]);
+
+  useEffect(() => {
+    getSystemSettings().then((settings) => {
+      setStrictLeaseRules(!!settings?.strictLeaseRules);
+    });
+  }, []);
 
   useEffect(() => {
     if (isEditing && unit.propertyId) {
@@ -166,6 +182,65 @@ export function UnitActions({ unit }: { unit: any }) {
     }
   }, [isLockingOut, ethLockout, unit.leases]);
 
+  useEffect(() => {
+    const activeLease = unit.leases?.[0];
+    if (isSealing && activeLease?.id && sealDateEth.year && sealDateEth.month && sealDateEth.day) {
+      setSealPreviewLoading(true);
+      try {
+        const s = new Kenat(`${sealDateEth.year}/${sealDateEth.month}/${sealDateEth.day}`).getGregorian() as any;
+        const sealDate = new Date(s.year, s.month - 1, s.day, 12, 0, 0);
+        getLeaseLockoutPreview(activeLease.id, sealDate)
+          .then((res) => {
+            if (res.success) {
+              setSealPreviewData(res.data);
+            } else {
+              toast.error(res.error || "Failed to calculate seal preview.");
+            }
+          })
+          .catch((err) => {
+            console.error("Seal preview fetch error:", err);
+          })
+          .finally(() => {
+            setSealPreviewLoading(false);
+          });
+      } catch (err) {
+        setSealPreviewLoading(false);
+        console.error("Failed to parse date for seal preview:", err);
+      }
+    } else if (!isSealing) {
+      setSealPreviewData(null);
+      setSealNote("");
+      const et = toEthiopian(new Date());
+      setSealDateEth({ year: et.year, month: et.month, day: et.day });
+    }
+  }, [isSealing, sealDateEth, unit.leases]);
+
+  const handleSealSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const activeLease = unit.leases?.[0];
+    if (!activeLease?.id) return;
+
+    setIsLoading(true);
+    try {
+      const s = new Kenat(`${sealDateEth.year}/${sealDateEth.month}/${sealDateEth.day}`).getGregorian() as any;
+      const sealDate = new Date(s.year, s.month - 1, s.day, 12, 0, 0);
+
+      const result = await sealLease(activeLease.id, sealDate, sealNote);
+      setIsLoading(false);
+
+      if (result.success) {
+        toast.success("Shop sealed successfully.");
+        setIsSealing(false);
+      } else {
+        toast.error(result.error || "Failed to seal shop.");
+      }
+    } catch (err) {
+      setIsLoading(false);
+      toast.error("Failed to parse selected seal date.");
+      console.error(err);
+    }
+  };
+
   const handleLockout = async (e: React.FormEvent) => {
     e.preventDefault();
     const activeLease = unit.leases?.[0];
@@ -273,6 +348,32 @@ export function UnitActions({ unit }: { unit: any }) {
               >
                 <LogOut size={12} /> Vacate / Leave
               </DropdownMenuItem>
+              
+              {unit.leases?.[0]?.status === "SEALED" ? (
+                <DropdownMenuItem 
+                  onClick={async () => {
+                    setIsLoading(true);
+                    const res = await unsealLease(unit.leases[0].id);
+                    setIsLoading(false);
+                    if (res.success) {
+                      toast.success("Shop unsealed successfully.");
+                    } else {
+                      toast.error(res.error || "Failed to unseal shop.");
+                    }
+                  }}
+                  className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-emerald-600 rounded-lg cursor-pointer hover:bg-emerald-50 border-t border-slate-50 mt-0.5"
+                >
+                  <Check size={12} /> Unseal Shop
+                </DropdownMenuItem>
+              ) : (
+                <DropdownMenuItem 
+                  onClick={() => setIsSealing(true)}
+                  className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-orange-600 rounded-lg cursor-pointer hover:bg-orange-50 border-t border-slate-50 mt-0.5"
+                >
+                  <ShieldAlert size={12} /> Seal Shop
+                </DropdownMenuItem>
+              )}
+
               <DropdownMenuItem 
                 onClick={() => setIsLockingOut(true)}
                 className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-red-600 rounded-lg cursor-pointer hover:bg-red-50 border-t border-slate-50 mt-0.5"
@@ -680,6 +781,29 @@ export function UnitActions({ unit }: { unit: any }) {
               )}
             </div>
 
+            {/* Strict rules check */}
+            {(() => {
+              if (previewData && strictLeaseRules) {
+                const totalDebtRent = previewData.fullMonthsRentArrears + previewData.proRatedRent;
+                const unpaidMonths = unit.rentAmount > 0 ? totalDebtRent / unit.rentAmount : 0;
+                
+                if (unpaidMonths < 2) {
+                  return (
+                    <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 text-[11px] font-medium text-amber-800 flex gap-2">
+                      <ShieldAlert size={14} className="shrink-0 mt-0.5 text-amber-500" />
+                      <div>
+                        <p className="font-bold">Strict Lease Rule Warning</p>
+                        <p className="mt-0.5">
+                          Under strict lease rules, a lockout should only be executed if the tenant has been unpaid for at least 2 months (Current unpaid: {unpaidMonths.toFixed(1)} months). Proceeding will override this recommendation.
+                        </p>
+                      </div>
+                    </div>
+                  );
+                }
+              }
+              return null;
+            })()}
+
             <div className="space-y-1.5">
               <Label className="text-[10px] font-semibold uppercase text-slate-400">Lockout Date (Ethiopian)</Label>
               <div className="flex gap-1">
@@ -762,6 +886,157 @@ export function UnitActions({ unit }: { unit: any }) {
                 className="h-10 bg-red-600 hover:bg-red-700 text-white text-xs font-bold uppercase tracking-wider rounded-lg shadow-lg shadow-red-600/15"
               >
                 {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Confirm Lockout"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Seal Shop Dialog */}
+      <Dialog open={isSealing} onOpenChange={setIsSealing}>
+        <DialogContent className="sm:max-w-[420px] bg-white rounded-2xl p-0 overflow-hidden border-none shadow-2xl flex flex-col max-h-[95vh]">
+          <DialogHeader className="p-6 pb-4 bg-slate-50 border-b border-slate-100 flex-shrink-0">
+            <div className="flex items-center gap-2 text-orange-600">
+              <ShieldAlert size={20} />
+              <DialogTitle className="text-lg font-semibold text-slate-900 font-bold">Seal Shop</DialogTitle>
+            </div>
+            <DialogDescription className="text-xs font-medium text-slate-500">
+              Temporarily seal Unit {unit.unitNumber} due to unpaid rent.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleSealSubmit} className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar">
+            
+            {/* Calculation Preview Card */}
+            <div className="bg-orange-50/50 rounded-xl border border-orange-100/85 p-4 space-y-2.5">
+              <h4 className="text-[10px] font-bold uppercase tracking-wider text-orange-700">
+                Outstanding Balance Preview
+              </h4>
+              {sealPreviewLoading ? (
+                <div className="flex items-center justify-center py-4">
+                  <Loader2 size={16} className="animate-spin text-orange-500" />
+                  <span className="text-xs text-slate-400 font-semibold ml-2">Calculating balance...</span>
+                </div>
+              ) : sealPreviewData ? (
+                <div className="space-y-1.5 text-xs">
+                  <div className="flex justify-between font-medium text-slate-600">
+                    <span>Rent Arrears:</span>
+                    <span className="font-semibold text-slate-900">ETB {sealPreviewData.fullMonthsRentArrears.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                  </div>
+                  {sealPreviewData.isLockoutMonthUnpaid && (
+                    <div className="flex justify-between font-medium text-slate-600">
+                      <span>Pro-rated Rent ({sealPreviewData.daysUsed}/{sealPreviewData.daysInMonth} days):</span>
+                      <span className="font-semibold text-slate-900">ETB {sealPreviewData.proRatedRent.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between font-medium text-slate-600">
+                    <span>Late Fees / Penalties:</span>
+                    <span className="font-semibold text-slate-900">ETB {sealPreviewData.penaltiesUncollected.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                  </div>
+                  <div className="h-px border-t border-dashed border-orange-200 my-1" />
+                  <div className="flex justify-between font-bold text-orange-800 text-sm">
+                    <span>Total Outstanding:</span>
+                    <span>ETB {sealPreviewData.totalSettlementAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-xs text-slate-400 font-medium italic text-center py-2">
+                  Enter a seal date to compute outstanding balance.
+                </p>
+              )}
+            </div>
+
+            {/* Strict rules check */}
+            {(() => {
+              const todayEt = toEthiopian(new Date());
+              const isDay10OrLater = todayEt.day >= 10;
+              
+              if (strictLeaseRules && !isDay10OrLater) {
+                return (
+                  <div className="bg-red-50 border border-red-100 rounded-xl p-3 text-[11px] font-medium text-red-800 flex gap-2">
+                    <ShieldAlert size={14} className="shrink-0 mt-0.5 text-red-500" />
+                    <div>
+                      <p className="font-bold">Strict Lease Rule Violation</p>
+                      <p className="mt-0.5">Shops can only be sealed on or after Day 10 of the Ethiopian month. Today is Day {todayEt.day}.</p>
+                    </div>
+                  </div>
+                );
+              }
+              
+              if (sealPreviewData && sealPreviewData.totalSettlementAmount === 0) {
+                return (
+                  <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 text-[11px] font-medium text-blue-800 flex gap-2">
+                    <LogOut size={14} className="shrink-0 mt-0.5 text-blue-500" />
+                    <div>
+                      <p className="font-bold">Tenant Has Paid</p>
+                      <p className="mt-0.5">This tenant has no outstanding balance. Sealing is not recommended.</p>
+                    </div>
+                  </div>
+                );
+              }
+
+              return null;
+            })()}
+
+            <div className="space-y-1.5">
+              <Label className="text-[10px] font-semibold uppercase text-slate-400">Seal Date (Ethiopian)</Label>
+              <div className="flex gap-1">
+                <select 
+                  value={sealDateEth.year} 
+                  onChange={e => setSealDateEth({...sealDateEth, year: parseInt(e.target.value)})}
+                  className="w-1/3 rounded-lg border border-slate-200 bg-white h-10 px-1 text-xs outline-none"
+                  disabled={isLoading}
+                >
+                  {getEthiopianYearRange().map(y => <option key={y} value={y}>{y}</option>)}
+                </select>
+                <select 
+                  value={sealDateEth.month} 
+                  onChange={e => setSealDateEth({...sealDateEth, month: parseInt(e.target.value)})}
+                  className="w-1/3 rounded-lg border border-slate-200 bg-white h-10 px-1 text-xs outline-none"
+                  disabled={isLoading}
+                >
+                  {getEthiopianMonths().map(m => <option key={m.id} value={m.id}>{m.name.split(' ')[0]}</option>)}
+                </select>
+                <select 
+                  value={sealDateEth.day} 
+                  onChange={e => setSealDateEth({...sealDateEth, day: parseInt(e.target.value)})}
+                  className="w-1/3 rounded-lg border border-slate-200 bg-white h-10 px-1 text-xs outline-none"
+                  disabled={isLoading}
+                >
+                  {Array.from({length: getDaysInEthiopianMonth(sealDateEth.year, sealDateEth.month)}).map((_, i) => (
+                    <option key={i+1} value={i+1}>{i+1}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-[10px] font-semibold uppercase text-slate-400">Seal Note / Reason</Label>
+              <textarea
+                rows={2}
+                placeholder="e.g. Unpaid Sene rent and utility bills..."
+                value={sealNote}
+                onChange={(e) => setSealNote(e.target.value)}
+                className="w-full rounded-lg border border-slate-200 p-2.5 text-sm font-medium focus:ring-slate-900 outline-none"
+                disabled={isLoading}
+              />
+            </div>
+
+            <DialogFooter className="pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="h-10 rounded-lg text-xs font-bold uppercase tracking-wider border-slate-200"
+                onClick={() => setIsSealing(false)}
+                disabled={isLoading}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={isLoading || sealPreviewLoading || (strictLeaseRules && toEthiopian(new Date()).day < 10) || (sealPreviewData && sealPreviewData.totalSettlementAmount === 0)}
+                className="h-10 bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold uppercase tracking-wider rounded-lg shadow-lg shadow-orange-600/15"
+              >
+                {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Seal Shop"}
               </Button>
             </DialogFooter>
           </form>

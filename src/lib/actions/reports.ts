@@ -21,7 +21,7 @@ export async function getReportMetrics(startDate: Date, endDate: Date) {
 
     const activeLeases = await prisma.lease.findMany({
       where: {
-        status: { in: ["ACTIVE", "EXPIRED", "TERMINATED", "LOCKED_OUT"] },
+        status: { in: ["ACTIVE", "EXPIRED", "SEALED", "TERMINATED", "LOCKED_OUT"] },
         startDate: { lte: end },
         endDate: { gte: start },
         unit: {
@@ -185,7 +185,7 @@ export async function getReportMetrics(startDate: Date, endDate: Date) {
   const settings = await prisma.systemSettings.findUnique({ where: { id: "global" } });
   const allLeases = await prisma.lease.findMany({
     where: {
-      status: { in: ["ACTIVE", "EXPIRED", "TERMINATED", "LOCKED_OUT"] },
+      status: { in: ["ACTIVE", "EXPIRED", "SEALED", "TERMINATED", "LOCKED_OUT"] },
       unit: { companyOwned: false }
     },
     include: {

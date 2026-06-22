@@ -655,7 +655,7 @@ export async function lockoutLease(
     });
 
     if (!lease) return { success: false, error: "Lease not found" };
-    if (lease.status !== "ACTIVE" && lease.status !== "EXPIRED") {
+    if (lease.status !== "ACTIVE" && lease.status !== "EXPIRED" && lease.status !== "SEALED") {
       return { success: false, error: `Lease is not in a lockable state (current status: ${lease.status})` };
     }
 
@@ -1156,6 +1156,117 @@ export async function removeLockoutFee(feeId: string) {
   } catch (error: any) {
     console.error("removeLockoutFee error:", error);
     return { success: false, error: `Failed to remove fee: ${error.message || error}` };
+  }
+}
+
+export async function sealLease(leaseId: string, sealDateRaw: string | Date, note?: string) {
+  const sessionUser = await resolveSessionUser();
+  if (!sessionUser || (sessionUser.role !== "ADMIN" && sessionUser.role !== "MANAGER")) {
+    return { success: false, error: "Unauthorized" };
+  }
+
+  try {
+    const sealDate = new Date(sealDateRaw);
+    const lease = await prisma.lease.findUnique({
+      where: { id: leaseId },
+      include: {
+        unit: true,
+        tenant: true
+      }
+    });
+
+    if (!lease) return { success: false, error: "Lease not found" };
+    if (lease.status !== "ACTIVE" && lease.status !== "EXPIRED") {
+      return { success: false, error: `Lease is not in a sealable state (current status: ${lease.status})` };
+    }
+
+    await prisma.$transaction(async (tx) => {
+      // 1. Update Lease Status to SEALED
+      await tx.lease.update({
+        where: { id: leaseId },
+        data: {
+          status: "SEALED"
+        }
+      });
+
+      // 2. Create Audit Log
+      await tx.auditLog.create({
+        data: {
+          userId: sessionUser.id,
+          action: `Sealed shop on lease ${leaseId} for tenant ${lease.tenant.name} on ${sealDate.toLocaleDateString()}. Note: ${note || "None"}`,
+          actionType: "LEASE_UPDATE",
+          oldValue: JSON.stringify({ status: lease.status }),
+          newValue: JSON.stringify({ status: "SEALED", sealDate, note })
+        }
+      });
+    });
+
+    revalidatePath("/admin/tenants");
+    revalidatePath("/admin/units");
+    revalidatePath("/admin/lockedout");
+    revalidatePath("/manager/lockedout");
+    revalidatePath("/admin/dashboard");
+    revalidatePath("/manager/dashboard");
+    return { success: true };
+  } catch (error: any) {
+    console.error("Seal Lease Error:", error);
+    return { success: false, error: `Failed to seal lease: ${error.message || error}` };
+  }
+}
+
+export async function unsealLease(leaseId: string) {
+  const sessionUser = await resolveSessionUser();
+  if (!sessionUser || (sessionUser.role !== "ADMIN" && sessionUser.role !== "MANAGER")) {
+    return { success: false, error: "Unauthorized" };
+  }
+
+  try {
+    const lease = await prisma.lease.findUnique({
+      where: { id: leaseId },
+      include: {
+        unit: true,
+        tenant: true
+      }
+    });
+
+    if (!lease) return { success: false, error: "Lease not found" };
+    if (lease.status !== "SEALED") {
+      return { success: false, error: `Lease is not sealed (current status: ${lease.status})` };
+    }
+
+    const newStatus = new Date(lease.endDate) < new Date() ? "EXPIRED" : "ACTIVE";
+
+    await prisma.$transaction(async (tx) => {
+      // 1. Update Lease Status back to ACTIVE/EXPIRED
+      await tx.lease.update({
+        where: { id: leaseId },
+        data: {
+          status: newStatus
+        }
+      });
+
+      // 2. Create Audit Log
+      await tx.auditLog.create({
+        data: {
+          userId: sessionUser.id,
+          action: `Unsealed shop on lease ${leaseId} for tenant ${lease.tenant.name}, status restored to ${newStatus}.`,
+          actionType: "LEASE_UPDATE",
+          oldValue: JSON.stringify({ status: lease.status }),
+          newValue: JSON.stringify({ status: newStatus })
+        }
+      });
+    });
+
+    revalidatePath("/admin/tenants");
+    revalidatePath("/admin/units");
+    revalidatePath("/admin/lockedout");
+    revalidatePath("/manager/lockedout");
+    revalidatePath("/admin/dashboard");
+    revalidatePath("/manager/dashboard");
+    return { success: true };
+  } catch (error: any) {
+    console.error("Unseal Lease Error:", error);
+    return { success: false, error: `Failed to unseal lease: ${error.message || error}` };
   }
 }
 
