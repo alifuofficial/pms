@@ -189,7 +189,7 @@ export function UnitActions({ unit }: { unit: any }) {
       try {
         const s = new Kenat(`${sealDateEth.year}/${sealDateEth.month}/${sealDateEth.day}`).getGregorian() as any;
         const sealDate = new Date(s.year, s.month - 1, s.day, 12, 0, 0);
-        getLeaseLockoutPreview(activeLease.id, sealDate)
+        getLeaseLockoutPreview(activeLease.id, sealDate, true)
           .then((res) => {
             if (res.success) {
               setSealPreviewData(res.data);
@@ -924,7 +924,7 @@ export function UnitActions({ unit }: { unit: any }) {
                   </div>
                   {sealPreviewData.isLockoutMonthUnpaid && (
                     <div className="flex justify-between font-medium text-slate-600">
-                      <span>Pro-rated Rent ({sealPreviewData.daysUsed}/{sealPreviewData.daysInMonth} days):</span>
+                      <span>Current Month Rent:</span>
                       <span className="font-semibold text-slate-900">ETB {sealPreviewData.proRatedRent.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                     </div>
                   )}

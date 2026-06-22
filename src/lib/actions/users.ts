@@ -784,7 +784,7 @@ export async function lockoutLease(
   }
 }
 
-export async function getLeaseLockoutPreview(leaseId: string, lockoutDateRaw: string | Date) {
+export async function getLeaseLockoutPreview(leaseId: string, lockoutDateRaw: string | Date, isSeal: boolean = false) {
   const sessionUser = await resolveSessionUser();
   if (!sessionUser || (sessionUser.role !== "ADMIN" && sessionUser.role !== "MANAGER")) {
     return { success: false, error: "Unauthorized" };
@@ -836,12 +836,16 @@ export async function getLeaseLockoutPreview(leaseId: string, lockoutDateRaw: st
     if (isLockoutMonthUnpaid) {
       daysInMonth = getDaysInEthiopianMonth(lockoutEt.year, lockoutEt.month);
       daysUsed = lockoutEt.day;
-      if (daysUsed < daysInMonth) {
-        proRatedRent = (daysUsed / daysInMonth) * fullMonthRent;
-        const adjustment = fullMonthRent - proRatedRent;
-        finalRentArrears = Math.max(0, finalRentArrears - adjustment);
-      } else {
+      if (isSeal) {
         proRatedRent = fullMonthRent;
+      } else {
+        if (daysUsed < daysInMonth) {
+          proRatedRent = (daysUsed / daysInMonth) * fullMonthRent;
+          const adjustment = fullMonthRent - proRatedRent;
+          finalRentArrears = Math.max(0, finalRentArrears - adjustment);
+        } else {
+          proRatedRent = fullMonthRent;
+        }
       }
     }
 
