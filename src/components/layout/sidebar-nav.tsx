@@ -23,6 +23,7 @@ import {
   PanelLeftOpen,
   X,
   Menu,
+  AlertCircle,
 } from "lucide-react";
 import { signOut } from "next-auth/react";
 
@@ -45,6 +46,7 @@ const navItems: NavItem[] = [
   { title: "Utilities", href: "/utilities", icon: Zap, roles: ["ADMIN", "MANAGER", "ACCOUNTANT"], isShared: true, group: "Management" },
 
   { title: "Payments", href: "/payments", icon: CreditCard, roles: ["ADMIN", "ACCOUNTANT"], isShared: true, group: "Finance" },
+  { title: "Penalties", href: "/admin/penalty", icon: AlertCircle, roles: ["ADMIN", "ACCOUNTANT"], isShared: false, group: "Finance" },
   { title: "Invoices", href: "/invoices", icon: FileText, roles: ["ADMIN", "ACCOUNTANT", "TENANT"], isShared: true, group: "Finance" },
   { title: "Reports", href: "/reports", icon: Activity, roles: ["ADMIN", "ACCOUNTANT"], isShared: true, group: "Finance" },
 

@@ -153,3 +153,55 @@ export async function getPendingPenalties(options?: { propertyIds?: string[]; ta
     return [];
   }
 }
+
+/**
+ * Fetch ALL recorded Penalty rows (any status) for the admin penalty management page.
+ * Dynamic/computed penalties (not yet persisted) are NOT included here — this is
+ * intentional: the management page deals with persisted records that can be waived.
+ * 
+ * For a combined view (including dynamic), the calling page can merge with
+ * getPendingPenalties if needed.
+ */
+export async function getAllPenalties() {
+  try {
+    const penalties = await prisma.penalty.findMany({
+      orderBy: { dueDate: "desc" },
+      include: {
+        tenant: {
+          select: { id: true, name: true, email: true, phoneNumber: true },
+        },
+        lease: {
+          include: {
+            unit: {
+              include: { property: true },
+            },
+          },
+        },
+      },
+    });
+
+    return penalties.map((p) => ({
+      id: p.id,
+      amount: p.amount - p.paidAmount, // outstanding portion
+      fullAmount: p.amount,
+      paidAmount: p.paidAmount,
+      dueDate: p.dueDate,
+      status: p.status,
+      tenant: p.tenant,
+      lease: {
+        id: p.leaseId,
+        unit: {
+          id: p.lease?.unit?.id ?? "",
+          unitNumber: p.lease?.unit?.unitNumber ?? "—",
+          property: {
+            id: p.lease?.unit?.property?.id ?? "",
+            name: p.lease?.unit?.property?.name ?? "—",
+          },
+        },
+      },
+    }));
+  } catch (error) {
+    console.error("Get All Penalties Error:", error);
+    return [];
+  }
+}
