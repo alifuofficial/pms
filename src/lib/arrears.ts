@@ -10,6 +10,9 @@ export function calcMonthPenalty(dueDate: Date, rentAmount: number, settings: an
   }
   
   if (dbPenalty) {
+    if (dbPenalty.status === "WAIVED") {
+      return { penalty: 0, penaltyTier: 0, diffDays };
+    }
     const penaltyAmount = Math.max(0, dbPenalty.amount - dbPenalty.paidAmount);
     return {
       penalty: penaltyAmount,

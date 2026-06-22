@@ -3,8 +3,11 @@
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { AlertCircle, ChevronLeft, ChevronRight, User } from "lucide-react";
+import { AlertCircle, ChevronLeft, ChevronRight, User, Ban, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { waivePenalty } from "@/lib/actions/payments";
+import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 
 interface PenaltyListProps {
   penalties: any[];
@@ -14,6 +17,8 @@ interface PenaltyListProps {
 export function PenaltyList({ penalties, currency }: PenaltyListProps) {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 5;
+  const [waivingId, setWaivingId] = useState<string | null>(null);
+  const [confirmId, setConfirmId] = useState<string | null>(null);
 
   // Reset/clamp current page if list size changes (e.g. items are added/removed/paid)
   useEffect(() => {
@@ -50,6 +55,42 @@ export function PenaltyList({ penalties, currency }: PenaltyListProps) {
     }
   };
 
+  const handleWaiveClick = (pId: string) => {
+    if (confirmId === pId) {
+      const item = penalties.find(pen => pen.id === pId);
+      if (item) {
+        executeWaive(item);
+      }
+      setConfirmId(null);
+    } else {
+      setConfirmId(pId);
+      setTimeout(() => {
+        setConfirmId(prev => prev === pId ? null : prev);
+      }, 3000);
+    }
+  };
+
+  const executeWaive = async (p: any) => {
+    setWaivingId(p.id);
+    try {
+      const result = await waivePenalty({
+        penaltyId: p.id,
+        leaseId: p.lease.id,
+        dueDate: p.dueDate,
+        amount: p.amount
+      });
+      if (result.success) {
+        toast.success(`Waived penalty of ${currency} ${p.amount.toLocaleString()} for Unit ${p.lease?.unit?.unitNumber}`);
+      } else {
+        toast.error(result.error || "Failed to waive penalty");
+      }
+    } catch (err) {
+      toast.error("An error occurred");
+    } finally {
+      setWaivingId(null);
+    }
+  };
+
   return (
     <Card className="border border-slate-200 shadow-none bg-white rounded-xl overflow-hidden flex flex-col h-full justify-between">
       <div>
@@ -80,13 +121,37 @@ export function PenaltyList({ penalties, currency }: PenaltyListProps) {
                       </p>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <p className="text-xs font-black text-amber-600 uppercase">
-                      {currency} {p.amount.toLocaleString()}
-                    </p>
-                    <p className="text-[9px] text-slate-400 font-bold uppercase tracking-tighter">
-                      Unpaid Fee
-                    </p>
+                  <div className="flex items-center gap-3">
+                    <div className="text-right">
+                      <p className="text-xs font-black text-amber-600 uppercase">
+                        {currency} {p.amount.toLocaleString()}
+                      </p>
+                      <p className="text-[9px] text-slate-400 font-bold uppercase tracking-tighter">
+                        Unpaid Fee
+                      </p>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={waivingId === p.id}
+                      className={cn(
+                        "h-8 text-[10px] font-black uppercase tracking-wider rounded-lg px-2.5 transition-all flex items-center gap-1 shrink-0",
+                        confirmId === p.id 
+                          ? "bg-red-50 text-red-600 border border-red-100 hover:bg-red-100" 
+                          : "bg-slate-50 text-slate-500 border border-slate-100 hover:bg-slate-100 hover:text-slate-700"
+                      )}
+                      onClick={() => handleWaiveClick(p.id)}
+                    >
+                      {waivingId === p.id ? (
+                        <Loader2 size={12} className="animate-spin" />
+                      ) : confirmId === p.id ? (
+                        "Confirm?"
+                      ) : (
+                        <>
+                          <Ban size={12} /> Waive
+                        </>
+                      )}
+                    </Button>
                   </div>
                 </div>
               </div>
@@ -125,3 +190,4 @@ export function PenaltyList({ penalties, currency }: PenaltyListProps) {
     </Card>
   );
 }
+

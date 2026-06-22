@@ -154,7 +154,11 @@ export async function approvePayment(
       
       let currentPenaltyOwed = penaltyAmount;
       if (dbPenalty) {
-        currentPenaltyOwed = dbPenalty.amount - dbPenalty.paidAmount;
+        if (dbPenalty.status === "WAIVED") {
+          currentPenaltyOwed = 0;
+        } else {
+          currentPenaltyOwed = dbPenalty.amount - dbPenalty.paidAmount;
+        }
       }
       
       if (currentPenaltyOwed > 0 && fundsRemaining > 0) {
@@ -536,7 +540,11 @@ export async function approvePaymentSystem(
       
       let currentPenaltyOwed = penaltyAmount;
       if (dbPenalty) {
-        currentPenaltyOwed = dbPenalty.amount - dbPenalty.paidAmount;
+        if (dbPenalty.status === "WAIVED") {
+          currentPenaltyOwed = 0;
+        } else {
+          currentPenaltyOwed = dbPenalty.amount - dbPenalty.paidAmount;
+        }
       }
       
       if (currentPenaltyOwed > 0 && fundsRemaining > 0) {
@@ -766,9 +774,12 @@ export async function changePaymentAttachment(paymentId: string, formData: FormD
 }
 
 export async function recalculateLeaseStateInternal(leaseId: string, tx: any) {
-  // 1. Reset all late fee penalties for this lease to UNPAID
+  // 1. Reset all late fee penalties for this lease to UNPAID (except waived ones)
   await tx.penalty.updateMany({
-    where: { leaseId },
+    where: { 
+      leaseId,
+      status: { not: "WAIVED" }
+    },
     data: {
       status: "UNPAID",
       paidAmount: 0,
@@ -852,7 +863,11 @@ export async function recalculateLeaseStateInternal(leaseId: string, tx: any) {
       
       let currentPenaltyOwed = penaltyAmount;
       if (dbPenalty) {
-        currentPenaltyOwed = dbPenalty.amount - dbPenalty.paidAmount;
+        if (dbPenalty.status === "WAIVED") {
+          currentPenaltyOwed = 0;
+        } else {
+          currentPenaltyOwed = dbPenalty.amount - dbPenalty.paidAmount;
+        }
       }
       
       if (currentPenaltyOwed > 0 && fundsRemaining > 0) {
@@ -1001,4 +1016,129 @@ export async function updateApprovedPaymentAmount(paymentId: string, newAmount: 
     return { success: false, error: error.message || "Failed to update payment amount" };
   }
 }
+
+export async function waivePenalty({
+  penaltyId,
+  leaseId,
+  dueDate,
+  amount
+}: {
+  penaltyId: string;
+  leaseId: string;
+  dueDate: string | Date;
+  amount: number;
+}) {
+  try {
+    const sessionUser = await resolveSessionUser();
+    if (!sessionUser || (sessionUser.role !== "ADMIN" && sessionUser.role !== "ACCOUNTANT" && sessionUser.role !== "MANAGER")) {
+      return { success: false, error: "Unauthorized" };
+    }
+
+    // 1. If it's an existing database penalty (does not start with 'dynamic-')
+    if (!penaltyId.startsWith("dynamic-")) {
+      const penalty = await prisma.penalty.findUnique({
+        where: { id: penaltyId },
+        include: {
+          lease: {
+            include: {
+              tenant: true,
+              unit: true
+            }
+          }
+        }
+      });
+
+      if (!penalty) {
+        return { success: false, error: "Penalty record not found" };
+      }
+
+      await prisma.penalty.update({
+        where: { id: penaltyId },
+        data: {
+          status: "WAIVED",
+          paidAmount: 0,
+          paidAt: null
+        }
+      });
+
+      await prisma.auditLog.create({
+        data: {
+          userId: sessionUser.id,
+          action: `Waived late fee penalty of ${penalty.amount} ETB for unit ${penalty.lease?.unit?.unitNumber} (tenant: ${penalty.lease?.tenant?.name || "N/A"})`,
+          actionType: "PENALTY_TOGGLE",
+          oldValue: JSON.stringify({ status: penalty.status, paidAmount: penalty.paidAmount }),
+          newValue: JSON.stringify({ status: "WAIVED", paidAmount: 0 }),
+          metadata: JSON.stringify({ penaltyId })
+        }
+      });
+    } else {
+      // 2. If it is a dynamic penalty, create a new record in database with status 'WAIVED'
+      const lease = await prisma.lease.findUnique({
+        where: { id: leaseId },
+        include: {
+          tenant: true,
+          unit: true
+        }
+      });
+
+      if (!lease) {
+        return { success: false, error: "Lease not found" };
+      }
+
+      const formattedDueDate = new Date(dueDate);
+
+      // Check if a penalty for this dueDate already exists in case of race conditions
+      const existing = await prisma.penalty.findFirst({
+        where: {
+          leaseId,
+          dueDate: formattedDueDate
+        }
+      });
+
+      if (existing) {
+        await prisma.penalty.update({
+          where: { id: existing.id },
+          data: {
+            status: "WAIVED",
+            paidAmount: 0,
+            paidAt: null
+          }
+        });
+      } else {
+        await prisma.penalty.create({
+          data: {
+            leaseId,
+            tenantId: lease.tenantId,
+            amount,
+            paidAmount: 0,
+            status: "WAIVED",
+            dueDate: formattedDueDate,
+            paidAt: null
+          }
+        });
+      }
+
+      await prisma.auditLog.create({
+        data: {
+          userId: sessionUser.id,
+          action: `Waived dynamic late fee penalty of ${amount} ETB for unit ${lease.unit.unitNumber} (tenant: ${lease.tenant.name || "N/A"})`,
+          actionType: "PENALTY_TOGGLE",
+          oldValue: null,
+          newValue: JSON.stringify({ status: "WAIVED", amount }),
+          metadata: JSON.stringify({ leaseId, dueDate: formattedDueDate, amount })
+        }
+      });
+    }
+
+    revalidatePath("/admin/dashboard");
+    revalidatePath("/accountant/dashboard");
+    revalidatePath("/manager/dashboard");
+
+    return { success: true };
+  } catch (error: any) {
+    console.error("Waive Penalty Error:", error);
+    return { success: false, error: error.message || "Failed to waive penalty" };
+  }
+}
+
 
