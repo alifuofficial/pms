@@ -106,6 +106,7 @@ export function UnitsFilter({ properties }: { properties: { id: string, name: st
                 <option value="">Any Status</option>
                 <option value="AVAILABLE">Available</option>
                 <option value="OCCUPIED">Occupied</option>
+                <option value="SEALED">Sealed</option>
                 <option value="MAINTENANCE">Maintenance</option>
               </select>
             </div>

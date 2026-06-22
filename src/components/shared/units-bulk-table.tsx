@@ -414,19 +414,31 @@ export function UnitsBulkTable({ units, currency }: { units: any[]; currency: st
                       {unit.qrPrinted ? "Printed" : "Pending"}
                     </span>
                   </td>
-                  <td className="py-3 px-4 text-center">
-                    <span className={cn(
-                      "px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-tight border",
-                      unit.status === "AVAILABLE"
-                        ? "bg-emerald-50 text-emerald-600 border-emerald-100"
-                        : unit.status === "MAINTENANCE"
-                        ? "bg-slate-50 text-slate-500 border-slate-200"
-                        : unit.status === "COMPANY_OWNED"
-                        ? "bg-indigo-50 text-indigo-600 border-indigo-100"
-                        : "bg-amber-50 text-amber-600 border-amber-100"
-                    )}>
-                      {unit.status === "COMPANY_OWNED" ? "company owned" : unit.status.toLowerCase()}
-                    </span>
+                   <td className="py-3 px-4 text-center">
+                    {(() => {
+                      const isSealed = unit.leases?.[0]?.status === "SEALED";
+                      if (isSealed) {
+                        return (
+                          <span className="px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-tight border bg-orange-50 text-orange-600 border-orange-100">
+                            sealed
+                          </span>
+                        );
+                      }
+                      return (
+                        <span className={cn(
+                          "px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-tight border",
+                          unit.status === "AVAILABLE"
+                            ? "bg-emerald-50 text-emerald-600 border-emerald-100"
+                            : unit.status === "MAINTENANCE"
+                            ? "bg-slate-50 text-slate-500 border-slate-200"
+                            : unit.status === "COMPANY_OWNED"
+                            ? "bg-indigo-50 text-indigo-600 border-indigo-100"
+                            : "bg-amber-50 text-amber-600 border-amber-100"
+                        )}>
+                          {unit.status === "COMPANY_OWNED" ? "company owned" : unit.status.toLowerCase()}
+                        </span>
+                      );
+                    })()}
                   </td>
                   <td className="py-3 px-4 text-right">
                     <UnitActions unit={unit} />

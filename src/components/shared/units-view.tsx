@@ -25,23 +25,53 @@ export async function UnitsView({
   const properties = await getProperties();
   const settings = await getSystemSettings();
 
-  // ── Build where clause from searchParams ─────────────────────
-  const where: any = {};
-  if (searchParams?.propertyId) where.propertyId = searchParams.propertyId;
-  if (searchParams?.status)     where.status     = searchParams.status;
-  if (searchParams?.type)       where.type       = searchParams.type;
-  if (searchParams?.qrPrinted)  where.qrPrinted  = searchParams.qrPrinted === "true";
-  if (searchParams?.minPrice || searchParams?.maxPrice) {
-    where.rentAmount = {};
-    if (searchParams.minPrice) where.rentAmount.gte = parseFloat(searchParams.minPrice);
-    if (searchParams.maxPrice) where.rentAmount.lte = parseFloat(searchParams.maxPrice);
-  }
-  if (searchParams?.q) {
-    where.OR = [
-      { unitNumber: { contains: searchParams.q } },
-      { property:   { name:    { contains: searchParams.q } } }
-    ];
-  }
+  // Helper to build where clause dynamically
+  const buildBaseWhere = (params: any) => {
+    const base: any = {};
+    if (params?.propertyId) base.propertyId = params.propertyId;
+    
+    if (params?.status) {
+      if (params.status === "SEALED") {
+        base.status = "OCCUPIED";
+        base.leases = {
+          some: {
+            status: "SEALED"
+          }
+        };
+      } else if (params.status === "OCCUPIED") {
+        base.status = "OCCUPIED";
+        base.leases = {
+          none: {
+            status: "SEALED"
+          }
+        };
+      } else {
+        base.status = params.status;
+      }
+    }
+    
+    if (params?.type) base.type = params.type;
+    if (params?.qrPrinted) base.qrPrinted = params.qrPrinted === "true";
+    
+    if (params?.minPrice || params?.maxPrice) {
+      base.rentAmount = {};
+      if (params.minPrice) base.rentAmount.gte = parseFloat(params.minPrice);
+      if (params.maxPrice) base.rentAmount.lte = parseFloat(params.maxPrice);
+    }
+    
+    if (params?.q) {
+      base.OR = [
+        { unitNumber: { contains: params.q } },
+        { property:   { name:    { contains: params.q } } }
+      ];
+    }
+    
+    return base;
+  };
+
+  const baseWhere = buildBaseWhere(searchParams);
+  const where = { ...baseWhere };
+
   // Floor tab filter
   const currentFloor = searchParams?.floor !== undefined && searchParams.floor !== ""
     ? parseInt(searchParams.floor as string)
@@ -77,21 +107,7 @@ export async function UnitsView({
     prisma.unit.count({ where }),
     // Distinct floor values across ALL units (ignoring active floor tab filter)
     prisma.unit.findMany({
-      where: (() => {
-        // Same filters EXCEPT floor, so tabs show all available floors
-        const base: any = {};
-        if (searchParams?.propertyId) base.propertyId = searchParams.propertyId;
-        if (searchParams?.status)     base.status     = searchParams.status;
-        if (searchParams?.type)       base.type       = searchParams.type;
-        if (searchParams?.qrPrinted)  base.qrPrinted  = searchParams.qrPrinted === "true";
-        if (searchParams?.q) {
-          base.OR = [
-            { unitNumber: { contains: searchParams.q } },
-            { property:   { name:    { contains: searchParams.q } } }
-          ];
-        }
-        return base;
-      })(),
+      where: baseWhere,
       select: { floor: true },
       distinct: ["floor"],
       orderBy:  { floor: "asc" },
@@ -99,20 +115,7 @@ export async function UnitsView({
     // Per-floor counts (same base filter, no floor filter)
     prisma.unit.groupBy({
       by:    ["floor"],
-      where: (() => {
-        const base: any = {};
-        if (searchParams?.propertyId) base.propertyId = searchParams.propertyId;
-        if (searchParams?.status)     base.status     = searchParams.status;
-        if (searchParams?.type)       base.type       = searchParams.type;
-        if (searchParams?.qrPrinted)  base.qrPrinted  = searchParams.qrPrinted === "true";
-        if (searchParams?.q) {
-          base.OR = [
-            { unitNumber: { contains: searchParams.q } },
-            { property:   { name:    { contains: searchParams.q } } }
-          ];
-        }
-        return base;
-      })(),
+      where: baseWhere,
       _count: { _all: true },
     }),
   ]);
