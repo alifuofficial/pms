@@ -138,9 +138,8 @@ export async function approvePayment(
       fundsRemaining = fundsRemaining % monthlyRent;
     }
 
-    for (const gd of gapMonths) {
-      if (fundsRemaining <= 0) break;
-      
+    const coveredMonthsList = gapMonths.slice(0, monthsCovered);
+    for (const gd of coveredMonthsList) {
       const leaseStartDate = new Date(currentPayment.lease.startDate);
       const startEt = toEthiopian(leaseStartDate);
       const gdEt = toEthiopian(gd);
@@ -149,34 +148,40 @@ export async function approvePayment(
       const hasPenalty = !currentPayment.lease.unit.penaltyExempt && hasLatePenalty(gd, settings) && !(isStartMonth && approvedPayments.length === 0);
       const penaltyAmount = hasPenalty ? (monthlyRent * ((settings?.lateFeePercentage || 5) / 100)) : 0;
       
+      if (penaltyAmount <= 0) continue;
+
       const monthKey = `${gd.getFullYear()}-${gd.getMonth()}`;
       const dbPenalty = dbPenaltyMap.get(monthKey);
       
       let currentPenaltyOwed = penaltyAmount;
       if (dbPenalty) {
         if (dbPenalty.status === "WAIVED") {
-          currentPenaltyOwed = 0;
+          continue;
         } else {
           currentPenaltyOwed = dbPenalty.amount - dbPenalty.paidAmount;
         }
       }
       
-      if (currentPenaltyOwed > 0 && fundsRemaining > 0) {
+      if (currentPenaltyOwed > 0) {
         const toPay = Math.min(currentPenaltyOwed, fundsRemaining);
-        actualPenaltyPaid += toPay;
-        fundsRemaining -= toPay;
+        if (toPay > 0) {
+          actualPenaltyPaid += toPay;
+          fundsRemaining -= toPay;
+        }
         
         if (dbPenalty) {
-          finalizedPenaltiesToUpdate.push({
-            id: dbPenalty.id,
-            paidAmount: dbPenalty.paidAmount + toPay,
-            status: (dbPenalty.paidAmount + toPay) >= dbPenalty.amount ? "PAID" : "PARTIAL"
-          });
+          if (toPay > 0) {
+            finalizedPenaltiesToUpdate.push({
+              id: dbPenalty.id,
+              paidAmount: dbPenalty.paidAmount + toPay,
+              status: (dbPenalty.paidAmount + toPay) >= dbPenalty.amount ? "PAID" : "PARTIAL"
+            });
+          }
         } else {
           finalizedPenaltiesToCreate.push({
             amount: penaltyAmount,
             paidAmount: toPay,
-            status: toPay >= penaltyAmount ? "PAID" : "PARTIAL",
+            status: toPay >= penaltyAmount ? "PAID" : toPay > 0 ? "PARTIAL" : "UNPAID",
             dueDate: gd
           });
         }
@@ -524,9 +529,8 @@ export async function approvePaymentSystem(
       fundsRemaining = fundsRemaining % monthlyRent;
     }
 
-    for (const gd of gapMonths) {
-      if (fundsRemaining <= 0) break;
-      
+    const coveredMonthsList = gapMonths.slice(0, monthsCovered);
+    for (const gd of coveredMonthsList) {
       const leaseStartDate = new Date(currentPayment.lease.startDate);
       const startEt = toEthiopian(leaseStartDate);
       const gdEt = toEthiopian(gd);
@@ -535,34 +539,40 @@ export async function approvePaymentSystem(
       const hasPenalty = !currentPayment.lease.unit.penaltyExempt && hasLatePenalty(gd, settings) && !(isStartMonth && approvedPayments.length === 0);
       const penaltyAmount = hasPenalty ? (monthlyRent * ((settings?.lateFeePercentage || 5) / 100)) : 0;
       
+      if (penaltyAmount <= 0) continue;
+
       const monthKey = `${gd.getFullYear()}-${gd.getMonth()}`;
       const dbPenalty = dbPenaltyMap.get(monthKey);
       
       let currentPenaltyOwed = penaltyAmount;
       if (dbPenalty) {
         if (dbPenalty.status === "WAIVED") {
-          currentPenaltyOwed = 0;
+          continue;
         } else {
           currentPenaltyOwed = dbPenalty.amount - dbPenalty.paidAmount;
         }
       }
       
-      if (currentPenaltyOwed > 0 && fundsRemaining > 0) {
+      if (currentPenaltyOwed > 0) {
         const toPay = Math.min(currentPenaltyOwed, fundsRemaining);
-        actualPenaltyPaid += toPay;
-        fundsRemaining -= toPay;
+        if (toPay > 0) {
+          actualPenaltyPaid += toPay;
+          fundsRemaining -= toPay;
+        }
         
         if (dbPenalty) {
-          finalizedPenaltiesToUpdate.push({
-            id: dbPenalty.id,
-            paidAmount: dbPenalty.paidAmount + toPay,
-            status: (dbPenalty.paidAmount + toPay) >= dbPenalty.amount ? "PAID" : "PARTIAL"
-          });
+          if (toPay > 0) {
+            finalizedPenaltiesToUpdate.push({
+              id: dbPenalty.id,
+              paidAmount: dbPenalty.paidAmount + toPay,
+              status: (dbPenalty.paidAmount + toPay) >= dbPenalty.amount ? "PAID" : "PARTIAL"
+            });
+          }
         } else {
           finalizedPenaltiesToCreate.push({
             amount: penaltyAmount,
             paidAmount: toPay,
-            status: toPay >= penaltyAmount ? "PAID" : "PARTIAL",
+            status: toPay >= penaltyAmount ? "PAID" : toPay > 0 ? "PARTIAL" : "UNPAID",
             dueDate: gd
           });
         }
@@ -848,9 +858,8 @@ export async function recalculateLeaseStateInternal(leaseId: string, tx: any) {
       fundsRemaining = fundsRemaining % monthlyRent;
     }
 
-    for (const gd of gapMonths) {
-      if (fundsRemaining <= 0) break;
-      
+    const coveredMonthsList = gapMonths.slice(0, monthsCovered);
+    for (const gd of coveredMonthsList) {
       const gdEt = toEthiopian(gd);
       const startEt = toEthiopian(leaseStartDate);
       const isStartMonth = gdEt.year === startEt.year && gdEt.month === startEt.month;
@@ -858,34 +867,40 @@ export async function recalculateLeaseStateInternal(leaseId: string, tx: any) {
       const hasPenalty = !lease.unit.penaltyExempt && hasLatePenalty(gd, settings) && !(isStartMonth && processedPayments.length === 0);
       const penaltyAmount = hasPenalty ? (monthlyRent * ((settings?.lateFeePercentage || 5) / 100)) : 0;
       
+      if (penaltyAmount <= 0) continue;
+
       const monthKey = `${gd.getFullYear()}-${gd.getMonth()}`;
       const dbPenalty = dbPenaltyMap.get(monthKey);
       
       let currentPenaltyOwed = penaltyAmount;
       if (dbPenalty) {
         if (dbPenalty.status === "WAIVED") {
-          currentPenaltyOwed = 0;
+          continue;
         } else {
           currentPenaltyOwed = dbPenalty.amount - dbPenalty.paidAmount;
         }
       }
       
-      if (currentPenaltyOwed > 0 && fundsRemaining > 0) {
+      if (currentPenaltyOwed > 0) {
         const toPay = Math.min(currentPenaltyOwed, fundsRemaining);
-        actualPenaltyPaid += toPay;
-        fundsRemaining -= toPay;
+        if (toPay > 0) {
+          actualPenaltyPaid += toPay;
+          fundsRemaining -= toPay;
+        }
         
         if (dbPenalty) {
-          finalizedPenaltiesToUpdate.push({
-            id: dbPenalty.id,
-            paidAmount: dbPenalty.paidAmount + toPay,
-            status: (dbPenalty.paidAmount + toPay) >= dbPenalty.amount ? "PAID" : "PARTIAL"
-          });
+          if (toPay > 0) {
+            finalizedPenaltiesToUpdate.push({
+              id: dbPenalty.id,
+              paidAmount: dbPenalty.paidAmount + toPay,
+              status: (dbPenalty.paidAmount + toPay) >= dbPenalty.amount ? "PAID" : "PARTIAL"
+            });
+          }
         } else {
           finalizedPenaltiesToCreate.push({
             amount: penaltyAmount,
             paidAmount: toPay,
-            status: toPay >= penaltyAmount ? "PAID" : "PARTIAL",
+            status: toPay >= penaltyAmount ? "PAID" : toPay > 0 ? "PARTIAL" : "UNPAID",
             dueDate: gd
           });
         }
