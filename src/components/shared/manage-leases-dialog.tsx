@@ -20,7 +20,7 @@ import {
   X,
   Clock
 } from "lucide-react";
-import { updateLeaseDates, terminateLease, updateLeaseUnit } from "@/lib/actions/users";
+import { updateLeaseDates, terminateLease, updateLeaseUnit, updateLeasePrepaidDate } from "@/lib/actions/users";
 import { getAvailableUnits } from "@/lib/actions/properties";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
@@ -75,12 +75,31 @@ export function ManageLeasesDialog({
   const [ethStart, setEthStart] = useState({ year: 0, month: 0, day: 0 });
   const [ethEnd, setEthEnd] = useState({ year: 0, month: 0, day: 0 });
 
+  // Prepaid Months states
+  const [hasPrepaid, setHasPrepaid] = useState(false);
+  const [ethPrepaid, setEthPrepaid] = useState({ year: 0, month: 0, day: 0 });
+
   // Initialize edit inputs when entering edit mode
   const startEditing = (lease: any) => {
     const startEt = toEthiopian(new Date(lease.startDate));
     const endEt = toEthiopian(new Date(lease.endDate));
     setEthStart({ year: startEt.year, month: startEt.month, day: startEt.day });
     setEthEnd({ year: endEt.year, month: endEt.month, day: endEt.day });
+    
+    // Find existing approved ADVANCE payment with advanceUntil
+    const advPayment = lease.payments?.find(
+      (p: any) => p.type === "ADVANCE" && p.status === "APPROVED"
+    );
+    if (advPayment && advPayment.advanceUntil) {
+      const prepaidEt = toEthiopian(new Date(advPayment.advanceUntil));
+      setEthPrepaid({ year: prepaidEt.year, month: prepaidEt.month, day: prepaidEt.day });
+      setHasPrepaid(true);
+    } else {
+      const todayEt = toEthiopian(new Date());
+      setEthPrepaid({ year: todayEt.year, month: todayEt.month, day: todayEt.day });
+      setHasPrepaid(false);
+    }
+
     setEditingLeaseId(lease.id);
     setConfirmTerminateLeaseId(null);
   };
@@ -103,13 +122,28 @@ export function ManageLeasesDialog({
         return;
       }
 
+      // 1. Update lease dates
       const result = await updateLeaseDates(leaseId, finalStartDate, finalEndDate);
-      if (result.success) {
-        toast.success("Lease dates updated successfully.");
+      if (!result.success) {
+        toast.error(result.error || "Failed to update lease dates.");
+        setIsLoading(false);
+        return;
+      }
+
+      // 2. Update lease prepaid date
+      let finalPrepaidUntil: Date | null = null;
+      if (hasPrepaid) {
+        const p = new Kenat(`${ethPrepaid.year}/${ethPrepaid.month}/${ethPrepaid.day}`).getGregorian() as any;
+        finalPrepaidUntil = new Date(p.year, p.month - 1, p.day);
+      }
+
+      const prepaidResult = await updateLeasePrepaidDate(leaseId, finalPrepaidUntil);
+      if (prepaidResult.success) {
+        toast.success("Lease details updated successfully.");
         setEditingLeaseId(null);
         router.refresh();
       } else {
-        toast.error(result.error || "Failed to update lease dates.");
+        toast.error(prepaidResult.error || "Failed to update prepaid date.");
       }
     } catch (err) {
       toast.error("Failed to parse selected dates.");
@@ -263,6 +297,52 @@ export function ManageLeasesDialog({
                             </select>
                           </div>
                         </div>
+                      </div>
+
+                      <div className="pt-3 border-t border-slate-200/60 space-y-3">
+                        <div className="flex items-center justify-between bg-slate-100/40 p-2.5 rounded-xl border border-slate-200/50">
+                          <div className="space-y-0.5">
+                            <Label className="text-[10px] font-bold text-slate-700 uppercase tracking-tight">Prepaid in Advance</Label>
+                            <p className="text-[9px] text-slate-400 font-medium">Bypass automatic arrears & penalties for future months.</p>
+                          </div>
+                          <input
+                            type="checkbox"
+                            checked={hasPrepaid}
+                            onChange={(e) => setHasPrepaid(e.target.checked)}
+                            className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                          />
+                        </div>
+
+                        {hasPrepaid && (
+                          <div className="space-y-1.5 p-3 bg-blue-50/30 rounded-xl border border-blue-100/50 animate-in slide-in-from-top-1 duration-200">
+                            <Label className="text-[9px] font-bold text-blue-700 uppercase">Prepaid Until Date (Ethiopian)</Label>
+                            <div className="flex gap-1">
+                              <select 
+                                value={ethPrepaid.year} 
+                                onChange={e => setEthPrepaid({...ethPrepaid, year: parseInt(e.target.value)})}
+                                className="w-1/3 rounded-lg border border-blue-100 bg-white h-9 px-2 text-[11px] font-semibold text-slate-700 outline-none focus:ring-1 focus:ring-blue-500"
+                              >
+                                {getEthiopianYearRange().map(y => <option key={y} value={y}>{y}</option>)}
+                              </select>
+                              <select 
+                                value={ethPrepaid.month} 
+                                onChange={e => setEthPrepaid({...ethPrepaid, month: parseInt(e.target.value)})}
+                                className="w-1/3 rounded-lg border border-blue-100 bg-white h-9 px-2 text-[11px] font-semibold text-slate-700 outline-none focus:ring-1 focus:ring-blue-500"
+                              >
+                                {getEthiopianMonths().map(m => <option key={m.id} value={m.id}>{m.name.split(' ')[0]}</option>)}
+                              </select>
+                              <select 
+                                value={ethPrepaid.day} 
+                                onChange={e => setEthPrepaid({...ethPrepaid, day: parseInt(e.target.value)})}
+                                className="w-1/3 rounded-lg border border-blue-100 bg-white h-9 px-2 text-[11px] font-semibold text-slate-700 outline-none focus:ring-1 focus:ring-blue-500"
+                              >
+                                {Array.from({length: getDaysInEthiopianMonth(ethPrepaid.year, ethPrepaid.month)}).map((_, i) => (
+                                  <option key={i+1} value={i+1}>{i+1}</option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
+                        )}
                       </div>
 
                       <div className="flex justify-end gap-2 pt-2">
@@ -424,9 +504,22 @@ export function ManageLeasesDialog({
                         <p className="text-[11px] font-semibold text-slate-700">
                           {formatSystemDate(new Date(lease.startDate), "ETHIOPIAN")} - {formatSystemDate(new Date(lease.endDate), "ETHIOPIAN")}
                         </p>
-                        <p className="text-[9px] text-slate-400 font-medium">
+                        <p className="text-[9px] text-slate-400 font-medium pb-1">
                           Gregorian: {new Date(lease.startDate).toLocaleDateString()} to {new Date(lease.endDate).toLocaleDateString()}
                         </p>
+                        {(() => {
+                          const advPayment = lease.payments?.find((p: any) => p.type === "ADVANCE" && p.status === "APPROVED");
+                          if (advPayment && advPayment.advanceUntil) {
+                            return (
+                              <div className="mt-1 flex items-center gap-1">
+                                <span className="bg-emerald-50 text-emerald-600 font-bold px-1.5 py-0.5 rounded text-[9px] border border-emerald-100 uppercase tracking-wider">
+                                  Prepaid Until: {formatSystemDate(new Date(advPayment.advanceUntil), "ETHIOPIAN")}
+                                </span>
+                              </div>
+                            );
+                          }
+                          return null;
+                        })()}
                       </div>
                       <div className="flex gap-1.5">
                         <Button 

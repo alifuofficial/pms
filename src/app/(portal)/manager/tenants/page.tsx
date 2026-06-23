@@ -42,7 +42,10 @@ export default async function ManagerTenantsPage() {
           status: { in: ["ACTIVE", "PENDING"] },
           unit: { propertyId: { in: propertyIds } } // Only show relevant leases
         },
-        include: { unit: { include: { property: true } } }
+        include: { 
+          unit: { include: { property: true } },
+          payments: { where: { type: "ADVANCE", status: "APPROVED" } }
+        }
       }
     },
     orderBy: { createdAt: "desc" },

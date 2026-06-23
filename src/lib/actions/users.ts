@@ -1274,3 +1274,83 @@ export async function unsealLease(leaseId: string) {
   }
 }
 
+export async function updateLeasePrepaidDate(leaseId: string, prepaidUntilDate: Date | null) {
+  const sessionUser = await resolveSessionUser();
+  if (!sessionUser || (sessionUser.role !== "ADMIN" && sessionUser.role !== "MANAGER")) {
+    return { success: false, error: "Unauthorized" };
+  }
+
+  try {
+    const lease = await prisma.lease.findUnique({
+      where: { id: leaseId },
+      include: { tenant: true }
+    });
+
+    if (!lease) {
+      return { success: false, error: "Lease not found." };
+    }
+
+    const existingAdvancePayment = await prisma.payment.findFirst({
+      where: {
+        leaseId,
+        type: "ADVANCE",
+        status: "APPROVED"
+      }
+    });
+
+    await prisma.$transaction(async (tx) => {
+      if (prepaidUntilDate === null) {
+        if (existingAdvancePayment) {
+          await tx.payment.delete({
+            where: { id: existingAdvancePayment.id }
+          });
+        }
+      } else {
+        const prepaidDate = new Date(prepaidUntilDate);
+        if (existingAdvancePayment) {
+          await tx.payment.update({
+            where: { id: existingAdvancePayment.id },
+            data: {
+              advanceUntil: prepaidDate,
+            }
+          });
+        } else {
+          await tx.payment.create({
+            data: {
+              tenantId: lease.tenantId,
+              leaseId: lease.id,
+              amount: 0,
+              dueDate: lease.startDate,
+              paidAt: new Date(),
+              status: "APPROVED",
+              type: "ADVANCE",
+              advanceUntil: prepaidDate,
+            }
+          });
+        }
+      }
+
+      await tx.auditLog.create({
+        data: {
+          userId: sessionUser.id,
+          action: `Updated prepaid-until date for lease ${leaseId} to ${prepaidUntilDate ? prepaidUntilDate.toISOString() : "None"}.`,
+          actionType: "LEASE_UPDATE",
+          oldValue: JSON.stringify({ advanceUntil: existingAdvancePayment?.advanceUntil }),
+          newValue: JSON.stringify({ advanceUntil: prepaidUntilDate })
+        }
+      });
+    });
+
+    revalidatePath("/admin/tenants");
+    revalidatePath("/admin/units");
+    revalidatePath("/admin/penalty");
+    revalidatePath("/manager/tenants");
+    revalidatePath("/", "layout");
+
+    return { success: true };
+  } catch (error: any) {
+    console.error("Update Lease Prepaid Date Error:", error);
+    return { success: false, error: `Failed to update prepaid date: ${error.message || error}` };
+  }
+}
+

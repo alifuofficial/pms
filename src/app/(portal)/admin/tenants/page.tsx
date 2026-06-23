@@ -23,7 +23,10 @@ export default async function TenantsPage() {
     where: { role: "TENANT" },
     include: {
       leases: {
-        include: { unit: { include: { property: true } } }
+        include: { 
+          unit: { include: { property: true } },
+          payments: { where: { type: "ADVANCE", status: "APPROVED" } }
+        }
       }
     },
     orderBy: { createdAt: "desc" },
