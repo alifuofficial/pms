@@ -182,7 +182,7 @@ export async function getAllPenalties() {
 
     return penalties.map((p) => ({
       id: p.id,
-      amount: p.amount - p.paidAmount, // outstanding portion
+      amount: p.status === "PAID" || p.status === "WAIVED" ? p.amount : (p.amount - p.paidAmount), // outstanding portion, or face value if paid/waived
       fullAmount: p.amount,
       paidAmount: p.paidAmount,
       dueDate: p.dueDate,
@@ -202,6 +202,40 @@ export async function getAllPenalties() {
     }));
   } catch (error) {
     console.error("Get All Penalties Error:", error);
+    return [];
+  }
+}
+
+export async function getCombinedPenalties() {
+  try {
+    const [dbPenalties, pendingPenalties] = await Promise.all([
+      getAllPenalties(),
+      getPendingPenalties(),
+    ]);
+
+    const combined = [...dbPenalties];
+    const dbIds = new Set(dbPenalties.map((p) => p.id));
+
+    for (const p of pendingPenalties) {
+      if (p.id.startsWith("dynamic-") || !dbIds.has(p.id)) {
+        combined.push({
+          id: p.id,
+          amount: p.amount,
+          fullAmount: p.amount,
+          paidAmount: 0,
+          dueDate: p.dueDate,
+          status: p.status,
+          tenant: p.tenant,
+          lease: p.lease,
+        });
+      }
+    }
+
+    // Sort by dueDate descending (newest first)
+    combined.sort((a, b) => new Date(b.dueDate).getTime() - new Date(a.dueDate).getTime());
+    return combined;
+  } catch (error) {
+    console.error("Get Combined Penalties Error:", error);
     return [];
   }
 }

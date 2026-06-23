@@ -12,6 +12,10 @@ import {
   X,
   CalendarDays,
   TriangleAlert,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -273,6 +277,17 @@ export function PenaltyManagementView({
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [waivingId, setWaivingId] = useState<string | null>(null);
 
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 20;
+
+  const [prevSearch, setPrevSearch] = useState("");
+  const [prevFilter, setPrevFilter] = useState("ALL");
+  if (search !== prevSearch || statusFilter !== prevFilter) {
+    setPrevSearch(search);
+    setPrevFilter(statusFilter);
+    setCurrentPage(1);
+  }
+
   /* ── filter ── */
   const filtered = penalties.filter((p) => {
     const q = search.toLowerCase();
@@ -284,6 +299,13 @@ export function PenaltyManagementView({
     const matchStatus = statusFilter === "ALL" || p.status === statusFilter;
     return matchSearch && matchStatus;
   });
+
+  const totalItems = filtered.length;
+  const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE);
+  const displayedPenalties = filtered.slice(
+    (currentPage - 1) * ITEMS_PER_PAGE,
+    currentPage * ITEMS_PER_PAGE
+  );
 
   /* ── open waive flow ── */
   const handleWaiveClick = (p: PenaltyItem) => {
@@ -514,8 +536,8 @@ export function PenaltyManagementView({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
-              {filtered.length > 0 ? (
-                filtered.map((p) => {
+              {displayedPenalties.length > 0 ? (
+                displayedPenalties.map((p) => {
                   const s = STATUS_LABELS[p.status] ?? STATUS_LABELS["UNPAID"];
                   const isWaived = p.status === "WAIVED" || p.status === "PAID";
 
@@ -649,6 +671,53 @@ export function PenaltyManagementView({
               )}
             </tbody>
           </table>
+
+          {/* Pagination Controls */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between px-6 py-4 border-t border-slate-100 bg-slate-50/30">
+              <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                Page {currentPage} of {totalPages} <span className="ml-1 text-slate-300">({totalItems} total)</span>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 w-8 p-0 rounded-lg border-slate-200"
+                  onClick={() => setCurrentPage(1)}
+                  disabled={currentPage <= 1}
+                >
+                  <ChevronsLeft className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 w-8 p-0 rounded-lg border-slate-200"
+                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                  disabled={currentPage <= 1}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 w-8 p-0 rounded-lg border-slate-200"
+                  onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                  disabled={currentPage >= totalPages}
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 w-8 p-0 rounded-lg border-slate-200"
+                  onClick={() => setCurrentPage(totalPages)}
+                  disabled={currentPage >= totalPages}
+                >
+                  <ChevronsRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </>

@@ -1,5 +1,5 @@
 import { PenaltyManagementView } from "@/components/shared/penalty-management-view";
-import { getAllPenalties } from "@/lib/actions/penalties";
+import { getCombinedPenalties } from "@/lib/actions/penalties";
 import { getSystemSettings } from "@/lib/actions/settings";
 
 export const metadata = {
@@ -9,7 +9,7 @@ export const metadata = {
 
 export default async function AdminPenaltyPage() {
   const [penalties, settings] = await Promise.all([
-    getAllPenalties(),
+    getCombinedPenalties(),
     getSystemSettings(),
   ]);
 
