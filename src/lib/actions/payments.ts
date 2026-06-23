@@ -1141,4 +1141,60 @@ export async function waivePenalty({
   }
 }
 
+export async function unwaivePenalty(penaltyId: string) {
+  try {
+    const sessionUser = await resolveSessionUser();
+    if (!sessionUser || (sessionUser.role !== "ADMIN" && sessionUser.role !== "ACCOUNTANT" && sessionUser.role !== "MANAGER")) {
+      return { success: false, error: "Unauthorized" };
+    }
+
+    const penalty = await prisma.penalty.findUnique({
+      where: { id: penaltyId },
+      include: {
+        lease: {
+          include: {
+            tenant: true,
+            unit: true
+          }
+        }
+      }
+    });
+
+    if (!penalty) {
+      return { success: false, error: "Penalty record not found" };
+    }
+
+    await prisma.penalty.update({
+      where: { id: penaltyId },
+      data: {
+        status: "UNPAID"
+      }
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        userId: sessionUser.id,
+        action: `Unwaived late fee penalty of ${penalty.amount} ETB for unit ${penalty.lease?.unit?.unitNumber} (tenant: ${penalty.lease?.tenant?.name || "N/A"})`,
+        actionType: "PENALTY_TOGGLE",
+        oldValue: JSON.stringify({ status: penalty.status }),
+        newValue: JSON.stringify({ status: "UNPAID" }),
+        metadata: JSON.stringify({ penaltyId })
+      }
+    });
+
+    revalidatePath("/admin/dashboard");
+    revalidatePath("/accountant/dashboard");
+    revalidatePath("/manager/dashboard");
+    revalidatePath("/admin/payments");
+    revalidatePath("/accountant/payments");
+    revalidatePath("/admin/penalty");
+    revalidatePath("/", "layout");
+
+    return { success: true };
+  } catch (error: any) {
+    console.error("Unwaive Penalty Error:", error);
+    return { success: false, error: error.message || "Failed to unwaive penalty" };
+  }
+}
+
 

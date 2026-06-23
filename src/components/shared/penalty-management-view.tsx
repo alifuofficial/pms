@@ -20,7 +20,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { waivePenalty } from "@/lib/actions/payments";
+import { waivePenalty, unwaivePenalty } from "@/lib/actions/payments";
 import { toast } from "sonner";
 
 interface PenaltyItem {
@@ -276,6 +276,7 @@ export function PenaltyManagementView({
   // For single-penalty confirm (no modal needed)
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [waivingId, setWaivingId] = useState<string | null>(null);
+  const [unwaivingId, setUnwaivingId] = useState<string | null>(null);
 
   const [currentPage, setCurrentPage] = useState(1);
   const ITEMS_PER_PAGE = 20;
@@ -367,6 +368,27 @@ export function PenaltyManagementView({
       toast.error("An error occurred");
     } finally {
       setWaivingId(null);
+    }
+  };
+
+  const executeUnwaive = async (p: PenaltyItem) => {
+    setUnwaivingId(p.id);
+    try {
+      const result = await unwaivePenalty(p.id);
+      if (result.success) {
+        toast.success(
+          `Restored penalty of ${currency} ${p.amount.toLocaleString()} for Unit ${p.lease?.unit?.unitNumber}`
+        );
+        setPenalties((prev) =>
+          prev.map((pen) => (pen.id === p.id ? { ...pen, status: "UNPAID" } : pen))
+        );
+      } else {
+        toast.error(result.error || "Failed to restore penalty");
+      }
+    } catch {
+      toast.error("An error occurred");
+    } finally {
+      setUnwaivingId(null);
     }
   };
 
@@ -647,10 +669,30 @@ export function PenaltyManagementView({
                               </>
                             )}
                           </Button>
+                        ) : p.status === "WAIVED" ? (
+                          <div className="flex items-center justify-end gap-2.5">
+                            <span className="flex items-center gap-1 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+                              <X size={12} className="text-slate-300" />
+                              Waived
+                            </span>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              disabled={unwaivingId === p.id}
+                              className="h-8 text-[10px] font-black uppercase tracking-wider rounded-lg px-3 bg-indigo-50 text-indigo-600 border border-indigo-100 hover:bg-indigo-100 hover:text-indigo-700 transition-all flex items-center gap-1.5"
+                              onClick={() => executeUnwaive(p)}
+                            >
+                              {unwaivingId === p.id ? (
+                                <Loader2 size={12} className="animate-spin" />
+                              ) : (
+                                "Restore Penalty"
+                              )}
+                            </Button>
+                          </div>
                         ) : (
-                          <span className="flex items-center gap-1.5 justify-end text-[10px] font-semibold text-slate-300 uppercase tracking-wider">
-                            <CheckCircle2 size={12} />
-                            {p.status === "WAIVED" ? "Waived" : "Paid"}
+                          <span className="flex items-center gap-1.5 justify-end text-[10px] font-semibold text-emerald-600 uppercase tracking-wider">
+                            <CheckCircle2 size={12} className="text-emerald-500" />
+                            Paid
                           </span>
                         )}
                       </td>
