@@ -14,6 +14,7 @@ import { getSystemSettings } from "@/lib/actions/settings";
 import { DataImportExport } from "./data-import-export";
 import { exportUnitsCsv, importUnitsCsv } from "@/lib/actions/import-export";
 import { Pagination } from "./pagination";
+import { PropertyTabs } from "./property-tabs";
 
 export async function UnitsView({ 
   title = "Inventory",
@@ -83,9 +84,12 @@ export async function UnitsView({
   const limit = parseInt(searchParams?.limit || "10");
   const skip  = (page - 1) * limit;
 
+  const propertyWhere = { ...baseWhere };
+  delete propertyWhere.propertyId;
+
   // ── Main queries ─────────────────────────────────────────────
   // Run all queries in parallel
-  const [units, totalCount, allFloors, allUnitsForCounts] = await Promise.all([
+  const [units, totalCount, allFloors, allUnitsForCounts, allPropertiesForCounts, grandTotalProperties] = await Promise.all([
     // Paginated units matching current filters
     prisma.unit.findMany({
       where,
@@ -118,6 +122,14 @@ export async function UnitsView({
       where: baseWhere,
       _count: { _all: true },
     }),
+    // Per-property counts (ignoring propertyId and floor)
+    prisma.unit.groupBy({
+      by: ["propertyId"],
+      where: propertyWhere,
+      _count: { _all: true },
+    }),
+    // Grand total for property tabs (ignoring propertyId and floor)
+    prisma.unit.count({ where: propertyWhere })
   ]);
 
   const totalPages = Math.ceil(totalCount / limit);
@@ -129,6 +141,14 @@ export async function UnitsView({
     floorCounts[g.floor ?? 0] = g._count._all;
   });
   const grandTotalForTabs = Object.values(floorCounts).reduce((s, n) => s + n, 0);
+
+  // Build property counts map
+  const propertyCounts: Record<string, number> = {};
+  allPropertiesForCounts.forEach((g) => {
+    if (g.propertyId) {
+      propertyCounts[g.propertyId] = g._count._all;
+    }
+  });
 
   return (
     <div className="max-w-[1200px] mx-auto space-y-4 animate-in fade-in duration-700">
@@ -219,6 +239,22 @@ export async function UnitsView({
           />
         </div>
       </div>
+
+      {/* ── Property Tabs ───────────────────────────────────── */}
+      <Suspense fallback={
+        <div className="flex gap-2">
+          {[...Array(2)].map((_, i) => (
+            <div key={i} className="h-8 w-24 bg-slate-100 rounded-lg animate-pulse" />
+          ))}
+        </div>
+      }>
+        <PropertyTabs
+          properties={properties}
+          counts={propertyCounts}
+          currentPropertyId={searchParams?.propertyId}
+          totalCount={grandTotalProperties}
+        />
+      </Suspense>
 
       {/* ── Floor Tabs ───────────────────────────────────────── */}
       {distinctFloors.length > 0 && (
