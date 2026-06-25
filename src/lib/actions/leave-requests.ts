@@ -267,29 +267,51 @@ export async function issueClearanceAndVacate(id: string) {
         }
       });
 
-      // 2. Terminate Lease
-      await tx.lease.update({
-        where: { id: request.leaseId },
-        data: {
-          status: "TERMINATED",
-          terminatedAt: new Date(),
+      // 2. Identify all units and leases in the group
+      const parentUnitId = request.lease.unit.mergedIntoId || request.lease.unit.id;
+      const groupUnits = await tx.unit.findMany({
+        where: {
+          OR: [
+            { id: parentUnitId },
+            { mergedIntoId: parentUnitId }
+          ]
+        }
+      });
+      
+      const groupLeases = await tx.lease.findMany({
+        where: {
+          tenantId: request.lease.tenantId,
+          unitId: { in: groupUnits.map((u: any) => u.id) },
+          status: { in: ["ACTIVE", "PENDING", "SEALED"] }
         }
       });
 
-      // 3. Mark unit status
-      const u = await tx.unit.findUnique({ where: { id: request.lease.unitId } });
-      await tx.unit.update({
-        where: { id: request.lease.unitId },
+      const leaseIdsToTerminate = groupLeases.map((l: any) => l.id);
+
+      // Terminate all leases in the group
+      await tx.lease.updateMany({
+        where: { id: { in: leaseIdsToTerminate } },
         data: {
-          status: u?.companyOwned ? "COMPANY_OWNED" : "AVAILABLE"
+          status: "TERMINATED",
+          terminatedAt: new Date()
         }
       });
+
+      // 3. Mark all units in the group
+      for (const unitItem of groupUnits) {
+        await tx.unit.update({
+          where: { id: unitItem.id },
+          data: {
+            status: unitItem.companyOwned ? "COMPANY_OWNED" : "AVAILABLE"
+          }
+        });
+      }
 
       // 4. Create Audit Log
       await tx.auditLog.create({
         data: {
           userId: sessionUser.id,
-          action: `Issued clearance and vacated unit ${request.lease.unit.unitNumber} (Lease: ${request.leaseId})`,
+          action: `Issued clearance and vacated unit ${request.lease.unit.unitNumber} and merged child units (Lease: ${request.leaseId})`,
           actionType: "CLEARANCE_ISSUED",
           metadata: JSON.stringify({ leaveRequestId: id, leaseId: request.leaseId, unitId: request.lease.unitId })
         }

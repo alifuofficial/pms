@@ -119,12 +119,30 @@ export async function getPublicUnitStatus(slug: string) {
     const settings = await prisma.systemSettings.findUnique({ where: { id: "global" } });
     const bankAccounts = await prisma.bankAccount.findMany({ orderBy: { createdAt: "desc" } });
 
-    const activeLease = unit.leases.find(l => l.status === "ACTIVE" || l.status === "PENDING");
-    const payments = activeLease?.payments || [];
-    const penalties = activeLease?.penalties || [];
+    const activeLease = unit.leases.find(l => l.status === "ACTIVE" || l.status === "PENDING" || l.status === "SEALED");
+    let groupLeases = activeLease ? [activeLease] : [];
+    if (activeLease && unit.mergedUnits && unit.mergedUnits.length > 0) {
+      const childUnitIds = unit.mergedUnits.map(u => u.id);
+      const childLeases = await prisma.lease.findMany({
+        where: {
+          tenantId: activeLease.tenantId,
+          unitId: { in: childUnitIds },
+          status: { in: ["ACTIVE", "PENDING", "SEALED"] }
+        },
+        include: {
+          tenant: { select: { name: true } },
+          payments: { orderBy: { dueDate: "asc" } },
+          penalties: { orderBy: { dueDate: "asc" } }
+        }
+      });
+      groupLeases = [activeLease, ...childLeases];
+    }
+
+    const payments = groupLeases.flatMap(l => l.payments);
+    const penalties = groupLeases.flatMap(l => l.penalties);
     const utilityBills = activeLease
       ? await prisma.utilityBill.findMany({
-          where: { leaseId: activeLease.id },
+          where: { leaseId: { in: groupLeases.map(l => l.id) } },
           orderBy: { readingDate: "desc" }
         })
       : [];
@@ -155,7 +173,7 @@ export async function getPublicUnitStatus(slug: string) {
 
     // Adjust countdown based on the lease's advanceBalance
     const monthlyRent = unit.rentAmount;
-    const advanceBalance = activeLease?.advanceBalance || 0;
+    const advanceBalance = groupLeases.reduce((sum, l) => sum + (l.advanceBalance || 0), 0);
     const partialDays = monthlyRent > 0 ? Math.floor((advanceBalance / monthlyRent) * 30) : 0;
     const daysLeft = daysLeftVal + partialDays;
 
@@ -175,17 +193,49 @@ export async function getPublicUnitStatus(slug: string) {
       ? getArrearMonths(new Date(activeLease.startDate), payments) 
       : [];
 
-    const dbPenaltyMap = new Map<string, any>();
-    for (const p of penalties) {
-      const d = new Date(p.dueDate);
-      dbPenaltyMap.set(`${d.getFullYear()}-${d.getMonth()}`, p);
-    }
+    // Helper function to calculate combined group penalty for a given month/dueDate
+    const getCombinedPenaltyForDate = (d: Date) => {
+      let totalPenalty = 0;
+      let maxTier = 0;
+      let maxDays = 0;
+
+      for (const l of groupLeases) {
+        // Find the unit details locally for this lease's unitId
+        const u: any = l.unitId === unit.id 
+          ? unit 
+          : (unit.mergedUnits || []).find((mu: any) => mu.id === l.unitId);
+
+        const rent = u?.rentAmount || 0;
+        const penaltyExempt = u?.penaltyExempt || false;
+
+        // Find if this lease has a penalty record in the DB for this month
+        const leasePenaltiesForMonth = (l.penalties || []).filter((p: any) => {
+          const pd = new Date(p.dueDate);
+          return pd.getFullYear() === d.getFullYear() && pd.getMonth() === d.getMonth();
+        });
+        
+        const dbLeasePenalty = leasePenaltiesForMonth[0] || null;
+
+        const { penalty, penaltyTier, diffDays } = calcMonthPenalty(
+          d, 
+          rent, 
+          settings, 
+          dbLeasePenalty, 
+          penaltyExempt
+        );
+
+        totalPenalty += penalty;
+        if (penaltyTier > maxTier) maxTier = penaltyTier;
+        if (diffDays > maxDays) maxDays = diffDays;
+      }
+
+      return { penalty: totalPenalty, penaltyTier: maxTier, diffDays: maxDays };
+    };
 
     const rawArrearsMonths = [
       ...pendingPayments.map(p => {
         const d = new Date(p.dueDate);
-        const dbPenalty = dbPenaltyMap.get(`${d.getFullYear()}-${d.getMonth()}`);
-        const { penalty, penaltyTier, diffDays } = calcMonthPenalty(new Date(p.dueDate), unit.rentAmount, settings, dbPenalty, unit.penaltyExempt);
+        const { penalty, penaltyTier, diffDays } = getCombinedPenaltyForDate(d);
         return {
           id: p.id,
           dueDate: p.dueDate,
@@ -202,8 +252,7 @@ export async function getPublicUnitStatus(slug: string) {
         };
       }),
       ...gapMonthDates.filter(gd => !pendingDueDates.has(`${gd.getFullYear()}-${gd.getMonth()}`)).map(gd => {
-        const dbPenalty = dbPenaltyMap.get(`${gd.getFullYear()}-${gd.getMonth()}`);
-        const { penalty, penaltyTier, diffDays } = calcMonthPenalty(gd, unit.rentAmount, settings, dbPenalty, unit.penaltyExempt);
+        const { penalty, penaltyTier, diffDays } = getCombinedPenaltyForDate(gd);
         return {
           id: `gap-${gd.getFullYear()}-${gd.getMonth()}`,
           dueDate: gd,
@@ -242,17 +291,27 @@ export async function getPublicUnitStatus(slug: string) {
       })
     );
 
-    const unpaidPenalties = penalties
-      .filter(p => p.amount - p.paidAmount > 0 && p.status !== "WAIVED")
-      .filter(p => {
-        const d = new Date(p.dueDate);
-        return !arrearsMonthKeys.has(`${d.getFullYear()}-${d.getMonth()}`);
-      })
-      .map(p => ({
-        id: p.id,
-        amount: p.amount - p.paidAmount,
-        dueDate: p.dueDate,
-      }));
+    // Group unpaid historical penalties by month/due-date
+    const unpaidPenaltiesGroupedMap = new Map<string, { id: string; amount: number; dueDate: Date }>();
+    for (const p of penalties) {
+      if (p.amount - p.paidAmount <= 0 || p.status === "WAIVED") continue;
+      
+      const d = new Date(p.dueDate);
+      const key = `${d.getFullYear()}-${d.getMonth()}`;
+      if (arrearsMonthKeys.has(key)) continue; // Already counted in arrearsMonths breakdown
+
+      const existing = unpaidPenaltiesGroupedMap.get(key);
+      if (existing) {
+        existing.amount += (p.amount - p.paidAmount);
+      } else {
+        unpaidPenaltiesGroupedMap.set(key, {
+          id: `unpaid-penalty-${key}`,
+          amount: p.amount - p.paidAmount,
+          dueDate: p.dueDate,
+        });
+      }
+    }
+    const unpaidPenalties = Array.from(unpaidPenaltiesGroupedMap.values());
     const unpaidPenaltyTotal = unpaidPenalties.reduce((sum, p) => sum + p.amount, 0);
     const grandTotal = arrearsMonths.reduce((sum, m) => sum + m.totalAmount, 0) + unpaidPenaltyTotal;
 
@@ -260,8 +319,7 @@ export async function getPublicUnitStatus(slug: string) {
     const primaryMonth = arrearsMonths[0] || null;
     const estimatedNext = !primaryMonth && latestApprovedPayment ? (() => {
       const nextDate = addEthiopianMonths(new Date(latestApprovedPayment.advanceUntil || latestApprovedPayment.dueDate), 1);
-      const dbPenalty = dbPenaltyMap.get(`${nextDate.getFullYear()}-${nextDate.getMonth()}`);
-      const { penalty, penaltyTier, diffDays } = calcMonthPenalty(nextDate, unit.rentAmount, settings, dbPenalty, unit.penaltyExempt);
+      const { penalty, penaltyTier, diffDays } = getCombinedPenaltyForDate(nextDate);
       return {
         id: "estimated",
         dueDate: nextDate,
@@ -294,7 +352,7 @@ export async function getPublicUnitStatus(slug: string) {
         id: activeLease.id,
         status: activeLease.status,
         tenantName: activeLease.tenant.name,
-        advanceBalance: (activeLease as any).advanceBalance || 0,
+        advanceBalance,
         pendingAmount: payments
           .filter(p => p.status === "PENDING")
           .reduce((sum, p) => sum + p.amount, 0),

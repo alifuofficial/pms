@@ -69,6 +69,38 @@ function getLeaseArrearMonths(leaseStart: Date, approvedPayments: any[]): Date[]
   return arrears;
 }
 
+async function getMergedGroupLeases(leaseId: string, tenantId: string, tx: any) {
+  const lease = await tx.lease.findUnique({
+    where: { id: leaseId },
+    include: { unit: true }
+  });
+  if (!lease) return [];
+
+  const parentUnitId = lease.unit.mergedIntoId || lease.unit.id;
+  const groupUnits = await tx.unit.findMany({
+    where: {
+      OR: [
+        { id: parentUnitId },
+        { mergedIntoId: parentUnitId }
+      ]
+    }
+  });
+
+  const groupLeases = await tx.lease.findMany({
+    where: {
+      tenantId: tenantId,
+      unitId: { in: groupUnits.map((u: any) => u.id) },
+      status: { in: ["ACTIVE", "PENDING", "SEALED"] }
+    },
+    include: {
+      unit: true,
+      penalties: { orderBy: { dueDate: "asc" } }
+    }
+  });
+
+  return groupLeases;
+}
+
 export async function approvePayment(
   paymentId: string, 
   penaltyAmountReceived?: number,
@@ -93,8 +125,153 @@ export async function approvePayment(
     });
     if (!currentPayment) return { success: false, error: "Payment not found" };
 
-    const monthlyRent = currentPayment.lease.unit.rentAmount;
     const settings = await prisma.systemSettings.findUnique({ where: { id: "global" } });
+    const finalAmount = actualAmountReceived !== undefined ? actualAmountReceived : currentPayment.amount;
+
+    // Retrieve active merged group leases
+    const groupLeases = await getMergedGroupLeases(currentPayment.leaseId, currentPayment.tenantId, prisma);
+    
+    if (groupLeases.length > 1) {
+      // ── MERGED GROUP PAYMENT APPROVAL ──────────────────────────────────────
+      const totalGroupRent = groupLeases.reduce((sum: number, l: any) => sum + l.unit.rentAmount, 0) || 1;
+      
+      // Calculate share for each lease
+      let totalAssigned = 0;
+      const leaseShares = new Map<string, number>();
+      for (let i = 0; i < groupLeases.length; i++) {
+        const l = groupLeases[i];
+        if (i === groupLeases.length - 1) {
+          leaseShares.set(l.id, Math.max(0, Math.round((finalAmount - totalAssigned) * 100) / 100));
+        } else {
+          const share = Math.round((finalAmount * (l.unit.rentAmount / totalGroupRent)) * 100) / 100;
+          leaseShares.set(l.id, share);
+          totalAssigned += share;
+        }
+      }
+
+      await prisma.$transaction(async (tx) => {
+        // 1. Process primary payment record
+        const primaryShare = leaseShares.get(currentPayment.leaseId) || 0;
+        await tx.payment.update({
+          where: { id: paymentId },
+          data: {
+            status: "APPROVED",
+            amount: primaryShare,
+            approvedBy: sessionUser.id,
+            paidAt: new Date()
+          }
+        });
+
+        // 2. Process secondary leases
+        for (const l of groupLeases) {
+          if (l.id === currentPayment.leaseId) continue;
+          
+          const lShare = leaseShares.get(l.id) || 0;
+          // Check if there is already a PENDING payment for this lease on the same dueDate
+          const existingPending = await tx.payment.findFirst({
+            where: {
+              leaseId: l.id,
+              status: "PENDING"
+            }
+          });
+
+          if (existingPending) {
+            await tx.payment.update({
+              where: { id: existingPending.id },
+              data: {
+                status: "APPROVED",
+                amount: lShare,
+                approvedBy: sessionUser.id,
+                paidAt: new Date(),
+                receiptUrl: currentPayment.receiptUrl,
+                senderName: currentPayment.senderName,
+                transactionId: currentPayment.transactionId ? `${currentPayment.transactionId}_ref_${currentPayment.id}` : `ref_${currentPayment.id}`
+              }
+            });
+          } else {
+            await tx.payment.create({
+              data: {
+                leaseId: l.id,
+                tenantId: currentPayment.tenantId,
+                amount: lShare,
+                dueDate: currentPayment.dueDate,
+                status: "APPROVED",
+                type: currentPayment.type,
+                approvedBy: sessionUser.id,
+                paidAt: new Date(),
+                receiptUrl: currentPayment.receiptUrl,
+                senderName: currentPayment.senderName,
+                transactionId: currentPayment.transactionId ? `${currentPayment.transactionId}_ref_${currentPayment.id}` : `ref_${currentPayment.id}`
+              }
+            });
+          }
+        }
+
+        // 3. Mark units as OCCUPIED and leases as ACTIVE (if not sealed)
+        for (const l of groupLeases) {
+          await tx.unit.update({
+            where: { id: l.unitId },
+            data: { status: "OCCUPIED" }
+          });
+          
+          await tx.lease.update({
+            where: { id: l.id },
+            data: { status: l.status === "SEALED" ? "SEALED" : "ACTIVE" }
+          });
+        }
+
+        // 4. Recalculate lease state chronologically for all leases in the group
+        for (const l of groupLeases) {
+          await recalculateLeaseStateInternal(l.id, tx);
+        }
+
+        // 5. Create Audit Logs
+        for (const l of groupLeases) {
+          const lShare = leaseShares.get(l.id) || 0;
+          await tx.auditLog.create({
+            data: {
+              userId: sessionUser.id,
+              action: `Approved group payment share of ${lShare} for Unit ${l.unit.unitNumber}. (Primary payment: ${paymentId})`,
+              actionType: "PAYMENT_APPROVAL",
+              oldValue: JSON.stringify({ status: "PENDING" }),
+              newValue: JSON.stringify({ status: "APPROVED", amount: lShare }),
+              metadata: JSON.stringify({ paymentId, leaseId: l.id, amount: lShare })
+            }
+          });
+        }
+      });
+      
+      // Post-approval revalidations and SMS
+      try {
+        const lease = await prisma.lease.findUnique({ 
+          where: { id: currentPayment.leaseId },
+          include: { unit: true, tenant: true }
+        });
+        
+        // SMS combined approval message
+        if (lease?.tenant?.phoneNumber) {
+          const { sendSMS } = await import("@/lib/sms");
+          await sendSMS(lease.tenant.phoneNumber, "payment-approved", {
+            tenant_name: lease.tenant.name || "Tenant",
+            unit_number: lease.unit.unitNumber || "N/A",
+            amount: finalAmount.toLocaleString()
+          });
+        }
+      } catch (notificationError) {
+        console.error("Post-approval notification error (non-fatal):", notificationError);
+      }
+
+      revalidatePath("/admin/payments");
+      revalidatePath("/admin/tenants");
+      revalidatePath("/accountant/payments");
+      revalidatePath("/accountant/dashboard");
+      revalidatePath("/admin/dashboard");
+      revalidatePath("/", "layout");
+      
+      return { success: true };
+    }
+
+    const monthlyRent = currentPayment.lease.unit.rentAmount;
     
     // Fetch all approved payments for this lease so we can calculate arrears
     const approvedPayments = await prisma.payment.findMany({
@@ -104,7 +281,6 @@ export async function approvePayment(
     const gapMonths = getLeaseArrearMonths(new Date(currentPayment.lease.startDate), approvedPayments);
     gapMonths.sort((a, b) => a.getTime() - b.getTime());
 
-    const finalAmount = actualAmountReceived !== undefined ? actualAmountReceived : currentPayment.amount;
     let fundsRemaining = finalAmount + currentPayment.lease.advanceBalance;
     let actualPenaltyPaid = 0;
     let monthsCovered = 0;
@@ -336,12 +512,52 @@ export async function rejectPayment(paymentId: string) {
     const sessionUser = await resolveSessionUser();
     if (!sessionUser) return { success: false, error: "Unauthorized" };
 
-    const payment = await prisma.payment.update({
+    const payment = await prisma.payment.findUnique({
       where: { id: paymentId },
-      data: { status: "REJECTED" },
       include: {
         tenant: true,
         lease: { include: { unit: true } }
+      }
+    });
+    if (!payment) return { success: false, error: "Payment not found" };
+
+    // Resolve to primary payment if child payment is selected
+    let primaryPaymentId = paymentId;
+    if (payment.transactionId) {
+      const match = payment.transactionId.match(/(?:_ref_|ref_)([a-z0-9]+)$/i);
+      if (match) {
+        primaryPaymentId = match[1];
+      }
+    }
+
+    const childPayments = await prisma.payment.findMany({
+      where: {
+        OR: [
+          { transactionId: { endsWith: `_ref_${primaryPaymentId}` } },
+          { transactionId: `ref_${primaryPaymentId}` }
+        ]
+      }
+    });
+
+    const paymentIdsToReject = [primaryPaymentId, ...childPayments.map(p => p.id)];
+
+    await prisma.$transaction(async (tx) => {
+      await tx.payment.updateMany({
+        where: { id: { in: paymentIdsToReject } },
+        data: { status: "REJECTED" }
+      });
+
+      for (const pid of paymentIdsToReject) {
+        await tx.auditLog.create({
+          data: {
+            userId: sessionUser.id,
+            action: `Rejected group payment component ${pid} for primary payment ${primaryPaymentId}`,
+            actionType: "PAYMENT_REJECTION",
+            oldValue: JSON.stringify({ status: "PENDING" }),
+            newValue: JSON.stringify({ status: "REJECTED" }),
+            metadata: JSON.stringify({ paymentId: pid })
+          }
+        });
       }
     });
 
@@ -352,17 +568,6 @@ export async function rejectPayment(paymentId: string) {
         unit_number: payment.lease?.unit?.unitNumber || "N/A"
       });
     }
-
-    await prisma.auditLog.create({
-      data: {
-        userId: sessionUser.id,
-        action: `Rejected payment ${paymentId}`,
-        actionType: "PAYMENT_REJECTION",
-        oldValue: JSON.stringify({ status: "PENDING" }),
-        newValue: JSON.stringify({ status: "REJECTED" }),
-        metadata: JSON.stringify({ paymentId })
-      }
-    });
 
     revalidatePath("/admin/payments");
     revalidatePath("/accountant/payments");
@@ -484,8 +689,151 @@ export async function approvePaymentSystem(
     });
     if (!currentPayment) return { success: false, error: "Payment not found" };
 
-    const monthlyRent = currentPayment.lease.unit.rentAmount;
     const settings = await prisma.systemSettings.findUnique({ where: { id: "global" } });
+    const finalAmount = actualAmountReceived !== undefined ? actualAmountReceived : currentPayment.amount;
+
+    // Retrieve active merged group leases
+    const groupLeases = await getMergedGroupLeases(currentPayment.leaseId, currentPayment.tenantId, prisma);
+    
+    if (groupLeases.length > 1) {
+      // ── MERGED GROUP PAYMENT APPROVAL ──────────────────────────────────────
+      const totalGroupRent = groupLeases.reduce((sum: number, l: any) => sum + l.unit.rentAmount, 0) || 1;
+      
+      // Calculate share for each lease
+      let totalAssigned = 0;
+      const leaseShares = new Map<string, number>();
+      for (let i = 0; i < groupLeases.length; i++) {
+        const l = groupLeases[i];
+        if (i === groupLeases.length - 1) {
+          leaseShares.set(l.id, Math.max(0, Math.round((finalAmount - totalAssigned) * 100) / 100));
+        } else {
+          const share = Math.round((finalAmount * (l.unit.rentAmount / totalGroupRent)) * 100) / 100;
+          leaseShares.set(l.id, share);
+          totalAssigned += share;
+        }
+      }
+
+      await prisma.$transaction(async (tx) => {
+        // 1. Process primary payment record
+        const primaryShare = leaseShares.get(currentPayment.leaseId) || 0;
+        await tx.payment.update({
+          where: { id: paymentId },
+          data: {
+            status: "APPROVED",
+            amount: primaryShare,
+            approvedBy: defaultAdmin.id,
+            paidAt: new Date()
+          }
+        });
+
+        // 2. Process secondary leases
+        for (const l of groupLeases) {
+          if (l.id === currentPayment.leaseId) continue;
+          
+          const lShare = leaseShares.get(l.id) || 0;
+          // Check if there is already a PENDING payment for this lease on the same dueDate
+          const existingPending = await tx.payment.findFirst({
+            where: {
+              leaseId: l.id,
+              status: "PENDING"
+            }
+          });
+
+          if (existingPending) {
+            await tx.payment.update({
+              where: { id: existingPending.id },
+              data: {
+                status: "APPROVED",
+                amount: lShare,
+                approvedBy: defaultAdmin.id,
+                paidAt: new Date(),
+                receiptUrl: currentPayment.receiptUrl,
+                senderName: currentPayment.senderName,
+                transactionId: currentPayment.transactionId ? `${currentPayment.transactionId}_ref_${currentPayment.id}` : `ref_${currentPayment.id}`
+              }
+            });
+          } else {
+            await tx.payment.create({
+              data: {
+                leaseId: l.id,
+                tenantId: currentPayment.tenantId,
+                amount: lShare,
+                dueDate: currentPayment.dueDate,
+                status: "APPROVED",
+                type: currentPayment.type,
+                approvedBy: defaultAdmin.id,
+                paidAt: new Date(),
+                receiptUrl: currentPayment.receiptUrl,
+                senderName: currentPayment.senderName,
+                transactionId: currentPayment.transactionId ? `${currentPayment.transactionId}_ref_${currentPayment.id}` : `ref_${currentPayment.id}`
+              }
+            });
+          }
+        }
+
+        // 3. Mark units as OCCUPIED and leases as ACTIVE (if not sealed)
+        for (const l of groupLeases) {
+          await tx.unit.update({
+            where: { id: l.unitId },
+            data: { status: "OCCUPIED" }
+          });
+          
+          await tx.lease.update({
+            where: { id: l.id },
+            data: { status: l.status === "SEALED" ? "SEALED" : "ACTIVE" }
+          });
+        }
+
+        // 4. Recalculate lease state chronologically for all leases in the group
+        for (const l of groupLeases) {
+          await recalculateLeaseStateInternal(l.id, tx);
+        }
+
+        // 5. Create Audit Logs
+        for (const l of groupLeases) {
+          const lShare = leaseShares.get(l.id) || 0;
+          await tx.auditLog.create({
+            data: {
+              userId: defaultAdmin.id,
+              action: `System Approved group payment share of ${lShare} for Unit ${l.unit.unitNumber}. (Primary payment: ${paymentId})`,
+              actionType: "PAYMENT_APPROVAL",
+              oldValue: JSON.stringify({ status: "PENDING" }),
+              newValue: JSON.stringify({ status: "APPROVED", amount: lShare }),
+              metadata: JSON.stringify({ paymentId, leaseId: l.id, amount: lShare })
+            }
+          });
+        }
+      });
+      
+      // Post-approval notifications
+      try {
+        const lease = await prisma.lease.findUnique({ 
+          where: { id: currentPayment.leaseId },
+          include: { unit: true, tenant: true }
+        });
+        if (lease?.tenant?.phoneNumber) {
+          const { sendSMS } = await import("@/lib/sms");
+          await sendSMS(lease.tenant.phoneNumber, "payment-approved", {
+            tenant_name: lease.tenant.name || "Tenant",
+            unit_number: lease.unit.unitNumber || "N/A",
+            amount: finalAmount.toLocaleString()
+          });
+        }
+      } catch (notificationError) {
+        console.error("Post-approval notification error (non-fatal):", notificationError);
+      }
+
+      revalidatePath("/admin/payments");
+      revalidatePath("/admin/tenants");
+      revalidatePath("/accountant/payments");
+      revalidatePath("/accountant/dashboard");
+      revalidatePath("/admin/dashboard");
+      revalidatePath("/", "layout");
+      
+      return { success: true };
+    }
+
+    const monthlyRent = currentPayment.lease.unit.rentAmount;
     
     // Fetch all approved payments for this lease so we can calculate arrears
     const approvedPayments = await prisma.payment.findMany({
@@ -495,7 +843,6 @@ export async function approvePaymentSystem(
     const gapMonths = getLeaseArrearMonths(new Date(currentPayment.lease.startDate), approvedPayments);
     gapMonths.sort((a, b) => a.getTime() - b.getTime());
 
-    const finalAmount = actualAmountReceived !== undefined ? actualAmountReceived : currentPayment.amount;
     let fundsRemaining = finalAmount + currentPayment.lease.advanceBalance;
     let actualPenaltyPaid = 0;
     let monthsCovered = 0;
@@ -987,35 +1334,133 @@ export async function updateApprovedPaymentAmount(paymentId: string, newAmount: 
     }
 
     const payment = await prisma.payment.findUnique({
-      where: { id: paymentId }
+      where: { id: paymentId },
+      include: { lease: { include: { unit: true } } }
     });
     if (!payment) return { success: false, error: "Payment not found" };
     if (payment.status !== "APPROVED") {
       return { success: false, error: "Payment is not approved yet" };
     }
 
-    await prisma.$transaction(async (tx) => {
-      // 1. Update the payment amount
-      await tx.payment.update({
-        where: { id: paymentId },
-        data: { amount: newAmount }
-      });
+    // Check if group payment
+    let primaryPaymentId = paymentId;
+    if (payment.transactionId) {
+      const match = payment.transactionId.match(/(?:_ref_|ref_)([a-z0-9]+)$/i);
+      if (match) {
+        primaryPaymentId = match[1];
+      }
+    }
 
-      // 2. Recalculate lease chronological states
-      await recalculateLeaseStateInternal(payment.leaseId, tx);
-
-      // 3. Create an audit log
-      await tx.auditLog.create({
-        data: {
-          userId: sessionUser.id,
-          action: `Updated approved payment INV-${paymentId.slice(0, 8).toUpperCase()} amount from ${payment.amount} to ${newAmount}. Triggered chronological lease state recalculation.`,
-          actionType: "PAYMENT_APPROVAL",
-          oldValue: JSON.stringify({ amount: payment.amount }),
-          newValue: JSON.stringify({ amount: newAmount }),
-          metadata: JSON.stringify({ paymentId, oldAmount: payment.amount, newAmount })
-        }
-      });
+    const childPayments = await prisma.payment.findMany({
+      where: {
+        OR: [
+          { transactionId: { endsWith: `_ref_${primaryPaymentId}` } },
+          { transactionId: `ref_${primaryPaymentId}` }
+        ]
+      }
     });
+
+    if (childPayments.length > 0 || primaryPaymentId !== paymentId) {
+      // It's a group payment!
+      // If they edited a child payment directly, just update its amount individually.
+      // If they edited the primary payment, treat newAmount as the new total and split it!
+      if (paymentId !== primaryPaymentId) {
+        // Child payment edited directly
+        await prisma.$transaction(async (tx) => {
+          await tx.payment.update({
+            where: { id: paymentId },
+            data: { amount: newAmount }
+          });
+          await recalculateLeaseStateInternal(payment.leaseId, tx);
+          
+          await tx.auditLog.create({
+            data: {
+              userId: sessionUser.id,
+              action: `Updated child approved payment INV-${paymentId.slice(0, 8).toUpperCase()} amount from ${payment.amount} to ${newAmount}. Recalculated lease.`,
+              actionType: "PAYMENT_APPROVAL",
+              oldValue: JSON.stringify({ amount: payment.amount }),
+              newValue: JSON.stringify({ amount: newAmount }),
+              metadata: JSON.stringify({ paymentId, oldAmount: payment.amount, newAmount })
+            }
+          });
+        });
+      } else {
+        // Primary payment edited: split newAmount proportionally
+        const groupLeases = await getMergedGroupLeases(payment.leaseId, payment.tenantId, prisma);
+        const totalGroupRent = groupLeases.reduce((sum: number, l: any) => sum + l.unit.rentAmount, 0) || 1;
+        
+        let totalAssigned = 0;
+        const leaseShares = new Map<string, number>();
+        for (let i = 0; i < groupLeases.length; i++) {
+          const l = groupLeases[i];
+          if (i === groupLeases.length - 1) {
+            leaseShares.set(l.id, Math.max(0, Math.round((newAmount - totalAssigned) * 100) / 100));
+          } else {
+            const share = Math.round((newAmount * (l.unit.rentAmount / totalGroupRent)) * 100) / 100;
+            leaseShares.set(l.id, share);
+            totalAssigned += share;
+          }
+        }
+
+        await prisma.$transaction(async (tx) => {
+          // Update primary payment amount
+          const primaryShare = leaseShares.get(primaryPaymentId) || 0;
+          await tx.payment.update({
+            where: { id: primaryPaymentId },
+            data: { amount: primaryShare }
+          });
+
+          // Update child payments amounts
+          for (const cp of childPayments) {
+            const cpShare = leaseShares.get(cp.leaseId) || 0;
+            await tx.payment.update({
+              where: { id: cp.id },
+              data: { amount: cpShare }
+            });
+          }
+
+          // Recalculate chronological states for all leases in the group
+          for (const l of groupLeases) {
+            await recalculateLeaseStateInternal(l.id, tx);
+          }
+
+          // Audit logs
+          for (const l of groupLeases) {
+            const lShare = leaseShares.get(l.id) || 0;
+            await tx.auditLog.create({
+              data: {
+                userId: sessionUser.id,
+                action: `Updated group payment share to ${lShare} for Unit ${l.unit.unitNumber} (primary payment total updated to ${newAmount})`,
+                actionType: "PAYMENT_APPROVAL",
+                oldValue: JSON.stringify({}),
+                newValue: JSON.stringify({ amount: lShare }),
+                metadata: JSON.stringify({ paymentId: primaryPaymentId, leaseId: l.id, amount: lShare })
+              }
+            });
+          }
+        });
+      }
+    } else {
+      // Standard single payment update
+      await prisma.$transaction(async (tx) => {
+        await tx.payment.update({
+          where: { id: paymentId },
+          data: { amount: newAmount }
+        });
+        await recalculateLeaseStateInternal(payment.leaseId, tx);
+        
+        await tx.auditLog.create({
+          data: {
+            userId: sessionUser.id,
+            action: `Updated approved payment INV-${paymentId.slice(0, 8).toUpperCase()} amount from ${payment.amount} to ${newAmount}. Triggered chronological lease state recalculation.`,
+            actionType: "PAYMENT_APPROVAL",
+            oldValue: JSON.stringify({ amount: payment.amount }),
+            newValue: JSON.stringify({ amount: newAmount }),
+            metadata: JSON.stringify({ paymentId, oldAmount: payment.amount, newAmount })
+          }
+        });
+      });
+    }
 
     revalidatePath("/admin/payments");
     revalidatePath("/accountant/payments");

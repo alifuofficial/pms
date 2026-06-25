@@ -9,6 +9,124 @@ import { resolveSessionUser } from "./auth-helper";
 import { toEthiopian, getDaysInEthiopianMonth } from "@/lib/calendar";
 import { getLeaseUncollectedBalance } from "@/lib/arrears";
 
+async function getMergedGroupLeases(leaseId: string, tenantId: string, tx: any) {
+  const lease = await tx.lease.findUnique({
+    where: { id: leaseId },
+    include: { unit: true }
+  });
+  if (!lease) return [];
+
+  const parentUnitId = lease.unit.mergedIntoId || lease.unit.id;
+  const groupUnits = await tx.unit.findMany({
+    where: {
+      OR: [
+        { id: parentUnitId },
+        { mergedIntoId: parentUnitId }
+      ]
+    }
+  });
+
+  const groupLeases = await tx.lease.findMany({
+    where: {
+      tenantId: tenantId,
+      unitId: { in: groupUnits.map((u: any) => u.id) },
+      status: { in: ["ACTIVE", "PENDING", "SEALED", "EXPIRED"] }
+    },
+    include: {
+      unit: true,
+      payments: { orderBy: { dueDate: "asc" } },
+      penalties: { orderBy: { dueDate: "asc" } },
+      utilityBills: { orderBy: { readingDate: "desc" } }
+    }
+  });
+
+  return groupLeases;
+}
+
+async function getCombinedGroupLockoutDetails(leaseId: string, lockoutDate: Date, isSeal: boolean) {
+  const lease = await prisma.lease.findUnique({
+    where: { id: leaseId },
+    include: { unit: true, tenant: true }
+  });
+  if (!lease) throw new Error("Lease not found");
+
+  const settings = await prisma.systemSettings.findUnique({ where: { id: "global" } });
+  const groupLeases = await getMergedGroupLeases(leaseId, lease.tenantId, prisma);
+
+  let combinedRentUncollected = 0;
+  let combinedPenaltiesUncollected = 0;
+  let combinedProRatedRent = 0;
+  let combinedFullMonthsRentArrears = 0;
+  let combinedTotalSettlementAmount = 0;
+  
+  let daysUsed = 0;
+  let daysInMonth = 0;
+  let isLockoutMonthUnpaid = false;
+
+  for (const gl of groupLeases) {
+    const balance = getLeaseUncollectedBalance(gl, settings, lockoutDate);
+    let finalRentArrears = balance.rentUncollected;
+    const lockoutEt = toEthiopian(lockoutDate);
+
+    const approvedPayments = gl.payments.filter((p: any) => p.status === "APPROVED");
+    const latestApproved = approvedPayments.length > 0
+      ? [...approvedPayments].sort((a, b) => new Date(a.advanceUntil || a.dueDate).getTime() - new Date(b.advanceUntil || b.dueDate).getTime())[approvedPayments.length - 1]
+      : null;
+
+    const coverageUntil = latestApproved ? new Date(latestApproved.advanceUntil || latestApproved.dueDate) : null;
+    let glIsLockoutMonthUnpaid = false;
+    if (!coverageUntil) {
+      glIsLockoutMonthUnpaid = true;
+    } else {
+      const covEt = toEthiopian(coverageUntil);
+      if (lockoutEt.year > covEt.year || (lockoutEt.year === covEt.year && lockoutEt.month > covEt.month)) {
+        glIsLockoutMonthUnpaid = true;
+      }
+    }
+
+    let glProRatedRent = 0;
+    const glFullMonthRent = gl.unit.rentAmount;
+    
+    if (glIsLockoutMonthUnpaid) {
+      isLockoutMonthUnpaid = true;
+      daysInMonth = getDaysInEthiopianMonth(lockoutEt.year, lockoutEt.month);
+      daysUsed = lockoutEt.day;
+      if (isSeal) {
+        glProRatedRent = glFullMonthRent;
+      } else {
+        if (daysUsed < daysInMonth) {
+          glProRatedRent = (daysUsed / daysInMonth) * glFullMonthRent;
+          const adjustment = glFullMonthRent - glProRatedRent;
+          finalRentArrears = Math.max(0, finalRentArrears - adjustment);
+        } else {
+          glProRatedRent = glFullMonthRent;
+        }
+      }
+    }
+
+    const glSettlement = Math.round((finalRentArrears + balance.penaltiesUncollected) * 100) / 100;
+    const glFullMonthsArrears = Math.max(0, finalRentArrears - glProRatedRent);
+
+    combinedRentUncollected += balance.rentUncollected;
+    combinedPenaltiesUncollected += balance.penaltiesUncollected;
+    combinedProRatedRent += glProRatedRent;
+    combinedFullMonthsRentArrears += glFullMonthsArrears;
+    combinedTotalSettlementAmount += glSettlement;
+  }
+
+  return {
+    isLockoutMonthUnpaid,
+    daysUsed,
+    daysInMonth,
+    proRatedRent: Math.round(combinedProRatedRent * 100) / 100,
+    fullMonthsRentArrears: Math.round(combinedFullMonthsRentArrears * 100) / 100,
+    penaltiesUncollected: Math.round(combinedPenaltiesUncollected * 100) / 100,
+    totalSettlementAmount: Math.round(combinedTotalSettlementAmount * 100) / 100,
+    groupLeases,
+    lease
+  };
+}
+
 export async function createUser(data: {
   name: string;
   email: string;
@@ -643,75 +761,49 @@ export async function lockoutLease(
 
   try {
     const lockoutDate = new Date(lockoutDateRaw);
-    const lease = await prisma.lease.findUnique({
-      where: { id: leaseId },
-      include: {
-        unit: true,
-        tenant: true,
-        payments: true,
-        penalties: true,
-        utilityBills: true
-      }
-    });
+    const preview = await getCombinedGroupLockoutDetails(leaseId, lockoutDate, false);
+    const { totalSettlementAmount, groupLeases, lease } = preview;
 
     if (!lease) return { success: false, error: "Lease not found" };
     if (lease.status !== "ACTIVE" && lease.status !== "EXPIRED" && lease.status !== "SEALED") {
       return { success: false, error: `Lease is not in a lockable state (current status: ${lease.status})` };
     }
 
-    const settings = await prisma.systemSettings.findUnique({ where: { id: "global" } });
-    const balance = getLeaseUncollectedBalance(lease, settings, lockoutDate);
+    const totalGroupRent = groupLeases.reduce((sum: number, l: any) => sum + l.unit.rentAmount, 0) || 1;
 
-    // Apply pro-rated adjustment for the final month if lockout month is unpaid
-    let finalRentArrears = balance.rentUncollected;
-    const lockoutEt = toEthiopian(lockoutDate);
-
-    const approvedPayments = lease.payments.filter(p => p.status === "APPROVED");
-    const latestApproved = approvedPayments.length > 0
-      ? [...approvedPayments].sort((a, b) => new Date(a.advanceUntil || a.dueDate).getTime() - new Date(b.advanceUntil || b.dueDate).getTime())[approvedPayments.length - 1]
-      : null;
-
-    const coverageUntil = latestApproved ? new Date(latestApproved.advanceUntil || latestApproved.dueDate) : null;
-    let isLockoutMonthUnpaid = false;
-    if (!coverageUntil) {
-      isLockoutMonthUnpaid = true;
-    } else {
-      const covEt = toEthiopian(coverageUntil);
-      if (lockoutEt.year > covEt.year || (lockoutEt.year === covEt.year && lockoutEt.month > covEt.month)) {
-        isLockoutMonthUnpaid = true;
+    // Calculate share of settlement for each lease
+    let totalAssigned = 0;
+    const leaseShares = new Map<string, number>();
+    for (let i = 0; i < groupLeases.length; i++) {
+      const l = groupLeases[i];
+      if (i === groupLeases.length - 1) {
+        leaseShares.set(l.id, Math.max(0, Math.round((totalSettlementAmount - totalAssigned) * 100) / 100));
+      } else {
+        const share = Math.round((totalSettlementAmount * (l.unit.rentAmount / totalGroupRent)) * 100) / 100;
+        leaseShares.set(l.id, share);
+        totalAssigned += share;
       }
     }
-
-    if (isLockoutMonthUnpaid) {
-      const daysInMonth = getDaysInEthiopianMonth(lockoutEt.year, lockoutEt.month);
-      const daysUsed = lockoutEt.day;
-      if (daysUsed < daysInMonth) {
-        const monthlyRent = lease.unit.rentAmount;
-        const fullMonthCharged = monthlyRent;
-        const proRatedRent = (daysUsed / daysInMonth) * monthlyRent;
-        const adjustment = fullMonthCharged - proRatedRent;
-        finalRentArrears = Math.max(0, finalRentArrears - adjustment);
-      }
-    }
-
-    const totalSettlementAmount = Math.round((finalRentArrears + balance.penaltiesUncollected) * 100) / 100;
 
     await prisma.$transaction(async (tx) => {
-      // 1. Create static FINAL_SETTLEMENT payment
-      await tx.payment.create({
-        data: {
-          leaseId,
-          tenantId: lease.tenantId,
-          amount: totalSettlementAmount,
-          dueDate: lockoutDate,
-          status: "PENDING",
-          type: "FINAL_SETTLEMENT",
-          senderName: "System Eviction Lockout",
-          transactionId: `LOCK-${leaseId.slice(0, 4).toUpperCase()}`
-        }
-      });
+      // 1. Create static FINAL_SETTLEMENT payment for each lease in group
+      for (const l of groupLeases) {
+        const share = leaseShares.get(l.id) || 0;
+        await tx.payment.create({
+          data: {
+            leaseId: l.id,
+            tenantId: l.tenantId,
+            amount: share,
+            dueDate: lockoutDate,
+            status: "PENDING",
+            type: "FINAL_SETTLEMENT",
+            senderName: "System Eviction Lockout",
+            transactionId: `LOCK-${leaseId.slice(0, 4).toUpperCase()}${l.id === leaseId ? "" : `_ref_${leaseId}`}`
+          }
+        });
+      }
 
-      // 2. Create SeizedProperty inventory record
+      // 2. Create SeizedProperty inventory record for the primary lease
       await tx.seizedProperty.create({
         data: {
           leaseId,
@@ -724,41 +816,47 @@ export async function lockoutLease(
         }
       });
 
-      // 3. Update Lease: set status to LOCKED_OUT, terminatedAt, clear advanceBalance
-      await tx.lease.update({
-        where: { id: leaseId },
-        data: {
-          status: "LOCKED_OUT",
-          terminatedAt: lockoutDate,
-          advanceBalance: 0
-        }
-      });
+      // 3. Update Lease: set status to LOCKED_OUT, terminatedAt, clear advanceBalance for ALL leases in group
+      for (const l of groupLeases) {
+        await tx.lease.update({
+          where: { id: l.id },
+          data: {
+            status: "LOCKED_OUT",
+            terminatedAt: lockoutDate,
+            advanceBalance: 0
+          }
+        });
+      }
 
-      // 4. Update Unit: set status to AVAILABLE (vacant)
-      await tx.unit.update({
-        where: { id: lease.unitId },
-        data: {
-          status: "AVAILABLE"
-        }
-      });
+      // 4. Update Unit: set status to AVAILABLE (vacant) for ALL units in group
+      for (const l of groupLeases) {
+        await tx.unit.update({
+          where: { id: l.unitId },
+          data: {
+            status: "AVAILABLE"
+          }
+        });
+      }
 
-      // 5. Reject any other pending payments for this lease
-      await tx.payment.updateMany({
-        where: {
-          leaseId,
-          status: "PENDING",
-          type: { not: "FINAL_SETTLEMENT" }
-        },
-        data: {
-          status: "REJECTED"
-        }
-      });
+      // 5. Reject any other pending payments for ALL leases in group
+      for (const l of groupLeases) {
+        await tx.payment.updateMany({
+          where: {
+            leaseId: l.id,
+            status: "PENDING",
+            type: { not: "FINAL_SETTLEMENT" }
+          },
+          data: {
+            status: "REJECTED"
+          }
+        });
+      }
 
       // 6. Create Audit Log
       await tx.auditLog.create({
         data: {
           userId: sessionUser.id,
-          action: `Executed lockout & eviction on lease ${leaseId} for tenant ${lease.tenant.name}. Seized property stored at ${storageLocation}. Final settlement amount: ${totalSettlementAmount}.`,
+          action: `Executed lockout & eviction on lease ${leaseId} and merged child leases for tenant ${lease.tenant.name}. Seized property stored at ${storageLocation}. Total settlement: ${totalSettlementAmount}.`,
           actionType: "LEASE_UPDATE",
           newValue: JSON.stringify({
             status: "LOCKED_OUT",
@@ -792,78 +890,18 @@ export async function getLeaseLockoutPreview(leaseId: string, lockoutDateRaw: st
 
   try {
     const lockoutDate = new Date(lockoutDateRaw);
-    const lease = await prisma.lease.findUnique({
-      where: { id: leaseId },
-      include: {
-        unit: true,
-        tenant: true,
-        payments: true,
-        penalties: true,
-        utilityBills: true
-      }
-    });
-
-    if (!lease) return { success: false, error: "Lease not found" };
-
-    const settings = await prisma.systemSettings.findUnique({ where: { id: "global" } });
-    const balance = getLeaseUncollectedBalance(lease, settings, lockoutDate);
-
-    // Apply pro-rated adjustment for the final month if lockout month is unpaid
-    let finalRentArrears = balance.rentUncollected;
-    const lockoutEt = toEthiopian(lockoutDate);
-
-    const approvedPayments = lease.payments.filter(p => p.status === "APPROVED");
-    const latestApproved = approvedPayments.length > 0
-      ? [...approvedPayments].sort((a, b) => new Date(a.advanceUntil || a.dueDate).getTime() - new Date(b.advanceUntil || b.dueDate).getTime())[approvedPayments.length - 1]
-      : null;
-
-    const coverageUntil = latestApproved ? new Date(latestApproved.advanceUntil || latestApproved.dueDate) : null;
-    let isLockoutMonthUnpaid = false;
-    if (!coverageUntil) {
-      isLockoutMonthUnpaid = true;
-    } else {
-      const covEt = toEthiopian(coverageUntil);
-      if (lockoutEt.year > covEt.year || (lockoutEt.year === covEt.year && lockoutEt.month > covEt.month)) {
-        isLockoutMonthUnpaid = true;
-      }
-    }
-
-    let proRatedRent = 0;
-    let fullMonthRent = lease.unit.rentAmount;
-    let daysUsed = 0;
-    let daysInMonth = 0;
-
-    if (isLockoutMonthUnpaid) {
-      daysInMonth = getDaysInEthiopianMonth(lockoutEt.year, lockoutEt.month);
-      daysUsed = lockoutEt.day;
-      if (isSeal) {
-        proRatedRent = fullMonthRent;
-      } else {
-        if (daysUsed < daysInMonth) {
-          proRatedRent = (daysUsed / daysInMonth) * fullMonthRent;
-          const adjustment = fullMonthRent - proRatedRent;
-          finalRentArrears = Math.max(0, finalRentArrears - adjustment);
-        } else {
-          proRatedRent = fullMonthRent;
-        }
-      }
-    }
-
-    const totalSettlementAmount = Math.round((finalRentArrears + balance.penaltiesUncollected) * 100) / 100;
-
-    // Separate full months arrears from pro-rated rent
-    const fullMonthsRentArrears = Math.max(0, finalRentArrears - proRatedRent);
+    const preview = await getCombinedGroupLockoutDetails(leaseId, lockoutDate, isSeal);
 
     return {
       success: true,
       data: {
-        isLockoutMonthUnpaid,
-        daysUsed,
-        daysInMonth,
-        proRatedRent,
-        fullMonthsRentArrears,
-        penaltiesUncollected: balance.penaltiesUncollected,
-        totalSettlementAmount
+        isLockoutMonthUnpaid: preview.isLockoutMonthUnpaid,
+        daysUsed: preview.daysUsed,
+        daysInMonth: preview.daysInMonth,
+        proRatedRent: preview.proRatedRent,
+        fullMonthsRentArrears: preview.fullMonthsRentArrears,
+        penaltiesUncollected: preview.penaltiesUncollected,
+        totalSettlementAmount: preview.totalSettlementAmount
       }
     };
   } catch (error: any) {
@@ -1184,10 +1222,13 @@ export async function sealLease(leaseId: string, sealDateRaw: string | Date, not
       return { success: false, error: `Lease is not in a sealable state (current status: ${lease.status})` };
     }
 
+    const groupLeases = await getMergedGroupLeases(leaseId, lease.tenantId, prisma);
+    const leaseIdsToSeal = groupLeases.length > 0 ? groupLeases.map((l: any) => l.id) : [leaseId];
+
     await prisma.$transaction(async (tx) => {
-      // 1. Update Lease Status to SEALED
-      await tx.lease.update({
-        where: { id: leaseId },
+      // 1. Update Lease Status to SEALED for all group leases
+      await tx.lease.updateMany({
+        where: { id: { in: leaseIdsToSeal } },
         data: {
           status: "SEALED"
         }
@@ -1197,7 +1238,7 @@ export async function sealLease(leaseId: string, sealDateRaw: string | Date, not
       await tx.auditLog.create({
         data: {
           userId: sessionUser.id,
-          action: `Sealed shop on lease ${leaseId} for tenant ${lease.tenant.name} on ${sealDate.toLocaleDateString()}. Note: ${note || "None"}`,
+          action: `Sealed shop on lease ${leaseId} and merged child leases for tenant ${lease.tenant.name} on ${sealDate.toLocaleDateString()}. Note: ${note || "None"}`,
           actionType: "LEASE_UPDATE",
           oldValue: JSON.stringify({ status: lease.status }),
           newValue: JSON.stringify({ status: "SEALED", sealDate, note })
@@ -1238,25 +1279,28 @@ export async function unsealLease(leaseId: string) {
       return { success: false, error: `Lease is not sealed (current status: ${lease.status})` };
     }
 
-    const newStatus = new Date(lease.endDate) < new Date() ? "EXPIRED" : "ACTIVE";
+    const groupLeases = await getMergedGroupLeases(leaseId, lease.tenantId, prisma);
 
     await prisma.$transaction(async (tx) => {
-      // 1. Update Lease Status back to ACTIVE/EXPIRED
-      await tx.lease.update({
-        where: { id: leaseId },
-        data: {
-          status: newStatus
-        }
-      });
+      // 1. Update Lease Status back to ACTIVE/EXPIRED for all group leases
+      for (const l of groupLeases) {
+        const newStatus = new Date(l.endDate) < new Date() ? "EXPIRED" : "ACTIVE";
+        await tx.lease.update({
+          where: { id: l.id },
+          data: {
+            status: newStatus
+          }
+        });
+      }
 
       // 2. Create Audit Log
       await tx.auditLog.create({
         data: {
           userId: sessionUser.id,
-          action: `Unsealed shop on lease ${leaseId} for tenant ${lease.tenant.name}, status restored to ${newStatus}.`,
+          action: `Unsealed shop on lease ${leaseId} and merged child leases for tenant ${lease.tenant.name}.`,
           actionType: "LEASE_UPDATE",
           oldValue: JSON.stringify({ status: lease.status }),
-          newValue: JSON.stringify({ status: newStatus })
+          newValue: JSON.stringify({ status: "UNSEALED" })
         }
       });
     });

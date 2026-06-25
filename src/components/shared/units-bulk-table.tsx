@@ -38,6 +38,23 @@ export function UnitsBulkTable({ units, currency }: { units: any[]; currency: st
   const [isPending, startTransition] = useTransition();
   const [allUnits, setAllUnits] = useState<any[]>([]);
 
+  // Load selected units from sessionStorage on mount
+  useEffect(() => {
+    try {
+      const saved = sessionStorage.getItem("selected_units");
+      if (saved) {
+        setSelected(new Set(JSON.parse(saved)));
+      }
+    } catch (e) {
+      console.error("Failed to load selected units from sessionStorage:", e);
+    }
+  }, []);
+
+  // Save selected units to sessionStorage whenever selection changes
+  useEffect(() => {
+    sessionStorage.setItem("selected_units", JSON.stringify(Array.from(selected)));
+  }, [selected]);
+
   useEffect(() => {
     if (bulkField === "merge") {
       getAllUnitsForMerge().then((res) => {
