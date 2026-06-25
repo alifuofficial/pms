@@ -1,6 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { 
+  getEthiopianYearRange, 
+  getEthiopianMonths, 
+  getDaysInEthiopianMonth, 
+  toEthiopian,
+  addEthiopianMonths,
+  getNowInAddisAbaba
+} from "@/lib/calendar";
+import Kenat from "kenat";
 import { 
   Dialog, 
   DialogContent, 
@@ -66,9 +75,15 @@ export function LeaveClearanceView({
   // Leave Request Dialog State
   const [isRequestOpen, setIsRequestOpen] = useState(false);
   const [selectedLeaseId, setSelectedLeaseId] = useState("");
-  const [requestedMoveOutDate, setRequestedMoveOutDate] = useState("");
   const [reason, setReason] = useState("");
   const [shortNoticeWarning, setShortNoticeWarning] = useState<number | null>(null);
+  const [requestType, setRequestType] = useState<"STANDARD" | "IMMEDIATE">("STANDARD");
+  const [ethMoveOut, setEthMoveOut] = useState<{ year: number; month: number; day: number }>({
+    year: 2018,
+    month: 1,
+    day: 1
+  });
+  const [validationError, setValidationError] = useState<string | null>(null);
 
   // Approval/Rejection states
   const [activeRequest, setActiveRequest] = useState<any>(null);
@@ -101,57 +116,140 @@ export function LeaveClearanceView({
     cleared: requests.filter(r => r.status === "CLEARANCE_ISSUED").length,
   };
 
+  // Helper to initialize form values
+  const initForm = () => {
+    const addisToday = getNowInAddisAbaba();
+    const futureDate = addEthiopianMonths(addisToday, 1);
+    const etFuture = toEthiopian(futureDate);
+
+    setRequestType("STANDARD");
+    setEthMoveOut(etFuture);
+    setSelectedLeaseId("");
+    setReason("");
+    setShortNoticeWarning(null);
+    setValidationError(null);
+  };
+
+  // Run on mount to set correct initial values in client
+  useEffect(() => {
+    const addisToday = getNowInAddisAbaba();
+    const futureDate = addEthiopianMonths(addisToday, 1);
+    setEthMoveOut(toEthiopian(futureDate));
+  }, []);
+
+  // Sync state values and recalculate validation/notice warning
+  useEffect(() => {
+    if (!isRequestOpen) return;
+    validateAndSetNotice(requestType, ethMoveOut, selectedLeaseId);
+  }, [requestType, ethMoveOut, selectedLeaseId, isRequestOpen]);
+
   const handleLeaseChange = (leaseId: string) => {
     setSelectedLeaseId(leaseId);
-    if (!leaseId) {
-      setShortNoticeWarning(null);
-      return;
-    }
-    const lease = activeLeases.find(l => l.id === leaseId);
-    if (lease && requestedMoveOutDate) {
-      calculateShortNotice(new Date(requestedMoveOutDate), lease.unit.rentAmount);
-    }
   };
 
-  const handleDateChange = (dateStr: string) => {
-    setRequestedMoveOutDate(dateStr);
-    if (!selectedLeaseId || !dateStr) {
-      setShortNoticeWarning(null);
-      return;
-    }
-    const lease = activeLeases.find(l => l.id === selectedLeaseId);
-    if (lease) {
-      calculateShortNotice(new Date(dateStr), lease.unit.rentAmount);
-    }
-  };
-
-  const calculateShortNotice = (moveOutDate: Date, rentAmount: number) => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const target = new Date(moveOutDate);
-    target.setHours(0, 0, 0, 0);
-    
-    const diffTime = target.getTime() - today.getTime();
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    
-    if (diffDays < 30) {
-      setShortNoticeWarning(rentAmount);
+  const handleRequestTypeChange = (type: "STANDARD" | "IMMEDIATE") => {
+    setRequestType(type);
+    if (type === "IMMEDIATE") {
+      const etToday = toEthiopian(getNowInAddisAbaba());
+      setEthMoveOut(etToday);
     } else {
+      const futureDate = addEthiopianMonths(getNowInAddisAbaba(), 1);
+      setEthMoveOut(toEthiopian(futureDate));
+    }
+  };
+
+  const handleEthYearChange = (yearVal: number) => {
+    const maxDays = getDaysInEthiopianMonth(yearVal, ethMoveOut.month);
+    const dayVal = Math.min(ethMoveOut.day, maxDays);
+    setEthMoveOut({ ...ethMoveOut, year: yearVal, day: dayVal });
+  };
+
+  const handleEthMonthChange = (monthVal: number) => {
+    const maxDays = getDaysInEthiopianMonth(ethMoveOut.year, monthVal);
+    const dayVal = Math.min(ethMoveOut.day, maxDays);
+    setEthMoveOut({ ...ethMoveOut, month: monthVal, day: dayVal });
+  };
+
+  const handleEthDayChange = (dayVal: number) => {
+    setEthMoveOut({ ...ethMoveOut, day: dayVal });
+  };
+
+  const getGregorianDate = (y: number, m: number, d: number) => {
+    try {
+      const etObj = new Kenat({ year: y, month: m, day: d });
+      const greg = etObj.getGregorian();
+      return new Date(greg.year, greg.month - 1, greg.day, 12, 0, 0);
+    } catch (e) {
+      return null;
+    }
+  };
+
+  const validateAndSetNotice = (
+    type: "STANDARD" | "IMMEDIATE",
+    ethDate: { year: number; month: number; day: number },
+    leaseId: string
+  ) => {
+    if (!leaseId) {
+      setValidationError(null);
+      setShortNoticeWarning(null);
+      return;
+    }
+
+    const lease = activeLeases.find((l) => l.id === leaseId);
+    const rentAmount = lease ? lease.unit.rentAmount : 0;
+
+    const addisToday = getNowInAddisAbaba();
+    addisToday.setHours(0, 0, 0, 0);
+
+    if (type === "IMMEDIATE") {
+      setValidationError(null);
+      setShortNoticeWarning(rentAmount);
+      return;
+    }
+
+    // STANDARD
+    const selectedGreg = getGregorianDate(ethDate.year, ethDate.month, ethDate.day);
+    if (!selectedGreg) {
+      setValidationError("Invalid Ethiopian date selected.");
+      setShortNoticeWarning(null);
+      return;
+    }
+
+    selectedGreg.setHours(0, 0, 0, 0);
+    const diffTime = selectedGreg.getTime() - addisToday.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+    if (diffDays < 30) {
+      setValidationError(`Notice period must be at least 30 days. Currently it is only ${diffDays} day(s).`);
+      setShortNoticeWarning(null);
+    } else {
+      setValidationError(null);
       setShortNoticeWarning(0);
     }
   };
 
   const handleCreateRequest = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedLeaseId || !requestedMoveOutDate) {
-      toast.error("Please fill in all required fields.");
+    if (!selectedLeaseId) {
+      toast.error("Please select a tenant.");
+      return;
+    }
+
+    const gregDate = getGregorianDate(ethMoveOut.year, ethMoveOut.month, ethMoveOut.day);
+    if (!gregDate) {
+      toast.error("Invalid move-out date.");
+      return;
+    }
+
+    if (requestType === "STANDARD" && validationError) {
+      toast.error(validationError);
       return;
     }
 
     setIsLoading(true);
     const result = await createLeaveRequest({
       leaseId: selectedLeaseId,
-      requestedMoveOutDate: new Date(requestedMoveOutDate),
+      requestedMoveOutDate: gregDate,
       reason,
       isOfficeRequest: true
     });
@@ -160,7 +258,6 @@ export function LeaveClearanceView({
     if (result.success) {
       toast.success("Leave request created successfully.");
       setIsRequestOpen(false);
-      // Refresh local list state
       window.location.reload();
     } else {
       toast.error(result.error || "Failed to create leave request.");
@@ -243,7 +340,7 @@ export function LeaveClearanceView({
           <h1 className="text-2xl font-bold tracking-tight text-slate-900">Leave & Clearance</h1>
           <p className="text-sm text-slate-500">Manage tenant move-out requests, notice penalty checks, and issue clearance certificates.</p>
         </div>
-        <Button onClick={() => setIsRequestOpen(true)} className="bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-2">
+        <Button onClick={() => { initForm(); setIsRequestOpen(true); }} className="bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-2">
           <Plus size={16} />
           <span>New Leave Request</span>
         </Button>
@@ -511,35 +608,128 @@ export function LeaveClearanceView({
               </select>
             </div>
 
-            <div className="space-y-1">
-              <Label htmlFor="moveOutDate" className="text-xs font-semibold text-slate-600">Requested Move-out Date</Label>
-              <Input
-                id="moveOutDate"
-                type="date"
-                value={requestedMoveOutDate}
-                onChange={(e) => handleDateChange(e.target.value)}
-                min={new Date().toISOString().split("T")[0]}
-                required
-              />
+            {/* Notice Type Option Selection */}
+            <div className="space-y-2">
+              <Label className="text-xs font-semibold text-slate-600">Request Type</Label>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => handleRequestTypeChange("STANDARD")}
+                  className={`flex flex-col items-start p-3 rounded-lg border text-left transition-all ${
+                    requestType === "STANDARD"
+                      ? "border-blue-600 bg-blue-50/30 ring-1 ring-blue-500"
+                      : "border-slate-200 bg-white hover:border-slate-300"
+                  }`}
+                >
+                  <span className="text-xs font-bold text-slate-900">Standard Notice</span>
+                  <span className="text-[10px] text-slate-500 mt-1">1 Month+ advance notice. No penalty fee.</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleRequestTypeChange("IMMEDIATE")}
+                  className={`flex flex-col items-start p-3 rounded-lg border text-left transition-all ${
+                    requestType === "IMMEDIATE"
+                      ? "border-amber-600 bg-amber-50/30 ring-1 ring-amber-500"
+                      : "border-slate-200 bg-white hover:border-slate-300"
+                  }`}
+                >
+                  <span className="text-xs font-bold text-slate-900">Immediate Request</span>
+                  <span className="text-[10px] text-slate-500 mt-1">Vacate today. 1 month rent penalty fee.</span>
+                </button>
+              </div>
             </div>
 
-            {/* Short Notice Warning Alert */}
-            {shortNoticeWarning !== null && shortNoticeWarning > 0 && (
+            {/* Ethiopian Date Selector */}
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold text-slate-600">
+                Requested Move-out Date (Ethiopian Calendar)
+              </Label>
+              <div className="grid grid-cols-3 gap-2">
+                <div className="space-y-1">
+                  <span className="text-[10px] font-medium text-slate-400">Day</span>
+                  <select
+                    value={ethMoveOut.day}
+                    onChange={(e) => handleEthDayChange(parseInt(e.target.value))}
+                    disabled={requestType === "IMMEDIATE" || isLoading}
+                    className="w-full h-9 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-slate-50 disabled:text-slate-400"
+                    required
+                  >
+                    {Array.from({
+                      length: ethMoveOut.year && ethMoveOut.month ? getDaysInEthiopianMonth(ethMoveOut.year, ethMoveOut.month) : 30
+                    }, (_, i) => i + 1).map((d) => (
+                      <option key={d} value={d}>
+                        {d}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <span className="text-[10px] font-medium text-slate-400">Month</span>
+                  <select
+                    value={ethMoveOut.month}
+                    onChange={(e) => handleEthMonthChange(parseInt(e.target.value))}
+                    disabled={requestType === "IMMEDIATE" || isLoading}
+                    className="w-full h-9 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-slate-50 disabled:text-slate-400"
+                    required
+                  >
+                    {getEthiopianMonths().map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <span className="text-[10px] font-medium text-slate-400">Year</span>
+                  <select
+                    value={ethMoveOut.year}
+                    onChange={(e) => handleEthYearChange(parseInt(e.target.value))}
+                    disabled={requestType === "IMMEDIATE" || isLoading}
+                    className="w-full h-9 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-slate-50 disabled:text-slate-400"
+                    required
+                  >
+                    {getEthiopianYearRange().map((y) => (
+                      <option key={y} value={y}>
+                        {y}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* Validation & Warning Alerts */}
+            {requestType === "STANDARD" && validationError && (
               <div className="bg-amber-50 border border-amber-200 text-amber-800 p-3 rounded-lg flex gap-2.5 items-start">
                 <AlertTriangle className="text-amber-600 shrink-0 mt-0.5" size={16} />
                 <div className="text-xs space-y-1">
-                  <p className="font-bold">Short Notice Period Penalty</p>
-                  <p>Move-out date is less than 30 days from today. A penalty payment record for 1-month's rent (<span className="font-semibold">{currency} {shortNoticeWarning.toLocaleString()}</span>) will be automatically billed to the tenant.</p>
+                  <p className="font-bold">Invalid Notice Period</p>
+                  <p>{validationError}</p>
                 </div>
               </div>
             )}
 
-            {shortNoticeWarning !== null && shortNoticeWarning === 0 && (
+            {requestType === "STANDARD" && !validationError && (
               <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 p-3 rounded-lg flex gap-2.5 items-start">
                 <CheckCircle className="text-emerald-600 shrink-0 mt-0.5" size={16} />
                 <div className="text-xs">
                   <p className="font-bold">Standard Notice Period</p>
                   <p>Notice period is 30 days or more. No notice penalties apply.</p>
+                </div>
+              </div>
+            )}
+
+            {requestType === "IMMEDIATE" && shortNoticeWarning !== null && shortNoticeWarning > 0 && (
+              <div className="bg-amber-50 border border-amber-200 text-amber-800 p-3 rounded-lg flex gap-2.5 items-start">
+                <AlertTriangle className="text-amber-600 shrink-0 mt-0.5" size={16} />
+                <div className="text-xs space-y-1">
+                  <p className="font-bold">Immediate Move-out Rent Penalty</p>
+                  <p>
+                    Immediate move-out requested. A penalty payment record for 1-month's rent (
+                    <span className="font-semibold">{currency} {shortNoticeWarning.toLocaleString()}</span>) will be automatically billed.
+                  </p>
                 </div>
               </div>
             )}
@@ -559,7 +749,11 @@ export function LeaveClearanceView({
               <Button type="button" variant="outline" onClick={() => setIsRequestOpen(false)} disabled={isLoading}>
                 Cancel
               </Button>
-              <Button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white" disabled={isLoading}>
+              <Button 
+                type="submit" 
+                className="bg-blue-600 hover:bg-blue-700 text-white" 
+                disabled={isLoading || (requestType === "STANDARD" && !!validationError)}
+              >
                 {isLoading ? "Submitting..." : "Submit Request"}
               </Button>
             </DialogFooter>
