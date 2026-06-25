@@ -382,3 +382,16 @@ export async function getUnitsByProperty(propertyId: string) {
     orderBy: { unitNumber: "asc" }
   });
 }
+
+export async function getAllUnitsForMerge() {
+  const session = await auth();
+  if (!session?.user) return [];
+  return await prisma.unit.findMany({
+    include: { property: true },
+    orderBy: [
+      { property: { name: "asc" } },
+      { floor: "asc" },
+      { unitNumber: "asc" }
+    ]
+  });
+}

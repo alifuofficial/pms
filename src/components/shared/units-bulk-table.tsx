@@ -1,12 +1,12 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Home, Building2, Layers, Maximize2, CheckSquare, Square, Minus, X, Pencil, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { UnitActions } from "./unit-actions";
-import { bulkUpdateUnits } from "@/lib/actions/properties";
+import { bulkUpdateUnits, getAllUnitsForMerge } from "@/lib/actions/properties";
 import { toast } from "sonner";
 
 const formatFloor = (f: number) => {
@@ -36,6 +36,15 @@ export function UnitsBulkTable({ units, currency }: { units: any[]; currency: st
   const [bulkField, setBulkField] = useState<BulkField>("floor");
   const [bulkValue, setBulkValue] = useState<string>("0");
   const [isPending, startTransition] = useTransition();
+  const [allUnits, setAllUnits] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (bulkField === "merge") {
+      getAllUnitsForMerge().then((res) => {
+        setAllUnits(res);
+      });
+    }
+  }, [bulkField]);
 
   const handleTogglePrinted = (id: string, currentStatus: boolean) => {
     startTransition(async () => {
@@ -68,7 +77,15 @@ export function UnitsBulkTable({ units, currency }: { units: any[]; currency: st
 
       if (bulkField === "merge") {
         const parentId = bulkValue;
+        if (!parentId) {
+          toast.error("Please choose a parent unit.");
+          return;
+        }
         const childIds = ids.filter(id => id !== parentId);
+        if (childIds.length === 0) {
+          toast.error("No child units to merge. Make sure you select at least one other unit besides the parent.");
+          return;
+        }
 
         const childrenResult = await bulkUpdateUnits(childIds, { mergedIntoId: parentId });
         const parentResult = await bulkUpdateUnits([parentId], { mergedIntoId: null });
@@ -254,18 +271,28 @@ export function UnitsBulkTable({ units, currency }: { units: any[]; currency: st
 
             {bulkField === "merge" && (
               <select
-                className="h-8 rounded-lg bg-white/10 border border-white/20 text-white text-xs font-semibold px-2 outline-none"
+                className="h-8 rounded-lg bg-white/10 border border-white/20 text-white text-xs font-semibold px-2 outline-none max-w-[200px]"
                 value={bulkValue}
                 onChange={(e) => setBulkValue(e.target.value)}
               >
-                {Array.from(selected).map(id => {
-                  const u = units.find(unit => unit.id === id);
-                  return (
-                    <option key={id} value={id} className="text-slate-900">
-                      Set Unit {u?.unitNumber || "Unknown"} as Parent
-                    </option>
-                  );
-                })}
+                <option value="" className="text-slate-900">-- Choose Parent Unit --</option>
+                {(Object.entries(
+                  allUnits.reduce((acc, u) => {
+                    const propName = u.property?.name || "Unknown Property";
+                    const key = `${propName} - Floor ${u.floor}`;
+                    if (!acc[key]) acc[key] = [];
+                    acc[key].push(u);
+                    return acc;
+                  }, {} as Record<string, any[]>)
+                ) as [string, any[]][]).map(([groupName, groupUnits]) => (
+                  <optgroup key={groupName} label={groupName} className="text-slate-900 font-bold">
+                    {groupUnits.map((u: any) => (
+                      <option key={u.id} value={u.id} className="text-slate-900">
+                        Unit {u.unitNumber} {u.mergedIntoId ? "(Merged)" : ""}
+                      </option>
+                    ))}
+                  </optgroup>
+                ))}
               </select>
             )}
 
