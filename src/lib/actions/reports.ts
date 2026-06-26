@@ -3,6 +3,7 @@
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/auth";
 import { getLeaseUncollectedBalance } from "@/lib/arrears";
+import { toEthiopian } from "@/lib/calendar";
 
 export async function getReportMetrics(startDate: Date, endDate: Date) {
   const session = await auth();
@@ -143,15 +144,55 @@ export async function getReportMetrics(startDate: Date, endDate: Date) {
     orderBy: { paidAt: "desc" }
   });
 
-  const advancePayments = advancePaymentsRaw.map(p => ({
-    id: p.id,
-    tenantName: p.tenant.name,
-    propertyName: p.lease.unit.property.name,
-    unitNumber: p.lease.unit.unitNumber,
-    amount: p.amount,
-    date: p.paidAt,
-    advanceUntil: p.advanceUntil
-  }));
+  const advancePayments = advancePaymentsRaw.map(p => {
+    let amount = p.amount;
+    if (amount === 0 && p.advanceUntil) {
+      try {
+        const startEt = toEthiopian(new Date(p.dueDate));
+        const endEt = toEthiopian(new Date(p.advanceUntil));
+        
+        let tempYear = startEt.year;
+        let tempMonth = startEt.month;
+        let billableMonths = 0;
+        let iterations = 0;
+        
+        const startVal = startEt.year * 100 + startEt.month;
+        const endVal = endEt.year * 100 + endEt.month;
+        
+        if (startVal <= endVal) {
+          while (iterations < 120) {
+            if (tempMonth !== 13) {
+              billableMonths++;
+            }
+            if (tempYear === endEt.year && tempMonth === endEt.month) {
+              break;
+            }
+            tempMonth++;
+            if (tempMonth > 13) {
+              tempMonth = 1;
+              tempYear++;
+            }
+            iterations++;
+          }
+        }
+        
+        const rentAmount = p.lease?.unit?.rentAmount || 0;
+        amount = billableMonths * rentAmount;
+      } catch (err) {
+        console.error("Error calculating manual advance amount:", err);
+      }
+    }
+
+    return {
+      id: p.id,
+      tenantName: p.tenant.name,
+      propertyName: p.lease.unit.property.name,
+      unitNumber: p.lease.unit.unitNumber,
+      amount: amount,
+      date: p.paidAt,
+      advanceUntil: p.advanceUntil
+    };
+  });
 
   // 7. Monthly Breakdown for the selected range (already calculated above)
 
