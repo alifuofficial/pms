@@ -56,8 +56,10 @@ export function InvoicesView({ payments, currency, calendarType, role, currentPa
                 </td>
               </tr>
             )}
-            {payments.map((p) => {
-              const invoiceId = `INV-${p.id.slice(0, 8).toUpperCase()}`;
+            {(payments as any[]).map((p) => {
+              const invoiceId = p.isUtility 
+                ? `${p.type === "ELECTRICITY" ? "ELEC" : "WAT"}-${p.id.slice(0, 8).toUpperCase()}`
+                : `INV-${p.id.slice(0, 8).toUpperCase()}`;
               return (
                 <tr key={p.id} className="hover:bg-slate-50/50 transition-colors group">
                   <td className="py-4 px-6">
@@ -67,7 +69,9 @@ export function InvoicesView({ payments, currency, calendarType, role, currentPa
                       </div>
                       <div>
                         <p className="text-sm font-bold text-slate-900">{invoiceId}</p>
-                        <p className="text-[10px] text-slate-400 font-medium tracking-wide">Unit {p.lease?.unit?.unitNumber}</p>
+                        <p className="text-[10px] text-slate-400 font-medium tracking-wide">
+                          Unit {p.lease?.unit?.unitNumber || "N/A"} {p.isUtility && `(${p.billingMonth})`}
+                        </p>
                       </div>
                     </div>
                   </td>

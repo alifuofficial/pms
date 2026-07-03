@@ -22,18 +22,48 @@ export default async function AdminInvoicesPage({
   const limit = 15;
   const skip = (page - 1) * limit;
 
-  const [payments, totalCount] = await Promise.all([
+  const [allRentPayments, allUtilityBills] = await Promise.all([
     prisma.payment.findMany({
+      include: { 
+        tenant: true,
+        lease: { include: { unit: true } }
+      },
+      orderBy: { createdAt: "desc" }
+    }),
+    prisma.utilityBill.findMany({
       include: {
         tenant: true,
         lease: { include: { unit: true } }
       },
-      orderBy: { createdAt: "desc" },
-      skip,
-      take: limit,
-    }),
-    prisma.payment.count(),
+      orderBy: { createdAt: "desc" }
+    })
   ]);
+
+  const mappedUtilities = allUtilityBills.map(u => ({
+    id: u.id,
+    leaseId: u.leaseId,
+    tenantId: u.tenantId,
+    amount: u.amount,
+    status: u.status === "PAID" ? "APPROVED" : u.status === "UNPAID" ? "PENDING" : u.status,
+    receiptUrl: u.receiptUrl,
+    senderName: u.senderName,
+    transactionId: u.transactionId,
+    bankAccountId: u.bankAccountId,
+    createdAt: u.createdAt,
+    dueDate: u.dueDate,
+    type: u.type,
+    tenant: u.tenant,
+    lease: u.lease,
+    billingMonth: u.billingMonth,
+    isUtility: true
+  }));
+
+  const combinedRecords = [...allRentPayments, ...mappedUtilities].sort((a, b) => {
+    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+  });
+
+  const totalCount = combinedRecords.length;
+  const payments = combinedRecords.slice(skip, skip + limit);
 
   const totalPages = Math.ceil(totalCount / limit);
 

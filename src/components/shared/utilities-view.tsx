@@ -31,7 +31,8 @@ import {
   getUtilityBills, 
   createUtilityBillsBatch, 
   verifyUtilityPayment, 
-  getUnitsWithLatestReadings 
+  getUnitsWithLatestReadings,
+  updateUtilityBill
 } from "@/lib/actions/utilities";
 
 interface UtilitiesViewProps {
@@ -95,6 +96,14 @@ export function UtilitiesView({
   const [verifyDialogOpen, setVerifyDialogOpen] = useState(false);
   const [selectedBill, setSelectedBill] = useState<any | null>(null);
   const [isVerifying, setIsVerifying] = useState(false);
+
+  // Edit bill dialog states
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editingBill, setEditingBill] = useState<any | null>(null);
+  const [editAmount, setEditAmount] = useState<string>("");
+  const [editCurrentReading, setEditCurrentReading] = useState<string>("");
+  const [editPreviousReading, setEditPreviousReading] = useState<string>("");
+  const [isUpdatingBill, setIsUpdatingBill] = useState(false);
 
   // Load occupied units and pre-populate previous readings when property, utility type or billing mode changes
   useEffect(() => {
@@ -490,6 +499,30 @@ export function UtilitiesView({
       toast.error("An error occurred during verification.");
     } finally {
       setIsVerifying(false);
+    }
+  };
+
+  const handleUpdateBill = async () => {
+    if (!editingBill || !editAmount) return;
+    setIsUpdatingBill(true);
+    try {
+      const res = await updateUtilityBill(
+        editingBill.id,
+        parseFloat(editAmount),
+        editPreviousReading ? parseFloat(editPreviousReading) : null,
+        editCurrentReading ? parseFloat(editCurrentReading) : null
+      );
+      if (res.success) {
+        toast.success("Utility bill updated successfully.");
+        setEditDialogOpen(false);
+        loadHistoryBills();
+      } else {
+        toast.error(res.error || "Failed to update utility bill.");
+      }
+    } catch (e: any) {
+      toast.error("Failed to update utility bill: " + e.message);
+    } finally {
+      setIsUpdatingBill(false);
     }
   };
 
@@ -936,32 +969,49 @@ export function UtilitiesView({
                           </Badge>
                         </TableCell>
                         <TableCell className="text-right px-5">
-                          {bill.status === "PENDING" ? (
-                            <Button
-                              size="sm"
-                              onClick={() => {
-                                setSelectedBill(bill);
-                                setVerifyDialogOpen(true);
-                              }}
-                              className="h-7 text-[10px] font-black uppercase tracking-wider bg-indigo-650 hover:bg-indigo-750 text-white rounded shadow-none"
-                            >
-                              Verify
-                            </Button>
-                          ) : bill.receiptUrl ? (
+                          <div className="flex justify-end gap-1.5 items-center">
+                            {bill.status === "PENDING" ? (
+                              <Button
+                                size="sm"
+                                onClick={() => {
+                                  setSelectedBill(bill);
+                                  setVerifyDialogOpen(true);
+                                }}
+                                className="h-7 text-[10px] font-black uppercase tracking-wider bg-indigo-650 hover:bg-indigo-750 text-white rounded shadow-none"
+                              >
+                                Verify
+                              </Button>
+                            ) : bill.receiptUrl ? (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  setSelectedBill(bill);
+                                  setVerifyDialogOpen(true);
+                                }}
+                                className="h-7 text-[10px] font-semibold border-slate-200 text-slate-600 hover:text-slate-800 hover:bg-slate-50 rounded"
+                              >
+                                <Eye size={12} className="mr-1" /> Receipt
+                              </Button>
+                            ) : (
+                              <span className="text-xs text-slate-300 italic mr-1">No payment</span>
+                            )}
+                            
                             <Button
                               size="sm"
                               variant="outline"
                               onClick={() => {
-                                setSelectedBill(bill);
-                                setVerifyDialogOpen(true);
+                                setEditingBill(bill);
+                                setEditAmount(bill.amount.toString());
+                                setEditCurrentReading(bill.currentReading !== null ? bill.currentReading.toString() : "");
+                                setEditPreviousReading(bill.previousReading !== null ? bill.previousReading.toString() : "");
+                                setEditDialogOpen(true);
                               }}
-                              className="h-7 text-[10px] font-semibold border-slate-200 text-slate-600 hover:text-slate-800 hover:bg-slate-50 rounded"
+                              className="h-7 text-[10px] font-semibold border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-50 rounded"
                             >
-                              <Eye size={12} className="mr-1" /> Receipt
+                              Edit
                             </Button>
-                          ) : (
-                            <span className="text-xs text-slate-300 italic">No payment</span>
-                          )}
+                          </div>
                         </TableCell>
                       </TableRow>
                     );
@@ -1091,6 +1141,80 @@ export function UtilitiesView({
               </div>
             );
           })()}
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Bill Dialog */}
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent className="sm:max-w-[425px] bg-white rounded-2xl p-0 border-none shadow-2xl">
+          {editingBill && (
+            <div>
+              <DialogHeader className="p-5 pb-3 bg-slate-50 border-b border-slate-100">
+                <DialogTitle className="text-base font-bold text-slate-900">Edit Utility Bill</DialogTitle>
+                <DialogDescription className="text-xs">
+                  Update bill amount or readings for Unit {editingBill.lease?.unit?.unitNumber} ({editingBill.billingMonth}).
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="p-5 space-y-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Bill Amount ({currency})</label>
+                  <Input 
+                    type="number"
+                    value={editAmount}
+                    onChange={(e) => setEditAmount(e.target.value)}
+                    placeholder="Enter bill amount"
+                    className="h-10 rounded-xl border-slate-200 focus:ring-slate-900 text-sm font-bold"
+                  />
+                </div>
+
+                {editingBill.previousReading !== null && editingBill.currentReading !== null && (
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Previous Reading</label>
+                      <Input 
+                        type="number"
+                        value={editPreviousReading}
+                        onChange={(e) => setEditPreviousReading(e.target.value)}
+                        placeholder="Previous"
+                        className="h-10 rounded-xl border-slate-200 focus:ring-slate-900 text-sm font-semibold"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Current Reading</label>
+                      <Input 
+                        type="number"
+                        value={editCurrentReading}
+                        onChange={(e) => setEditCurrentReading(e.target.value)}
+                        placeholder="Current"
+                        className="h-10 rounded-xl border-slate-200 focus:ring-slate-900 text-sm font-semibold"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <DialogFooter className="p-5 bg-slate-50 border-t border-slate-100 flex gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={isUpdatingBill}
+                  onClick={() => setEditDialogOpen(false)}
+                  className="h-11 rounded-xl border-slate-200 text-slate-600 font-bold"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  disabled={isUpdatingBill || !editAmount}
+                  onClick={handleUpdateBill}
+                  className="h-11 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold"
+                >
+                  {isUpdatingBill ? <Loader2 className="animate-spin" /> : "Save Changes"}
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
 

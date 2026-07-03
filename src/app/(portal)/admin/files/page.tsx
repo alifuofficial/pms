@@ -8,7 +8,8 @@ import {
   ExternalLink, 
   FolderOpen,
   Filter,
-  Calendar
+  Calendar,
+  Zap
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,7 +32,8 @@ export default async function FilesPage({ searchParams }: { searchParams: Promis
       name: { contains: q },
       OR: [
         { leases: { some: { leaseAgreementUrl: { not: null } } } },
-        { payments: { some: { receiptUrl: { not: null } } } }
+        { payments: { some: { receiptUrl: { not: null } } } },
+        { utilityBills: { some: { receiptUrl: { not: null } } } }
       ]
     },
     include: {
@@ -41,6 +43,11 @@ export default async function FilesPage({ searchParams }: { searchParams: Promis
         orderBy: { createdAt: "desc" }
       },
       payments: {
+        where: { receiptUrl: { not: null } },
+        include: { lease: { include: { unit: { include: { property: true } } } } },
+        orderBy: { createdAt: "desc" }
+      },
+      utilityBills: {
         where: { receiptUrl: { not: null } },
         include: { lease: { include: { unit: { include: { property: true } } } } },
         orderBy: { createdAt: "desc" }
@@ -93,18 +100,21 @@ export default async function FilesPage({ searchParams }: { searchParams: Promis
                     </p>
                   </div>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-wrap">
                   <div className="px-3 py-1.5 bg-emerald-50 text-emerald-700 rounded-lg text-[10px] font-bold uppercase tracking-tight flex items-center gap-1.5">
                     <FileText size={12} /> {tenant.leases.length} Agreements
                   </div>
                   <div className="px-3 py-1.5 bg-blue-50 text-blue-700 rounded-lg text-[10px] font-bold uppercase tracking-tight flex items-center gap-1.5">
                     <CreditCard size={12} /> {tenant.payments.length} Receipts
                   </div>
+                  <div className="px-3 py-1.5 bg-yellow-55 text-yellow-700 rounded-lg text-[10px] font-bold uppercase tracking-tight flex items-center gap-1.5">
+                    <Zap size={12} /> {tenant.utilityBills.length} Utilities
+                  </div>
                 </div>
               </div>
-
+ 
               <div className="p-6">
-                <div className="grid md:grid-cols-2 gap-8">
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                   {/* Lease Agreements Section */}
                   <div className="space-y-4">
                     <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
@@ -145,7 +155,7 @@ export default async function FilesPage({ searchParams }: { searchParams: Promis
                       )}
                     </div>
                   </div>
-
+ 
                   {/* Payment Receipts Section */}
                   <div className="space-y-4">
                     <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
@@ -162,7 +172,7 @@ export default async function FilesPage({ searchParams }: { searchParams: Promis
                               <p className="text-xs font-bold text-slate-900">
                                 {payment.amount.toLocaleString()} {settings.currency} - {payment.type}
                               </p>
-
+ 
                               <p className="text-[10px] text-slate-500 font-medium flex items-center gap-1 mt-0.5">
                                 <Calendar size={10} /> 
                                 {formatSystemDate(new Date(payment.createdAt), "ETHIOPIAN")}
@@ -191,6 +201,55 @@ export default async function FilesPage({ searchParams }: { searchParams: Promis
                       ))}
                       {tenant.payments.length === 0 && (
                         <p className="text-[10px] text-slate-400 font-medium italic">No payment receipts found.</p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Utility Receipts Section */}
+                  <div className="space-y-4">
+                    <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                      <Zap size={14} className="text-yellow-500" /> Utility Receipts
+                    </h4>
+                    <div className="space-y-2">
+                      {tenant.utilityBills.map((bill) => (
+                        <div key={bill.id} className="group flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-transparent hover:border-slate-200 hover:bg-white transition-all">
+                          <div className="flex items-center gap-3">
+                            <div className="p-2 bg-yellow-50 text-yellow-600 rounded-lg">
+                              <Zap size={18} />
+                            </div>
+                            <div>
+                              <p className="text-xs font-bold text-slate-900">
+                                {bill.amount.toLocaleString()} {settings.currency} - {bill.type}
+                              </p>
+ 
+                              <p className="text-[10px] text-slate-500 font-medium flex items-center gap-1 mt-0.5">
+                                <Calendar size={10} /> 
+                                {formatSystemDate(new Date(bill.createdAt), "ETHIOPIAN")}
+                                <span className={cn(
+                                  "ml-2 px-1.5 py-0.5 rounded-md text-[8px] font-bold uppercase",
+                                  bill.status === "PAID" ? "bg-emerald-100 text-emerald-700" : 
+                                  bill.status === "PENDING" ? "bg-amber-100 text-amber-700" : "bg-red-100 text-red-700"
+                                )}>
+                                  {bill.status}
+                                </span>
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <FilePreview 
+                              url={bill.receiptUrl!} 
+                              filename={`Utility Receipt - ${bill.amount} ${settings.currency}`} 
+                            />
+                            <a href={bill.receiptUrl!} download>
+                              <Button variant="ghost" size="icon-sm" className="h-8 w-8 text-slate-400 hover:text-slate-900 hover:bg-slate-100">
+                                <Download size={14} />
+                              </Button>
+                            </a>
+                          </div>
+                        </div>
+                      ))}
+                      {tenant.utilityBills.length === 0 && (
+                        <p className="text-[10px] text-slate-400 font-medium italic">No utility receipts found.</p>
                       )}
                     </div>
                   </div>

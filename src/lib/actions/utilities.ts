@@ -472,3 +472,46 @@ export async function getUnitsWithLatestReadings(propertyId: string, type: "ELEC
 
   return unitsWithReadings;
 }
+
+export async function updateUtilityBill(
+  billId: string, 
+  amount: number, 
+  previousReading: number | null, 
+  currentReading: number | null
+) {
+  const session = await auth();
+  if (!session?.user || (session.user.role !== "ADMIN" && session.user.role !== "ACCOUNTANT" && session.user.role !== "MANAGER")) {
+    return { success: false, error: "Unauthorized" };
+  }
+
+  try {
+    const data: any = { amount };
+    if (previousReading !== null && currentReading !== null) {
+      data.previousReading = previousReading;
+      data.currentReading = currentReading;
+      data.usage = Math.max(0, currentReading - previousReading);
+    }
+
+    const updated = await prisma.utilityBill.update({
+      where: { id: billId },
+      data,
+      include: {
+        lease: {
+          include: { unit: true }
+        }
+      }
+    });
+
+    if (updated.lease?.unit?.qrSlug) {
+      revalidatePath(`/u/${updated.lease.unit.qrSlug}`);
+    }
+    revalidatePath("/admin/utilities");
+    revalidatePath("/manager/utilities");
+    revalidatePath("/accountant/utilities");
+
+    return { success: true };
+  } catch (error: any) {
+    console.error("Update Utility Bill Error:", error);
+    return { success: false, error: error.message || "Failed to update utility bill." };
+  }
+}

@@ -18,7 +18,11 @@ export default async function InvoicePrintPage({ params }: { params: Promise<{ i
     getEffectiveCalendar()
   ]);
 
-  const payment = await prisma.payment.findUnique({
+  let payment = null;
+  let isUtility = false;
+  let billingMonth = "";
+
+  const dbPayment = await prisma.payment.findUnique({
     where: { id },
     include: {
       tenant: true,
@@ -34,6 +38,43 @@ export default async function InvoicePrintPage({ params }: { params: Promise<{ i
     }
   });
 
+  if (dbPayment) {
+    payment = dbPayment;
+  } else {
+    const dbBill = await prisma.utilityBill.findUnique({
+      where: { id },
+      include: {
+        tenant: true,
+        lease: {
+          include: {
+            unit: {
+              include: {
+                property: true
+              }
+            }
+          }
+        }
+      }
+    });
+
+    if (dbBill) {
+      payment = {
+        id: dbBill.id,
+        tenantId: dbBill.tenantId,
+        amount: dbBill.amount,
+        status: dbBill.status === "PAID" ? "APPROVED" : dbBill.status === "UNPAID" ? "PENDING" : dbBill.status,
+        createdAt: dbBill.createdAt,
+        dueDate: dbBill.dueDate,
+        type: dbBill.type,
+        tenant: dbBill.tenant,
+        lease: dbBill.lease,
+        penalty: 0
+      };
+      isUtility = true;
+      billingMonth = dbBill.billingMonth;
+    }
+  }
+
   if (!payment) return <div>Invoice not found.</div>;
 
   // Security check: Only Admins, Accountants, or the tenant themselves can view
@@ -45,7 +86,9 @@ export default async function InvoicePrintPage({ params }: { params: Promise<{ i
     redirect("/auth/login");
   }
 
-  const invoiceId = `INV-${payment.id.slice(0, 8).toUpperCase()}`;
+  const invoiceId = isUtility 
+    ? `${payment.type === "ELECTRICITY" ? "ELEC" : "WAT"}-${payment.id.slice(0, 8).toUpperCase()}`
+    : `INV-${payment.id.slice(0, 8).toUpperCase()}`;
 
   const headersList = await headers();
   const host = headersList.get("host") || "localhost:3000";
@@ -129,7 +172,9 @@ export default async function InvoicePrintPage({ params }: { params: Promise<{ i
               <span className="font-bold text-slate-900 text-right">{formatSystemDate(new Date(payment.dueDate), calendarType)}</span>
               
               <span className="font-medium text-slate-500">Payment Type:</span>
-              <span className="font-bold text-slate-900 text-right capitalize">{payment.type.toLowerCase()}</span>
+              <span className="font-bold text-slate-900 text-right capitalize">
+                {isUtility ? `Utility (${payment.type.toLowerCase()})` : payment.type.toLowerCase()}
+              </span>
             </div>
           </div>
         </div>
@@ -147,7 +192,12 @@ export default async function InvoicePrintPage({ params }: { params: Promise<{ i
             <tbody>
               <tr className="border-b border-slate-100">
                 <td className="py-6">
-                  <p className="font-bold text-slate-900">Lease Rental Charge</p>
+                  <p className="font-bold text-slate-900">
+                    {isUtility 
+                      ? `Utility Charge: ${payment.type === "ELECTRICITY" ? "Electricity" : "Water"} (${billingMonth})` 
+                      : "Lease Rental Charge"
+                    }
+                  </p>
                   <p className="text-sm font-medium text-slate-500 mt-1">Property: {payment.lease?.unit?.property?.name || "N/A"}</p>
                 </td>
                 <td className="py-6 text-center font-bold text-slate-700">
@@ -177,7 +227,7 @@ export default async function InvoicePrintPage({ params }: { params: Promise<{ i
         <div className="p-12 flex justify-end">
           <div className="w-1/2 space-y-4">
             <div className="flex justify-between items-center text-sm font-medium text-slate-500">
-              <span>Rent Subtotal</span>
+              <span>{isUtility ? "Utility Subtotal" : "Rent Subtotal"}</span>
               <span>{settings.currency} {payment.amount.toLocaleString()}</span>
             </div>
             {(payment.penalty ?? 0) > 0 && (

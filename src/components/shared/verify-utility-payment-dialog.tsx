@@ -14,7 +14,10 @@ import {
   Calendar, 
   FileText, 
   Loader2, 
-  AlertCircle
+  AlertCircle,
+  CheckCircle2,
+  XCircle,
+  ArrowUpRight
 } from "lucide-react";
 import { verifyUtilityPayment } from "@/lib/actions/utilities";
 import { toast } from "sonner";
@@ -47,12 +50,19 @@ export function VerifyUtilityPaymentDialog({ bill, currency }: VerifyUtilityPaym
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger render={
-        <Button 
-          size="sm"
-          className="h-8 bg-slate-900 hover:bg-slate-800 text-white font-bold text-[10px] uppercase tracking-wider px-3 rounded-lg"
-        >
-          Verify
-        </Button>
+        (bill.status === "APPROVED" || bill.status === "PAID" ? (
+          <Button variant="ghost" size="sm" className="h-8 text-[10px] font-black uppercase tracking-widest text-emerald-600 bg-emerald-50 hover:bg-emerald-100 rounded-lg px-3">
+            <CheckCircle2 size={12} className="mr-1.5" /> Verified
+          </Button>
+        ) : bill.status === "REJECTED" ? (
+          <Button variant="ghost" size="sm" className="h-8 text-[10px] font-black uppercase tracking-widest text-red-600 bg-red-50 hover:bg-red-100 rounded-lg px-3">
+            <XCircle size={12} className="mr-1.5" /> Rejected
+          </Button>
+        ) : (
+          <Button variant="ghost" size="sm" className="h-8 text-[10px] font-black uppercase tracking-widest text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg px-3">
+            Verify <ArrowUpRight size={12} className="ml-1.5" />
+          </Button>
+        )) as React.ReactElement
       } />
       <DialogContent className="sm:max-w-[500px] max-h-[85vh] overflow-y-auto bg-white rounded-2xl p-0 border-none shadow-2xl">
         <div>
