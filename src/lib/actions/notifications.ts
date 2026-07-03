@@ -219,6 +219,7 @@ export async function processDailyAlerts() {
 
       const variables = {
         tenant_name: lease.tenant.name || "Tenant",
+        unit_number: lease.unit.unitNumber || "N/A",
         month_name: monthNameAm,
         month_name_en: monthNameEn,
         amount: totalToPay.toLocaleString(),
@@ -228,13 +229,15 @@ export async function processDailyAlerts() {
 
       // Low Remaining Days Alert (e.g. 5 days left)
       if (daysLeft === 5) {
-        await sendSMS(lease.tenant.phoneNumber, "prepaid-expiry-5", variables, "system");
+        const slug = lease.unit.penaltyExempt ? "prepaid-expiry-exempt-5" : "prepaid-expiry-5";
+        await sendSMS(lease.tenant.phoneNumber, slug, variables, "system");
         processedCount++;
       }
       
       // Grace Period Start Alert (0 days left -> coverage ended today)
       else if (daysLeft === 0) {
-        await sendSMS(lease.tenant.phoneNumber, "prepaid-expiry-0", variables, "system");
+        const slug = lease.unit.penaltyExempt ? "prepaid-expiry-exempt-0" : "prepaid-expiry-0";
+        await sendSMS(lease.tenant.phoneNumber, slug, variables, "system");
         processedCount++;
       }
     }
