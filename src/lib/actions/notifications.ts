@@ -3,7 +3,8 @@
 import { prisma } from "@/lib/prisma";
 import { sendSMS } from "@/lib/sms";
 import { revalidatePath } from "next/cache";
-import { getDaysIntoEthiopianMonth, getDaysUntilEthiopianExpiry } from "@/lib/calendar";
+import { getDaysIntoEthiopianMonth, getDaysUntilEthiopianExpiry, getNowInAddisAbaba } from "@/lib/calendar";
+import { runDailyQrBackup } from "@/lib/actions/import-export";
 
 export async function processLateFees() {
   try {
@@ -144,3 +145,69 @@ export async function processDailyAlerts() {
     return { success: false, error: "Failed to process daily alerts." };
   }
 }
+
+export async function triggerDailyCronFallback() {
+  try {
+    const now = getNowInAddisAbaba();
+    const todayStr = `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;
+
+    const settings = await prisma.systemSettings.findUnique({
+      where: { id: "global" },
+      select: { lastCronRun: true }
+    });
+
+    if (!settings) return;
+
+    let lastRunStr = "";
+    if (settings.lastCronRun) {
+      const lastRunStrAA = new Date(settings.lastCronRun).toLocaleString("en-US", { timeZone: "Africa/Addis_Ababa" });
+      const lastRunDate = new Date(lastRunStrAA);
+      lastRunStr = `${lastRunDate.getFullYear()}-${lastRunDate.getMonth() + 1}-${lastRunDate.getDate()}`;
+    }
+
+    if (lastRunStr === todayStr) {
+      return;
+    }
+
+    // Update lastCronRun first to prevent concurrent execution/loops
+    await prisma.systemSettings.update({
+      where: { id: "global" },
+      data: { lastCronRun: now }
+    });
+
+    // Run the tasks asynchronously in the background so we don't block layout render
+    (async () => {
+      try {
+        console.log("[CRON FALLBACK] Starting daily cron jobs...");
+        const alertsResult = await processDailyAlerts();
+        const lateFeesResult = await processLateFees();
+        const backupResult = await runDailyQrBackup();
+        console.log("[CRON FALLBACK] Completed daily cron jobs:", {
+          alerts: alertsResult.success ? alertsResult.processedCount : 0,
+          lateFees: lateFeesResult.success ? lateFeesResult.processedCount : 0,
+          backup: backupResult.success
+        });
+      } catch (err) {
+        console.error("[CRON FALLBACK] Error running daily cron jobs:", err);
+      }
+    })();
+  } catch (error) {
+    console.error("[CRON FALLBACK] Error in triggerDailyCronFallback:", error);
+  }
+}
+
+export async function syncAllDailyNotifications() {
+  try {
+    const alertsResult = await processDailyAlerts();
+    const lateFeesResult = await processLateFees();
+    return {
+      success: true,
+      alertsProcessed: alertsResult.success ? alertsResult.processedCount : 0,
+      lateFeesProcessed: lateFeesResult.success ? lateFeesResult.processedCount : 0
+    };
+  } catch (error) {
+    console.error("Sync All Daily Notifications Error:", error);
+    return { success: false, error: "Failed to run sync." };
+  }
+}
+

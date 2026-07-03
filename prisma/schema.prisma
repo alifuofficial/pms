@@ -196,6 +196,7 @@ model SystemSettings {
   verifyEtApiKey     String?
   verifyEtWebhookSecret String?
   verifyEtEnabled    Boolean  @default(false)
+  lastCronRun        DateTime?
   updatedAt         DateTime @updatedAt
 }
 

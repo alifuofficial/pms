@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { processLateFees, processDailyAlerts } from "@/lib/actions/notifications";
 import { runDailyQrBackup } from "@/lib/actions/import-export";
+import { prisma } from "@/lib/prisma";
+import { getNowInAddisAbaba } from "@/lib/calendar";
 
 export async function GET(request: Request) {
   // Simple auth check to ensure only the cron job runner can trigger this
@@ -15,6 +17,16 @@ export async function GET(request: Request) {
     const alertsResult = await processDailyAlerts();
     const lateFeesResult = await processLateFees();
     const backupResult = await runDailyQrBackup();
+
+    // Update lastCronRun so that the background fallback doesn't run today
+    try {
+      await prisma.systemSettings.update({
+        where: { id: "global" },
+        data: { lastCronRun: getNowInAddisAbaba() }
+      });
+    } catch (dbErr) {
+      console.error("Failed to update lastCronRun in cron route:", dbErr);
+    }
 
     return NextResponse.json({ 
       success: true, 

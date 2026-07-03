@@ -2,6 +2,7 @@ import { auth } from "@/auth";
 import { SidebarNav } from "@/components/layout/sidebar-nav";
 import { redirect } from "next/navigation";
 import { Breadcrumbs } from "@/components/shared/breadcrumbs";
+import { triggerDailyCronFallback } from "@/lib/actions/notifications";
 
 export default async function DashboardLayout({
   children,
@@ -13,6 +14,9 @@ export default async function DashboardLayout({
   if (!session?.user) {
     redirect("/login");
   }
+
+  // Trigger daily background tasks (SMS reminders, late fee application, backups) if it's a new day
+  await triggerDailyCronFallback();
 
   const user = session.user;
 
