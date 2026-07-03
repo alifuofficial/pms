@@ -103,6 +103,18 @@ async function main() {
       name: "Utility Payment Approval",
       description: "Sent when a utility payment is verified and approved.",
       content: "Dear {{tenant_name}}, your utility payment of {{amount}} {{currency}} for {{utility_type}} has been approved. Thank you!"
+    },
+    {
+      slug: "prepaid-expiry-5",
+      name: "Prepaid Expiry Warning (5 Days Left)",
+      description: "Sent 5 days before prepaid coverage expires.",
+      content: "Dear {{tenant_name}}, rent for {{month_name}} is due. Total: {{amount}} ETB. Please pay within 5 days to avoid grace period and late fee."
+    },
+    {
+      slug: "prepaid-expiry-0",
+      name: "Grace Period Start (0 Days Left)",
+      description: "Sent when prepaid coverage expires and grace period starts.",
+      content: "Dear {{tenant_name}}, your rent is overdue. Total to pay for {{month_name}}: {{amount}} ETB. Please pay immediately to avoid 5% late penalty."
     }
   ];
 

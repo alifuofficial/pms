@@ -3,8 +3,9 @@
 import { prisma } from "@/lib/prisma";
 import { sendSMS } from "@/lib/sms";
 import { revalidatePath } from "next/cache";
-import { getDaysIntoEthiopianMonth, getDaysUntilEthiopianExpiry, getNowInAddisAbaba } from "@/lib/calendar";
+import { getDaysIntoEthiopianMonth, getDaysUntilEthiopianExpiry, getNowInAddisAbaba, toEthiopian, getEthiopianMonths, addEthiopianMonths } from "@/lib/calendar";
 import { runDailyQrBackup } from "@/lib/actions/import-export";
+import { getArrearMonths, calcMonthPenalty } from "@/lib/arrears";
 
 export async function processLateFees() {
   try {
@@ -99,14 +100,89 @@ export async function processLateFees() {
   }
 }
 
+function calculateLeaseOutstandingDetails(lease: any, settings: any) {
+  const unit = lease.unit;
+  const payments = lease.payments || [];
+  const penalties = lease.penalties || [];
+  
+  const pendingPayments = payments
+    .filter((p: any) => p.status === "PENDING" || p.status === "REJECTED")
+    .sort((a: any, b: any) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
+
+  const pendingDueDates = new Set(
+    pendingPayments.map((p: any) => {
+      const d = new Date(p.dueDate);
+      return `${d.getFullYear()}-${d.getMonth()}`;
+    })
+  );
+
+  const gapMonthDates = getArrearMonths(new Date(lease.startDate), payments);
+
+  const dbPenaltyMap = new Map<string, any>();
+  for (const p of penalties) {
+    const d = new Date(p.dueDate);
+    dbPenaltyMap.set(`${d.getFullYear()}-${d.getMonth()}`, p);
+  }
+
+  const rawArrearsMonths = [
+    ...pendingPayments.map((p: any) => {
+      const d = new Date(p.dueDate);
+      const dbPenalty = dbPenaltyMap.get(`${d.getFullYear()}-${d.getMonth()}`);
+      const { penalty } = calcMonthPenalty(new Date(p.dueDate), unit.rentAmount, settings, dbPenalty, unit.penaltyExempt);
+      return {
+        dueDate: p.dueDate,
+        totalAmount: unit.rentAmount + penalty,
+      };
+    }),
+    ...gapMonthDates
+      .filter((gd: Date) => !pendingDueDates.has(`${gd.getFullYear()}-${gd.getMonth()}`))
+      .map((gd: Date) => {
+        const dbPenalty = dbPenaltyMap.get(`${gd.getFullYear()}-${gd.getMonth()}`);
+        const { penalty } = calcMonthPenalty(gd, unit.rentAmount, settings, dbPenalty, unit.penaltyExempt);
+        return {
+          dueDate: gd,
+          totalAmount: unit.rentAmount + penalty,
+        };
+      }),
+  ].sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
+
+  // Deduct advanceBalance chronologically
+  let remainingAdvance = lease.advanceBalance || 0;
+  let arrearsCount = 0;
+  let arrearsBalance = 0;
+
+  for (const m of rawArrearsMonths) {
+    const deduction = Math.min(m.totalAmount, remainingAdvance);
+    const updatedTotalAmount = m.totalAmount - deduction;
+    remainingAdvance -= deduction;
+    if (updatedTotalAmount > 0) {
+      arrearsCount++;
+      arrearsBalance += updatedTotalAmount;
+    }
+  }
+
+  const unpaidPenaltyTotal = penalties
+    .filter((p: any) => p.status === "UNPAID" || p.status === "PARTIAL")
+    .reduce((sum: number, p: any) => sum + (p.amount - p.paidAmount), 0);
+
+  const totalBalance = arrearsBalance + unpaidPenaltyTotal;
+  return {
+    arrearsBalance,
+    unpaidPenaltyTotal,
+    totalBalance
+  };
+}
+
 export async function processDailyAlerts() {
   try {
+    const settings = await prisma.systemSettings.findUnique({ where: { id: "global" } });
     const activeLeases = await prisma.lease.findMany({
       where: { status: "ACTIVE" },
       include: {
         tenant: { select: { name: true, phoneNumber: true } },
         unit: { include: { property: true } },
-        payments: { where: { status: "APPROVED" }, orderBy: { dueDate: "asc" } }
+        payments: true, // Fetch all payments for arrears calculation
+        penalties: true // Fetch all penalties for arrears calculation
       }
     });
 
@@ -115,26 +191,50 @@ export async function processDailyAlerts() {
     for (const lease of activeLeases) {
       if (!lease.tenant.phoneNumber) continue;
 
-      const latestPayment = lease.payments.length > 0
-        ? [...lease.payments].sort((a, b) => {
+      // Filter approved payments for coverage/expiry calculation
+      const approvedPayments = lease.payments.filter((p) => p.status === "APPROVED");
+      const latestPayment = approvedPayments.length > 0
+        ? [...approvedPayments].sort((a, b) => {
             const dateA = new Date(a.advanceUntil || a.dueDate).getTime();
             const dateB = new Date(b.advanceUntil || b.dueDate).getTime();
             if (dateA !== dateB) return dateA - dateB;
             return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
-          })[lease.payments.length - 1]
+          })[approvedPayments.length - 1]
         : null;
       const coverageUntil = latestPayment?.advanceUntil || latestPayment?.dueDate || lease.startDate;
       const daysLeft = getDaysUntilEthiopianExpiry(new Date(coverageUntil));
 
+      // Calculate total amount they pay (upcoming month's rent + unpaid previous months/fees)
+      const { totalBalance } = calculateLeaseOutstandingDetails(lease, settings);
+      const upcomingRent = lease.unit.rentAmount;
+      const totalToPay = upcomingRent + totalBalance;
+
+      // Resolve the upcoming month name in Ethiopian calendar
+      const nextMonthDate = addEthiopianMonths(new Date(coverageUntil), 1);
+      const et = toEthiopian(nextMonthDate);
+      const months = getEthiopianMonths();
+      const monthObj = months.find(m => m.id === et.month);
+      const monthNameAm = monthObj?.name.split(" ")[0] || "";
+      const monthNameEn = monthObj?.name.split(" ")[1]?.replace(/[()]/g, "") || "";
+
+      const variables = {
+        tenant_name: lease.tenant.name || "Tenant",
+        month_name: monthNameAm,
+        month_name_en: monthNameEn,
+        amount: totalToPay.toLocaleString(),
+        rent_amount: upcomingRent.toLocaleString(),
+        arrears_amount: totalBalance.toLocaleString()
+      };
+
       // Low Remaining Days Alert (e.g. 5 days left)
       if (daysLeft === 5) {
-        await sendSMS(lease.tenant.phoneNumber, "Your prepaid rental balance will expire in 5 days. Please renew your balance to avoid grace period and penalties.");
+        await sendSMS(lease.tenant.phoneNumber, "prepaid-expiry-5", variables, "system");
         processedCount++;
       }
       
       // Grace Period Start Alert (0 days left -> coverage ended today)
       else if (daysLeft === 0) {
-        await sendSMS(lease.tenant.phoneNumber, "Your prepaid rental coverage has ended. You have entered the 5-day grace period. Please pay within 5 days to avoid the 5% late penalty.");
+        await sendSMS(lease.tenant.phoneNumber, "prepaid-expiry-0", variables, "system");
         processedCount++;
       }
     }
