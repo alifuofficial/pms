@@ -110,7 +110,7 @@ export function UtilitiesView({
     if (activeTab === "billing" && selectedPropertyId) {
       loadUnitsForBilling();
     }
-  }, [selectedPropertyId, utilityType, activeTab, billingMode]);
+  }, [selectedPropertyId, utilityType, activeTab, billingMode, selectedEtMonth, selectedEtYear]);
 
   // Load history when tab or filter changes
   useEffect(() => {
@@ -127,7 +127,14 @@ export function UtilitiesView({
   const loadUnitsForBilling = async () => {
     setIsLoadingUnits(true);
     try {
-      const data = await getUnitsWithLatestReadings(selectedPropertyId, utilityType);
+      const [data, existingBills] = await Promise.all([
+        getUnitsWithLatestReadings(selectedPropertyId, utilityType),
+        getUtilityBills({
+          propertyId: selectedPropertyId,
+          type: utilityType,
+          billingMonth: billingMonth
+        })
+      ]);
       
       // Filter based on billingMode and whether the unit has a meter
       const filteredData = data.filter(u => {
@@ -140,18 +147,25 @@ export function UtilitiesView({
 
       // Map to form input states
       setUnitsData(
-        filteredData.map(u => ({
-          unitId: u.unitId,
-          unitNumber: u.unitNumber,
-          leaseId: u.leaseId,
-          tenantId: u.tenantId,
-          tenantName: u.tenantName,
-          previousReading: u.latestReading,
-          currentReading: "",
-          rate: billingMode === "METER" ? defaultRate : "1",
-          amount: billingMode === "MANUAL" ? defaultRate : "",
-          included: true
-        }))
+        filteredData.map(u => {
+          const existingBill = existingBills.find(b => b.leaseId === u.leaseId);
+          
+          return {
+            unitId: u.unitId,
+            unitNumber: u.unitNumber,
+            leaseId: u.leaseId,
+            tenantId: u.tenantId,
+            tenantName: u.tenantName,
+            previousReading: existingBill ? (existingBill.previousReading !== null ? existingBill.previousReading.toString() : "") : u.latestReading.toString(),
+            currentReading: existingBill ? (existingBill.currentReading !== null ? existingBill.currentReading.toString() : "") : "",
+            rate: existingBill ? existingBill.rate.toString() : (billingMode === "METER" ? defaultRate : "1"),
+            amount: existingBill ? existingBill.amount.toString() : (billingMode === "MANUAL" ? defaultRate : ""),
+            included: existingBill ? false : true,
+            existingBillId: existingBill ? existingBill.id : null,
+            existingBillAmount: existingBill ? existingBill.amount : null,
+            existingBillStatus: existingBill ? existingBill.status : null
+          };
+        })
       );
     } catch (err) {
       console.error(err);
@@ -768,29 +782,74 @@ export function UtilitiesView({
                         const cost = billingMode === "METER" ? consumption * rate : parseFloat(unit.amount) || 0;
 
                         return (
-                          <TableRow key={unit.unitId} className={cn("hover:bg-slate-50/30", !unit.included && "opacity-50")}>
+                          <TableRow key={unit.unitId} className={cn("hover:bg-slate-50/30", !unit.included && (unit.existingBillId ? "bg-slate-50/40 opacity-75" : "opacity-50"))}>
                             <TableCell className="text-center">
-                              <input 
-                                type="checkbox" 
-                                checked={unit.included}
-                                onChange={e => handleUnitDataChange(index, "included", e.target.checked)}
-                                className="h-4 w-4 rounded border-slate-350 cursor-pointer text-slate-900"
-                              />
+                              {unit.existingBillId ? (
+                                <div className="flex justify-center text-emerald-650" title="Already billed this month">
+                                  <CheckCircle2 size={16} />
+                                </div>
+                              ) : (
+                                <input 
+                                  type="checkbox" 
+                                  checked={unit.included}
+                                  onChange={e => handleUnitDataChange(index, "included", e.target.checked)}
+                                  className="h-4 w-4 rounded border-slate-350 cursor-pointer text-slate-900"
+                                />
+                              )}
                             </TableCell>
                             <TableCell className="px-5 py-3 font-bold text-slate-800 text-xs">
-                              Unit {unit.unitNumber}
+                              <div className="flex items-center gap-1.5">
+                                <span>Unit {unit.unitNumber}</span>
+                                {unit.existingBillId && (
+                                  <Badge className={cn("text-[8px] font-bold uppercase px-1.5 py-0 shadow-none border shrink-0",
+                                    unit.existingBillStatus === "PAID" ? "bg-emerald-50 text-emerald-700 border-emerald-150" :
+                                    unit.existingBillStatus === "PENDING" ? "bg-amber-50 text-amber-700 border-amber-150" :
+                                    "bg-blue-50 text-blue-750 border-blue-150"
+                                  )}>
+                                    {unit.existingBillStatus === "PAID" ? "Paid" : unit.existingBillStatus === "PENDING" ? "Pending" : "Billed"}
+                                  </Badge>
+                                )}
+                              </div>
                             </TableCell>
-                            <TableCell className="text-xs text-slate-600 font-semibold">{unit.tenantName}</TableCell>
+                            <TableCell className="text-xs text-slate-650 font-semibold">
+                              <div className="flex items-center justify-between gap-2">
+                                <span>{unit.tenantName}</span>
+                                {unit.existingBillId && (
+                                  <Button
+                                    type="button"
+                                    variant="link"
+                                    onClick={() => {
+                                      const billObj = {
+                                        id: unit.existingBillId,
+                                        amount: parseFloat(unit.amount) || 0,
+                                        previousReading: unit.previousReading !== "" ? parseFloat(unit.previousReading) : null,
+                                        currentReading: unit.currentReading !== "" ? parseFloat(unit.currentReading) : null,
+                                        billingMonth,
+                                        lease: { unit: { unitNumber: unit.unitNumber } }
+                                      };
+                                      setEditingBill(billObj);
+                                      setEditAmount(unit.amount);
+                                      setEditCurrentReading(unit.currentReading);
+                                      setEditPreviousReading(unit.previousReading);
+                                      setEditDialogOpen(true);
+                                    }}
+                                    className="h-auto p-0 text-[10px] font-bold text-indigo-650 hover:text-indigo-850 uppercase tracking-wider"
+                                  >
+                                    Edit Bill
+                                  </Button>
+                                )}
+                              </div>
+                            </TableCell>
                             {billingMode === "METER" ? (
                               <>
                                 <TableCell>
                                   <Input 
                                     type="number"
                                     required={unit.included && billingMode === "METER"}
-                                    disabled={!unit.included}
+                                    disabled={!unit.included || !!unit.existingBillId}
                                     value={unit.previousReading}
                                     onChange={e => handleUnitDataChange(index, "previousReading", e.target.value)}
-                                    className="h-8 text-xs font-mono w-28 bg-white border-slate-250 focus:border-indigo-400"
+                                    className="h-8 text-xs font-mono w-28 bg-white border-slate-250 focus:border-indigo-400 disabled:bg-slate-100 disabled:text-slate-500"
                                     placeholder="Prev value..."
                                   />
                                 </TableCell>
@@ -798,10 +857,10 @@ export function UtilitiesView({
                                   <Input 
                                     type="number"
                                     required={unit.included && billingMode === "METER"}
-                                    disabled={!unit.included}
+                                    disabled={!unit.included || !!unit.existingBillId}
                                     value={unit.currentReading}
                                     onChange={e => handleUnitDataChange(index, "currentReading", e.target.value)}
-                                    className="h-8 text-xs font-mono w-28 bg-white border-slate-250 focus:border-indigo-400"
+                                    className="h-8 text-xs font-mono w-28 bg-white border-slate-250 focus:border-indigo-400 disabled:bg-slate-100 disabled:text-slate-500"
                                     placeholder="Meter value..."
                                   />
                                 </TableCell>
@@ -810,13 +869,13 @@ export function UtilitiesView({
                                     type="number"
                                     step="0.01"
                                     required={unit.included && billingMode === "METER"}
-                                    disabled={!unit.included}
+                                    disabled={!unit.included || !!unit.existingBillId}
                                     value={unit.rate}
                                     onChange={e => handleUnitDataChange(index, "rate", e.target.value)}
-                                    className="h-8 text-xs font-mono w-20 bg-white border-slate-250"
+                                    className="h-8 text-xs font-mono w-20 bg-white border-slate-250 disabled:bg-slate-100 disabled:text-slate-500"
                                   />
                                 </TableCell>
-                                <TableCell className="font-mono text-xs font-bold text-indigo-600">
+                                <TableCell className="font-mono text-xs font-bold text-indigo-650">
                                   {consumption > 0 ? `${consumption.toLocaleString()} ${utilityType === "ELECTRICITY" ? "kWh" : "m³"}` : "—"}
                                 </TableCell>
                               </>
@@ -826,15 +885,15 @@ export function UtilitiesView({
                                   type="number"
                                   step="0.01"
                                   required={unit.included && billingMode === "MANUAL"}
-                                  disabled={!unit.included}
+                                  disabled={!unit.included || !!unit.existingBillId}
                                   value={unit.amount}
                                   onChange={e => handleUnitDataChange(index, "amount", e.target.value)}
-                                  className="h-8 text-xs font-mono w-40 bg-white border-slate-250 focus:border-indigo-400"
+                                  className="h-8 text-xs font-mono w-40 bg-white border-slate-250 focus:border-indigo-400 disabled:bg-slate-100 disabled:text-slate-500"
                                   placeholder={`Amount in ${currency}...`}
                                 />
                               </TableCell>
                             )}
-                            <TableCell className="text-right px-5 font-mono text-xs font-black text-slate-800">
+                            <TableCell className={cn("text-right px-5 font-mono text-xs font-black", unit.existingBillId ? "text-emerald-650 font-bold" : "text-slate-800")}>
                               {cost > 0 ? `${cost.toLocaleString()} ${currency}` : "—"}
                             </TableCell>
                           </TableRow>
