@@ -1,10 +1,11 @@
 import { prisma } from "@/lib/prisma";
 import { Button } from "@/components/ui/button";
-import { CreditCard, Search, FileText, Filter, Calendar, User, ArrowUpRight } from "lucide-react";
+import { CreditCard, Search, FileText, Filter, Calendar, User, ArrowUpRight, Zap, Droplet } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { getSystemSettings } from "@/lib/actions/settings";
 import { VerifyPaymentDialog } from "./verify-payment-dialog";
+import { VerifyUtilityPaymentDialog } from "./verify-utility-payment-dialog";
 import { TenantPaymentDialog } from "./tenant-payment-dialog";
 import { Pagination } from "./pagination";
 
@@ -21,26 +22,66 @@ export async function PaymentsView({
 }) {
   const settings = await getSystemSettings();
 
-  const where: any = tenantId ? { tenantId } : {};
-  if (searchParams?.status) where.status = searchParams.status;
+  const paymentsWhere: any = tenantId ? { tenantId } : {};
+  if (searchParams?.status) paymentsWhere.status = searchParams.status;
 
-  const page = parseInt(searchParams?.page || "1");
-  const limit = parseInt(searchParams?.limit || "15");
-  const skip = (page - 1) * limit;
+  const utilityWhere: any = tenantId ? { tenantId } : {};
+  utilityWhere.status = { not: "UNPAID" };
+  if (searchParams?.status) {
+    if (searchParams.status === "APPROVED") {
+      utilityWhere.status = "PAID";
+    } else {
+      utilityWhere.status = searchParams.status;
+    }
+  }
 
-  const [payments, totalCount] = await Promise.all([
+  const [allRentPayments, allUtilityBills] = await Promise.all([
     prisma.payment.findMany({
-      where,
+      where: paymentsWhere,
       include: { 
         tenant: true,
         lease: { include: { unit: true } }
       },
-      orderBy: { createdAt: "desc" },
-      skip,
-      take: limit,
+      orderBy: { createdAt: "desc" }
     }),
-    prisma.payment.count({ where }),
+    prisma.utilityBill.findMany({
+      where: utilityWhere,
+      include: {
+        tenant: true,
+        lease: { include: { unit: true } }
+      },
+      orderBy: { createdAt: "desc" }
+    })
   ]);
+
+  const mappedUtilities = allUtilityBills.map(u => ({
+    id: u.id,
+    leaseId: u.leaseId,
+    tenantId: u.tenantId,
+    amount: u.amount,
+    status: u.status === "PAID" ? "APPROVED" : u.status,
+    receiptUrl: u.receiptUrl,
+    senderName: u.senderName,
+    transactionId: u.transactionId,
+    bankAccountId: u.bankAccountId,
+    createdAt: u.createdAt,
+    dueDate: u.dueDate,
+    type: u.type,
+    tenant: u.tenant,
+    lease: u.lease,
+    billingMonth: u.billingMonth,
+    isUtility: true
+  }));
+
+  const combinedRecords = [...allRentPayments, ...mappedUtilities].sort((a, b) => {
+    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+  });
+
+  const page = parseInt(searchParams?.page || "1");
+  const limit = parseInt(searchParams?.limit || "15");
+  const skip = (page - 1) * limit;
+  const totalCount = combinedRecords.length;
+  const payments = combinedRecords.slice(skip, skip + limit);
 
   const totalPages = Math.ceil(totalCount / limit);
 
@@ -82,18 +123,33 @@ export async function PaymentsView({
           </thead>
           <tbody className="divide-y divide-slate-50">
             {payments.length > 0 ? (
-              payments.map((p) => (
+              (payments as any[]).map((p) => (
                 <tr key={p.id} className="hover:bg-slate-50/50 transition-colors">
                   <td className="py-3 px-6">
                     <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center border border-indigo-100 shrink-0">
-                        <User size={16} />
+                      <div className={cn(
+                        "w-9 h-9 rounded-lg flex items-center justify-center border shrink-0",
+                        p.isUtility 
+                          ? p.type === "ELECTRICITY" 
+                            ? "bg-yellow-50 text-yellow-600 border-yellow-100" 
+                            : "bg-blue-50 text-blue-600 border-blue-100"
+                          : "bg-indigo-50 text-indigo-600 border-indigo-100"
+                      )}>
+                        {p.isUtility 
+                          ? p.type === "ELECTRICITY" ? <Zap size={16} /> : <Droplet size={16} />
+                          : <User size={16} />
+                        }
                       </div>
                       <div>
                         <p className="text-sm font-semibold text-slate-900">{p.tenant.name}</p>
                         <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-tight flex items-center gap-1.5 flex-wrap">
-                          <span>INV-{p.id.slice(0, 8).toUpperCase()}</span>
-                          {p.lease?.advanceBalance > 0 && (
+                          <span>
+                            {p.isUtility 
+                              ? `${p.type === "ELECTRICITY" ? "ELECTRICITY" : "WATER"} - Unit ${p.lease?.unit?.unitNumber || "N/A"}`
+                              : `INV-${p.id.slice(0, 8).toUpperCase()}`
+                            }
+                          </span>
+                          {!p.isUtility && p.lease?.advanceBalance > 0 && (
                             <span className="text-[9px] font-black bg-emerald-50 text-emerald-600 px-1.5 py-0.5 rounded border border-emerald-100/50">
                               ADVANCE: {settings.currency} {p.lease.advanceBalance.toLocaleString()}
                             </span>
@@ -111,7 +167,10 @@ export async function PaymentsView({
                     <div className="flex flex-col gap-0.5">
                       <p className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
                         <Calendar size={12} className="text-slate-400" />
-                        {new Date(p.dueDate).toLocaleDateString("en-US", { month: "short", year: "numeric" })}
+                        {p.isUtility 
+                          ? p.billingMonth 
+                          : new Date(p.dueDate).toLocaleDateString("en-US", { month: "short", year: "numeric" })
+                        }
                       </p>
                       <p className="text-[10px] text-slate-400 font-medium">Due: {new Date(p.dueDate).toLocaleDateString()}</p>
                     </div>
@@ -131,7 +190,7 @@ export async function PaymentsView({
                       )}>
                         {p.status.toLowerCase()}
                       </span>
-                      {p.status === "APPROVED" && p.lease?.advanceBalance > 0 && (
+                      {!p.isUtility && p.status === "APPROVED" && p.lease?.advanceBalance > 0 && (
                         <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-tight bg-sky-50 text-sky-600 border border-sky-100">
                           Partial / Advance Applied
                         </span>
@@ -141,6 +200,8 @@ export async function PaymentsView({
                   <td className="py-3 px-6 text-right">
                     {role === "TENANT" ? (
                       <TenantPaymentDialog payment={p} currency={settings.currency} />
+                    ) : p.isUtility ? (
+                      <VerifyUtilityPaymentDialog bill={p} currency={settings.currency} />
                     ) : (
                       <VerifyPaymentDialog payment={p} currency={settings.currency} />
                     )}
