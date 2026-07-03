@@ -123,26 +123,35 @@ export async function createUtilityBillsBatch(data: {
           }
         });
         count++;
-
-        // Trigger SMS notification
-        const tenant = await tx.user.findUnique({ where: { id: bill.tenantId } });
-        if (tenant && tenant.phoneNumber) {
-          await sendSMS(
-            tenant.phoneNumber,
-            "utility-bill-created",
-            {
-              tenant_name: tenant.name || "Resident",
-              utility_type: data.type === "ELECTRICITY" ? "Electricity" : "Water",
-              billing_month: data.billingMonth,
-              amount: bill.amount.toLocaleString(),
-              currency: settings?.currency || "ETB"
-            },
-            "utility_bill_creation"
-          ).catch(console.error);
-        }
       }
       return count;
     });
+
+    // Dispatch SMS notifications asynchronously in the background
+    for (const bill of data.bills) {
+      if (bill.amount <= 0) continue;
+      (async () => {
+        try {
+          const tenant = await prisma.user.findUnique({ where: { id: bill.tenantId } });
+          if (tenant && tenant.phoneNumber) {
+            await sendSMS(
+              tenant.phoneNumber,
+              "utility-bill-created",
+              {
+                tenant_name: tenant.name || "Resident",
+                utility_type: data.type === "ELECTRICITY" ? "Electricity" : "Water",
+                billing_month: data.billingMonth,
+                amount: bill.amount.toLocaleString(),
+                currency: settings?.currency || "ETB"
+              },
+              "utility_bill_creation"
+            );
+          }
+        } catch (smsErr) {
+          console.error(`Failed to send SMS to tenant ${bill.tenantId}:`, smsErr);
+        }
+      })();
+    }
 
     revalidatePath("/admin/utilities");
     revalidatePath("/manager/utilities");
