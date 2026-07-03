@@ -237,6 +237,75 @@ export async function reportUtilityPayment(formData: FormData) {
   }
 }
 
+export async function reportAllUtilitiesPayment(formData: FormData) {
+  try {
+    const billIdsStr = formData.get("billIds") as string;
+    const senderName = formData.get("senderName") as string;
+    const transactionId = formData.get("transactionId") as string;
+    const bankAccountId = formData.get("bankAccountId") as string;
+    const screenshot = formData.get("screenshot") as File;
+
+    if (!billIdsStr || !senderName || !transactionId) {
+      return { success: false, error: "Missing required fields." };
+    }
+
+    const billIds = billIdsStr.split(",");
+
+    // Verify duplicate transaction references across utility bills
+    const duplicate = await prisma.utilityBill.findFirst({
+      where: { transactionId: transactionId.trim() }
+    });
+    if (duplicate) {
+      return { success: false, error: "This transaction reference has already been submitted." };
+    }
+
+    let receiptUrl = "";
+    if (screenshot && screenshot.size > 0) {
+      const uploadResult = await uploadFile(screenshot);
+      if (uploadResult.success) {
+        receiptUrl = uploadResult.url || "";
+      }
+    }
+
+    // Update all bills
+    await prisma.utilityBill.updateMany({
+      where: { id: { in: billIds } },
+      data: {
+        status: "PENDING",
+        senderName,
+        transactionId,
+        receiptUrl,
+        bankAccountId
+      }
+    });
+
+    // Revalidate public pages of the units involved
+    const bills = await prisma.utilityBill.findMany({
+      where: { id: { in: billIds } },
+      include: {
+        lease: {
+          include: { unit: true }
+        }
+      }
+    });
+
+    for (const b of bills) {
+      if (b.lease?.unit?.qrSlug) {
+        revalidatePath(`/u/${b.lease.unit.qrSlug}`);
+      }
+    }
+
+    revalidatePath("/admin/utilities");
+    revalidatePath("/manager/utilities");
+    revalidatePath("/accountant/utilities");
+
+    return { success: true };
+  } catch (error: any) {
+    console.error("Report All Utilities Payment Error:", error);
+    return { success: false, error: error.message || "Failed to submit utility payment receipt." };
+  }
+}
+
 export async function verifyUtilityPayment(billId: string, status: "APPROVED" | "REJECTED") {
   const session = await auth();
   if (!session?.user || (session.user.role !== "ADMIN" && session.user.role !== "ACCOUNTANT" && session.user.role !== "MANAGER")) {
@@ -280,6 +349,53 @@ export async function verifyUtilityPayment(billId: string, status: "APPROVED" | 
           },
           "utility_payment_approval"
         ).catch(console.error);
+      }
+
+      // Automatically verify other bills with the same transactionId
+      if (updatedBill.transactionId) {
+        const relatedBills = await prisma.utilityBill.findMany({
+          where: {
+            transactionId: updatedBill.transactionId,
+            status: "PENDING",
+            id: { not: billId }
+          },
+          include: {
+            lease: {
+              include: { unit: true }
+            },
+            tenant: true
+          }
+        });
+
+        for (const rb of relatedBills) {
+          await prisma.utilityBill.update({
+            where: { id: rb.id },
+            data: {
+              status: "PAID",
+              paidAt: new Date()
+            }
+          });
+
+          // Send SMS approval notification for related bill
+          if (rb.tenant.phoneNumber) {
+            await sendSMS(
+              rb.tenant.phoneNumber,
+              "utility-payment-approved",
+              {
+                tenant_name: rb.tenant.name || "Resident",
+                utility_type: rb.type === "ELECTRICITY" ? "Electricity" : "Water",
+                amount: rb.amount.toLocaleString(),
+                currency: settings?.currency || "ETB"
+              },
+              "utility_payment_approval"
+            ).catch(console.error);
+          }
+
+          // Revalidate related public page
+          if (rb.lease?.unit?.qrSlug) {
+            revalidatePath(`/u/${rb.lease.unit.qrSlug}`);
+          }
+        }
       }
     } else {
       await prisma.utilityBill.update({

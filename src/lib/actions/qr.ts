@@ -138,11 +138,28 @@ export async function getPublicUnitStatus(slug: string) {
       groupLeases = [activeLease, ...childLeases];
     }
 
+    const tenantLeases = activeLease
+      ? await prisma.lease.findMany({
+          where: {
+            tenantId: activeLease.tenantId,
+            status: { in: ["ACTIVE", "PENDING", "SEALED"] }
+          },
+          include: {
+            unit: true
+          }
+        })
+      : [];
+
     const payments = groupLeases.flatMap(l => l.payments);
     const penalties = groupLeases.flatMap(l => l.penalties);
-    const utilityBills = activeLease
+    const utilityBills = tenantLeases.length > 0
       ? await prisma.utilityBill.findMany({
-          where: { leaseId: { in: groupLeases.map(l => l.id) } },
+          where: { leaseId: { in: tenantLeases.map(l => l.id) } },
+          include: {
+            lease: {
+              include: { unit: true }
+            }
+          },
           orderBy: { readingDate: "desc" }
         })
       : [];

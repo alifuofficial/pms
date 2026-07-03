@@ -1,6 +1,7 @@
 import { getPublicUnitStatus } from "@/lib/actions/qr";
 import { PublicReportPayment } from "@/components/shared/public-report-payment";
 import { PublicReportUtilityPayment } from "@/components/shared/public-report-utility-payment";
+import { PublicReportAllUtilities } from "@/components/shared/public-report-all-utilities";
 import { prisma } from "@/lib/prisma";
 import { 
   Building2, 
@@ -637,14 +638,68 @@ export default async function PublicUnitPage({ params }: { params: Promise<{ slu
         {/* Utility Bills Card */}
         {lease && lease.utilityBills && lease.utilityBills.length > 0 && (
           <div className="bg-white rounded-[2.5rem] shadow-2xl shadow-slate-900/5 overflow-hidden border border-slate-100 p-8 space-y-6">
-            <div className="flex items-center justify-between border-b border-slate-50 pb-4">
-              <div className="flex items-center gap-2">
-                <Zap size={18} className="text-yellow-500" />
-                <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest">Utility Payments</h3>
+            <div className="flex flex-col gap-4 border-b border-slate-50 pb-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Zap size={18} className="text-yellow-500" />
+                  <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest">Utility Payments</h3>
+                </div>
+                <Badge className="bg-slate-100 text-slate-600 border border-slate-150 shadow-none font-bold text-[9px] uppercase tracking-wider">
+                  {lease.utilityBills.filter((b: any) => b.status !== 'PAID').length} Unpaid
+                </Badge>
               </div>
-              <Badge className="bg-slate-100 text-slate-600 border border-slate-150 shadow-none font-bold text-[9px] uppercase tracking-wider">
-                {lease.utilityBills.filter((b: any) => b.status !== 'PAID').length} Unpaid
-              </Badge>
+
+              {/* Combined Utility Due Section */}
+              {(() => {
+                const unpaidBills = lease.utilityBills.filter((b: any) => b.status === 'UNPAID' || b.status === 'REJECTED');
+                const totalUnpaidAmount = unpaidBills.reduce((sum: number, b: any) => sum + b.amount, 0);
+
+                if (totalUnpaidAmount > 0) {
+                  return (
+                    <div className="bg-slate-50 rounded-2xl p-5 border border-slate-100 space-y-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total Utilities Due</p>
+                          <p className="text-xl font-black text-slate-900">
+                            {totalUnpaidAmount.toLocaleString()} {settings.currency}
+                          </p>
+                        </div>
+                        <PublicReportAllUtilities 
+                          bills={unpaidBills}
+                          currency={settings.currency}
+                          bankAccounts={settings.bankAccounts || []}
+                        />
+                      </div>
+
+                      {/* Units Breakdown */}
+                      <div className="text-[10px] text-slate-500 font-semibold space-y-1.5 pt-3 border-t border-slate-200/60">
+                        <p className="font-bold text-slate-400 uppercase tracking-wider mb-1">Breakdown per Unit:</p>
+                        {(() => {
+                          const grouped: { [key: string]: { electricity: number; water: number } } = {};
+                          unpaidBills.forEach((b: any) => {
+                            const uNum = b.lease?.unit?.unitNumber || "N/A";
+                            if (!grouped[uNum]) grouped[uNum] = { electricity: 0, water: 0 };
+                            if (b.type === 'ELECTRICITY') grouped[uNum].electricity += b.amount;
+                            if (b.type === 'WATER') grouped[uNum].water += b.amount;
+                          });
+
+                          return Object.entries(grouped).map(([uNum, val]) => (
+                            <div key={uNum} className="flex justify-between">
+                              <span className="uppercase text-slate-700">Unit {uNum}:</span>
+                              <span className="font-mono text-slate-800">
+                                {val.electricity > 0 ? `Electricity: ${val.electricity.toLocaleString()} ${settings.currency}` : ""}
+                                {val.electricity > 0 && val.water > 0 ? " | " : ""}
+                                {val.water > 0 ? `Water: ${val.water.toLocaleString()} ${settings.currency}` : ""}
+                              </span>
+                            </div>
+                          ));
+                        })()}
+                      </div>
+                    </div>
+                  );
+                }
+                return null;
+              })()}
             </div>
 
             <div className="space-y-4">
@@ -664,7 +719,7 @@ export default async function PublicUnitPage({ params }: { params: Promise<{ slu
                       </div>
                       <div className="text-left">
                         <p className="text-xs font-black text-slate-900 uppercase">
-                          {bill.type === "ELECTRICITY" ? "Electricity" : "Water"} - {bill.billingMonth}
+                          {bill.type === "ELECTRICITY" ? "Electricity" : "Water"} - {bill.billingMonth} (Unit {bill.lease?.unit?.unitNumber || "N/A"})
                         </p>
                         {bill.previousReading !== null && bill.currentReading !== null ? (
                           <p className="text-[10px] text-slate-500 font-semibold mt-0.5">

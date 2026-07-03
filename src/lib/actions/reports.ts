@@ -46,7 +46,7 @@ export async function getReportMetrics(startDate: Date, endDate: Date) {
       return true;
     });
 
-    const expected = filteredLeases.reduce((sum, lease) => sum + (lease.unit?.rentAmount || 0), 0);
+    const expectedRent = filteredLeases.reduce((sum, lease) => sum + (lease.unit?.rentAmount || 0), 0);
 
     const collectedRent = await prisma.payment.aggregate({
       where: {
@@ -61,7 +61,25 @@ export async function getReportMetrics(startDate: Date, endDate: Date) {
       _sum: { amount: true }
     });
 
-    const collected = collectedRent._sum.amount || 0;
+    // Fetch expected and collected utilities for this month (by dueDate)
+    const utilityBillsInMonth = await prisma.utilityBill.findMany({
+      where: {
+        dueDate: { gte: start, lte: end },
+        lease: {
+          unit: {
+            companyOwned: false
+          }
+        }
+      }
+    });
+
+    const expectedUtilities = utilityBillsInMonth.reduce((sum, b) => sum + b.amount, 0);
+    const collectedUtilities = utilityBillsInMonth
+      .filter(b => b.status === "PAID")
+      .reduce((sum, b) => sum + b.amount, 0);
+
+    const expected = expectedRent + expectedUtilities;
+    const collected = (collectedRent._sum.amount || 0) + collectedUtilities;
     const rate = expected > 0 ? Math.round((collected / expected) * 100) : 0;
 
     monthlyMetrics.push({
