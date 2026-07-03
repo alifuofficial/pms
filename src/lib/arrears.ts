@@ -161,7 +161,7 @@ export function getLeaseUncollectedBalance(lease: any, settings: any, endDate?: 
 
     // Include other unpaid utility bills in the UtilityBill table
     const unpaidUtilitiesTable = lease.utilityBills
-      ? lease.utilityBills.filter((b: any) => b.status !== "PAID" && (!endDate || new Date(b.dueDate) <= endDate))
+      ? lease.utilityBills.filter((b: any) => b.status !== "PAID" && (!endDate || new Date(b.createdAt) <= endDate))
       : [];
     const tableUtilitiesAmount = unpaidUtilitiesTable.reduce((sum: number, b: any) => sum + b.amount, 0);
     utilitiesUncollected += tableUtilitiesAmount;
@@ -264,7 +264,7 @@ export function getLeaseUncollectedBalance(lease: any, settings: any, endDate?: 
 
   // Utilities uncollected
   const utilitiesUncollected = lease.utilityBills
-    .filter((b: any) => b.status !== "PAID" && (!endDate || new Date(b.dueDate) <= endDate))
+    .filter((b: any) => b.status !== "PAID" && (!endDate || new Date(b.createdAt) <= endDate))
     .reduce((sum: number, b: any) => sum + b.amount, 0);
 
   const totalUncollected = rentUncollected + penaltiesUncollected + utilitiesUncollected;

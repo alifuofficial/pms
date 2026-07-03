@@ -64,7 +64,7 @@ export async function getReportMetrics(startDate: Date, endDate: Date) {
     // Fetch expected and collected utilities for this month (by dueDate)
     const utilityBillsInMonth = await prisma.utilityBill.findMany({
       where: {
-        dueDate: { gte: start, lte: end },
+        createdAt: { gte: start, lte: end },
         lease: {
           unit: {
             companyOwned: false
@@ -217,9 +217,14 @@ export async function getReportMetrics(startDate: Date, endDate: Date) {
   // Utility Revenue Aggregation
   const periodUtilities = await prisma.utilityBill.findMany({
     where: {
-      dueDate: {
+      createdAt: {
         gte: startDate,
         lte: endDate,
+      },
+      lease: {
+        unit: {
+          companyOwned: false
+        }
       }
     }
   });
