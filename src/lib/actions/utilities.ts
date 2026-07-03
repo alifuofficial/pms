@@ -146,6 +146,23 @@ export async function createUtilityBillsBatch(data: {
 
     revalidatePath("/admin/utilities");
     revalidatePath("/manager/utilities");
+
+    // Fetch the qrSlug of all units affected by this batch to revalidate their public QR page
+    try {
+      const leaseIds = data.bills.map(b => b.leaseId);
+      const leases = await prisma.lease.findMany({
+        where: { id: { in: leaseIds } },
+        select: { unit: { select: { qrSlug: true } } }
+      });
+      for (const l of leases) {
+        if (l.unit?.qrSlug) {
+          revalidatePath(`/u/${l.unit.qrSlug}`);
+        }
+      }
+    } catch (err) {
+      console.error("Failed to revalidate public QR pages on batch utility creation:", err);
+    }
+
     return { success: true, count: createdCount };
   } catch (error: any) {
     console.error("Batch Create Utility Bills Error:", error);
@@ -181,7 +198,7 @@ export async function reportUtilityPayment(formData: FormData) {
       }
     }
 
-    await prisma.utilityBill.update({
+    const updated = await prisma.utilityBill.update({
       where: { id: billId },
       data: {
         status: "PENDING",
@@ -189,8 +206,20 @@ export async function reportUtilityPayment(formData: FormData) {
         transactionId,
         receiptUrl,
         bankAccountId
+      },
+      include: {
+        lease: {
+          include: { unit: true }
+        }
       }
     });
+
+    if (updated.lease?.unit?.qrSlug) {
+      revalidatePath(`/u/${updated.lease.unit.qrSlug}`);
+    }
+    revalidatePath("/admin/utilities");
+    revalidatePath("/manager/utilities");
+    revalidatePath("/accountant/utilities");
 
     return { success: true };
   } catch (error: any) {
@@ -208,6 +237,15 @@ export async function verifyUtilityPayment(billId: string, status: "APPROVED" | 
   try {
     const settings = await prisma.systemSettings.findUnique({ where: { id: "global" } });
     
+    const billObj = await prisma.utilityBill.findUnique({
+      where: { id: billId },
+      include: {
+        lease: {
+          include: { unit: true }
+        }
+      }
+    });
+
     if (status === "APPROVED") {
       const updatedBill = await prisma.utilityBill.update({
         where: { id: billId },
@@ -241,6 +279,10 @@ export async function verifyUtilityPayment(billId: string, status: "APPROVED" | 
           status: "REJECTED"
         }
       });
+    }
+
+    if (billObj?.lease?.unit?.qrSlug) {
+      revalidatePath(`/u/${billObj.lease.unit.qrSlug}`);
     }
 
     revalidatePath("/admin/utilities");

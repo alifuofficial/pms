@@ -750,7 +750,17 @@ export function UtilitiesView({
                             <TableCell className="text-xs text-slate-600 font-semibold">{unit.tenantName}</TableCell>
                             {billingMode === "METER" ? (
                               <>
-                                <TableCell className="font-mono text-xs text-slate-700">{unit.previousReading.toLocaleString()} {utilityType === "ELECTRICITY" ? "kWh" : "m³"}</TableCell>
+                                <TableCell>
+                                  <Input 
+                                    type="number"
+                                    required={unit.included && billingMode === "METER"}
+                                    disabled={!unit.included}
+                                    value={unit.previousReading}
+                                    onChange={e => handleUnitDataChange(index, "previousReading", e.target.value)}
+                                    className="h-8 text-xs font-mono w-28 bg-white border-slate-250 focus:border-indigo-400"
+                                    placeholder="Prev value..."
+                                  />
+                                </TableCell>
                                 <TableCell>
                                   <Input 
                                     type="number"
