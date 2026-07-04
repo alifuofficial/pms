@@ -38,7 +38,8 @@ export function AddUnitDialog({
     rentAmount: "",
     penaltyExempt: false,
     companyOwned: false,
-    hasMeter: true,
+    hasElectricityMeter: true,
+    hasWaterMeter: true,
   });
 
   useEffect(() => {
@@ -71,7 +72,8 @@ export function AddUnitDialog({
       rentAmount: parseFloat(formData.rentAmount),
       penaltyExempt: formData.penaltyExempt,
       companyOwned: formData.companyOwned,
-      hasMeter: formData.hasMeter,
+      hasElectricityMeter: formData.hasElectricityMeter,
+      hasWaterMeter: formData.hasWaterMeter,
     });
     setIsLoading(false);
     
@@ -87,7 +89,8 @@ export function AddUnitDialog({
         rentAmount: "",
         penaltyExempt: false,
         companyOwned: false,
-        hasMeter: true,
+        hasElectricityMeter: true,
+        hasWaterMeter: true,
       });
     } else {
       toast.error(result.error || "Failed to add unit.");
@@ -227,17 +230,32 @@ export function AddUnitDialog({
                 </Label>
               </div>
 
-              <div className="flex items-center gap-2">
-                <input 
-                  type="checkbox"
-                  id="hasMeter"
-                  checked={formData.hasMeter}
-                  onChange={(e) => setFormData({ ...formData, hasMeter: e.target.checked })}
-                  className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900 cursor-pointer"
-                />
-                <Label htmlFor="hasMeter" className="text-xs font-semibold text-slate-700 cursor-pointer select-none">
-                  Unit has Utility Meter (Electricity/Water)
-                </Label>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="flex items-center gap-2">
+                  <input 
+                    type="checkbox"
+                    id="hasElectricityMeter"
+                    checked={formData.hasElectricityMeter}
+                    onChange={(e) => setFormData({ ...formData, hasElectricityMeter: e.target.checked })}
+                    className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900 cursor-pointer"
+                  />
+                  <Label htmlFor="hasElectricityMeter" className="text-xs font-semibold text-slate-700 cursor-pointer select-none">
+                    Has Electric Meter
+                  </Label>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <input 
+                    type="checkbox"
+                    id="hasWaterMeter"
+                    checked={formData.hasWaterMeter}
+                    onChange={(e) => setFormData({ ...formData, hasWaterMeter: e.target.checked })}
+                    className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900 cursor-pointer"
+                  />
+                  <Label htmlFor="hasWaterMeter" className="text-xs font-semibold text-slate-700 cursor-pointer select-none">
+                    Has Water Meter
+                  </Label>
+                </div>
               </div>
             </div>
           </div>

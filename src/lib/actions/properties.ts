@@ -79,6 +79,8 @@ export async function createUnit(propertyId: string, data: {
   penaltyExempt?: boolean;
   companyOwned?: boolean;
   hasMeter?: boolean;
+  hasElectricityMeter?: boolean;
+  hasWaterMeter?: boolean;
   mergedIntoId?: string | null;
 }) {
   const session = await auth();
@@ -141,6 +143,8 @@ export async function updateUnit(id: string, data: {
   penaltyExempt?: boolean;
   companyOwned?: boolean;
   hasMeter?: boolean;
+  hasElectricityMeter?: boolean;
+  hasWaterMeter?: boolean;
   mergedIntoId?: string | null;
 }) {
   const session = await auth();
@@ -201,6 +205,8 @@ export async function bulkUpdateUnits(ids: string[], data: {
   penaltyExempt?: boolean;
   companyOwned?: boolean;
   hasMeter?: boolean;
+  hasElectricityMeter?: boolean;
+  hasWaterMeter?: boolean;
   mergedIntoId?: string | null;
 }) {
   const session = await auth();

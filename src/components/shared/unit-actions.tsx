@@ -101,7 +101,8 @@ export function UnitActions({ unit }: { unit: any }) {
     status: unit.status,
     penaltyExempt: unit.penaltyExempt || false,
     companyOwned: unit.companyOwned || false,
-    hasMeter: unit.hasMeter !== false,
+    hasElectricityMeter: unit.hasElectricityMeter !== false,
+    hasWaterMeter: unit.hasWaterMeter !== false,
     mergedIntoId: unit.mergedIntoId || "",
   });
 
@@ -519,17 +520,32 @@ export function UnitActions({ unit }: { unit: any }) {
                 </Label>
               </div>
 
-              <div className="flex items-center gap-2">
-                <input 
-                  type="checkbox"
-                  id={`edit-hasMeter-${unit.id}`}
-                  checked={editData.hasMeter}
-                  onChange={(e) => setEditData({ ...editData, hasMeter: e.target.checked })}
-                  className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900 cursor-pointer"
-                />
-                <Label htmlFor={`edit-hasMeter-${unit.id}`} className="text-xs font-semibold text-slate-700 cursor-pointer select-none">
-                  Unit has Utility Meter (Electricity/Water)
-                </Label>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="flex items-center gap-2">
+                  <input 
+                    type="checkbox"
+                    id={`edit-hasElectricityMeter-${unit.id}`}
+                    checked={editData.hasElectricityMeter}
+                    onChange={(e) => setEditData({ ...editData, hasElectricityMeter: e.target.checked })}
+                    className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900 cursor-pointer"
+                  />
+                  <Label htmlFor={`edit-hasElectricityMeter-${unit.id}`} className="text-xs font-semibold text-slate-700 cursor-pointer select-none">
+                    Has Electric Meter
+                  </Label>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <input 
+                    type="checkbox"
+                    id={`edit-hasWaterMeter-${unit.id}`}
+                    checked={editData.hasWaterMeter}
+                    onChange={(e) => setEditData({ ...editData, hasWaterMeter: e.target.checked })}
+                    className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900 cursor-pointer"
+                  />
+                  <Label htmlFor={`edit-hasWaterMeter-${unit.id}`} className="text-xs font-semibold text-slate-700 cursor-pointer select-none">
+                    Has Water Meter
+                  </Label>
+                </div>
               </div>
             </div>
 

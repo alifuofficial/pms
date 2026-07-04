@@ -16,7 +16,7 @@ const formatFloor = (f: number) => {
   return `${f}${s} Floor`;
 };
 
-type BulkField = "floor" | "status" | "type" | "rentAmount" | "qrPrinted" | "penaltyExempt" | "companyOwned" | "hasMeter" | "merge" | "unmerge";
+type BulkField = "floor" | "status" | "type" | "rentAmount" | "qrPrinted" | "penaltyExempt" | "companyOwned" | "hasElectricityMeter" | "hasWaterMeter" | "merge" | "unmerge";
 
 const BULK_FIELDS: { value: BulkField; label: string }[] = [
   { value: "floor",      label: "Floor" },
@@ -26,7 +26,8 @@ const BULK_FIELDS: { value: BulkField; label: string }[] = [
   { value: "qrPrinted",  label: "QR Code Printed Status" },
   { value: "penaltyExempt", label: "Late Penalty Exemption" },
   { value: "companyOwned",  label: "Company Ownership" },
-  { value: "hasMeter",      label: "Utility Meter Status (Has Meter)" },
+  { value: "hasElectricityMeter", label: "Electricity Meter Status" },
+  { value: "hasWaterMeter",       label: "Water Meter Status" },
   { value: "merge",      label: "Merge Units (Set Parent)" },
   { value: "unmerge",    label: "Unmerge Units" },
 ];
@@ -140,7 +141,8 @@ export function UnitsBulkTable({ units, currency }: { units: any[]; currency: st
       if (bulkField === "qrPrinted")   data.qrPrinted = bulkValue === "true";
       if (bulkField === "penaltyExempt") data.penaltyExempt = bulkValue === "true";
       if (bulkField === "companyOwned")  data.companyOwned = bulkValue === "true";
-      if (bulkField === "hasMeter")      data.hasMeter = bulkValue === "true";
+      if (bulkField === "hasElectricityMeter") data.hasElectricityMeter = bulkValue === "true";
+      if (bulkField === "hasWaterMeter")       data.hasWaterMeter = bulkValue === "true";
 
       const result = await bulkUpdateUnits(ids, data);
       if (result.success) {
@@ -177,7 +179,7 @@ export function UnitsBulkTable({ units, currency }: { units: any[]; currency: st
                 else if (f === "qrPrinted") setBulkValue("true");
                 else if (f === "penaltyExempt") setBulkValue("true");
                 else if (f === "companyOwned") setBulkValue("true");
-                else if (f === "hasMeter") setBulkValue("true");
+                else if (f === "hasElectricityMeter" || f === "hasWaterMeter") setBulkValue("true");
                 else if (f === "merge") {
                   const firstId = Array.from(selected)[0] || "";
                   setBulkValue(firstId);
@@ -275,7 +277,7 @@ export function UnitsBulkTable({ units, currency }: { units: any[]; currency: st
               </select>
             )}
 
-            {bulkField === "hasMeter" && (
+            {(bulkField === "hasElectricityMeter" || bulkField === "hasWaterMeter") && (
               <select
                 className="h-8 rounded-lg bg-white/10 border border-white/20 text-white text-xs font-semibold px-2 outline-none"
                 value={bulkValue}
@@ -397,11 +399,15 @@ export function UnitsBulkTable({ units, currency }: { units: any[]; currency: st
                               Company Owned
                             </span>
                           )}
-                          {unit.hasMeter === false && (
-                            <span className="bg-purple-100 text-purple-800 text-[9px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider select-none shrink-0 border border-purple-200">
-                              Flat Rate
-                            </span>
-                          )}
+                           {(unit.hasElectricityMeter === false || unit.hasWaterMeter === false) && (
+                             <span className="bg-purple-100 text-purple-800 text-[9px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider select-none shrink-0 border border-purple-200">
+                               {unit.hasElectricityMeter === false && unit.hasWaterMeter === false 
+                                 ? "Flat Rate" 
+                                 : unit.hasElectricityMeter === false 
+                                   ? "Flat Elec" 
+                                   : "Flat Water"}
+                             </span>
+                           )}
                         </div>
                         <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-tight">{unit.type}</p>
                         {unit.mergedInto && (

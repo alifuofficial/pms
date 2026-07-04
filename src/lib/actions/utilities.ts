@@ -466,7 +466,7 @@ export async function getUnitsWithLatestReadings(propertyId: string, type: "ELEC
       tenantId: activeLease.tenant.id,
       tenantName: activeLease.tenant.name || "Resident",
       latestReading: latestBill?.currentReading || 0,
-      hasMeter: unit.hasMeter !== false
+      hasMeter: type === "ELECTRICITY" ? unit.hasElectricityMeter !== false : unit.hasWaterMeter !== false
     });
   }
 

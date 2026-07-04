@@ -64,6 +64,8 @@ model Unit {
   penaltyExempt Boolean @default(false)
   companyOwned  Boolean @default(false)
   hasMeter      Boolean @default(true)
+  hasElectricityMeter Boolean @default(true)
+  hasWaterMeter       Boolean @default(true)
   mergedIntoId  String?
   mergedInto    Unit?      @relation("UnitMerge", fields: [mergedIntoId], references: [id], onDelete: SetNull)
   mergedUnits   Unit[]     @relation("UnitMerge")
