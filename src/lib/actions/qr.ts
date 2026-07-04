@@ -185,14 +185,16 @@ export async function getPublicUnitStatus(slug: string) {
     const coverageEnd = coverageDate ? getEthiopianMonthEnd(new Date(coverageDate)) : null;
     const now = new Date();
     
-    const coverageUntil = latestApprovedPayment?.advanceUntil || latestApprovedPayment?.dueDate || null;
-    const daysLeftVal = coverageUntil ? getDaysUntilEthiopianExpiry(new Date(coverageUntil)) : 0;
-
-    // Adjust countdown based on the lease's advanceBalance
     const monthlyRent = unit.rentAmount;
     const advanceBalance = groupLeases.reduce((sum, l) => sum + (l.advanceBalance || 0), 0);
-    const partialDays = monthlyRent > 0 ? Math.floor((advanceBalance / monthlyRent) * 30) : 0;
-    const daysLeft = daysLeftVal + partialDays;
+    const monthsCovered = monthlyRent > 0 ? Math.round(advanceBalance / monthlyRent) : 0;
+
+    const baseCoverageUntil = latestApprovedPayment?.advanceUntil || latestApprovedPayment?.dueDate || null;
+    const coverageUntil = baseCoverageUntil
+      ? (monthsCovered > 0 ? addEthiopianMonths(new Date(baseCoverageUntil), monthsCovered) : new Date(baseCoverageUntil))
+      : null;
+
+    const daysLeft = coverageUntil ? getDaysUntilEthiopianExpiry(coverageUntil) : 0;
 
     // ── STEP 2: Calculate Arrears (Gap Months) ─────────────────────────────
     const pendingPayments = payments

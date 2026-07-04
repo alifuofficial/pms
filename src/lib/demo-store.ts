@@ -239,15 +239,18 @@ export const calculateDaysLeftForLease = (lease: Lease, allPayments: Payment[], 
       })[leasePayments.length - 1]
     : null;
 
-  const coverageUntil = latestPayment?.advanceUntil || latestPayment?.dueDate || null;
-  if (!coverageUntil) return { days: 0, text: "No payment", expired: true };
-
-  const daysVal = getDaysUntilEthiopianExpiry(new Date(coverageUntil));
-  
   const unit = allUnits.find(u => u.id === lease.unitId);
   const rentAmount = unit?.rentAmount || 0;
-  const partialDays = rentAmount > 0 ? Math.floor((lease.advanceBalance / rentAmount) * 30) : 0;
-  const totalDays = daysVal + partialDays;
+  const monthsCovered = rentAmount > 0 ? Math.round(lease.advanceBalance / rentAmount) : 0;
+
+  const baseCoverageUntil = latestPayment?.advanceUntil || latestPayment?.dueDate || null;
+  if (!baseCoverageUntil) return { days: 0, text: "No payment", expired: true };
+
+  const coverageUntil = monthsCovered > 0 
+    ? addEthiopianMonths(new Date(baseCoverageUntil), monthsCovered) 
+    : new Date(baseCoverageUntil);
+
+  const totalDays = getDaysUntilEthiopianExpiry(coverageUntil);
 
   return {
     days: totalDays,
