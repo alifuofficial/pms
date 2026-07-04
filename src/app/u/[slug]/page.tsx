@@ -636,7 +636,7 @@ export default async function PublicUnitPage({ params }: { params: Promise<{ slu
         </div>
 
         {/* Utility Bills Card */}
-        {lease && lease.utilityBills && lease.utilityBills.length > 0 && (
+        {lease && lease.utilityBills && lease.utilityBills.some((b: any) => b.status !== 'PAID') && (
           <div className="bg-white rounded-[2.5rem] shadow-2xl shadow-slate-900/5 overflow-hidden border border-slate-100 p-8 space-y-6">
             <div className="flex flex-col gap-4 border-b border-slate-50 pb-4">
               <div className="flex items-center justify-between">
@@ -703,7 +703,7 @@ export default async function PublicUnitPage({ params }: { params: Promise<{ slu
             </div>
 
             <div className="space-y-4">
-              {lease.utilityBills.map((bill: any) => {
+              {lease.utilityBills.filter((bill: any) => bill.status !== 'PAID').map((bill: any) => {
                 const isPaid = bill.status === "PAID";
                 const isPending = bill.status === "PENDING";
                 const isRejected = bill.status === "REJECTED";
