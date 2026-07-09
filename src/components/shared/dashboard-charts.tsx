@@ -110,6 +110,10 @@ export function RevenueChart({ data = [] }: { data?: ChartData[] }) {
               <stop offset="5%" stopColor="#64748b" stopOpacity={0.08}/>
               <stop offset="95%" stopColor="#64748b" stopOpacity={0}/>
             </linearGradient>
+            <linearGradient id="colorExpectedRented" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.08}/>
+              <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0}/>
+            </linearGradient>
             <linearGradient id="colorCollected" x1="0" y1="0" x2="0" y2="1">
               <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.15}/>
               <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
@@ -132,20 +136,24 @@ export function RevenueChart({ data = [] }: { data?: ChartData[] }) {
           <Tooltip 
             content={({ active, payload }) => {
               if (active && payload && payload.length) {
-                const item = payload[0].payload as ChartData;
+                const item = payload[0].payload as any;
                 return (
                   <div className="bg-white p-3 border border-slate-100 rounded-xl shadow-lg space-y-1.5 text-xs text-slate-600 font-medium">
                     <p className="font-bold text-slate-800 text-sm border-b border-slate-50 pb-1 uppercase tracking-tight">{item.name}</p>
                     <div className="flex justify-between items-center gap-6">
-                      <span className="flex items-center gap-1.5 text-slate-400 font-semibold"><span className="w-2 h-2 rounded-full bg-slate-400" /> Expected:</span>
+                      <span className="flex items-center gap-1.5 text-slate-400 font-semibold"><span className="w-2 h-2 rounded-full bg-slate-400" /> Expected (All Units):</span>
                       <span className="font-bold text-slate-700">{item.expected?.toLocaleString() || 0}</span>
+                    </div>
+                    <div className="flex justify-between items-center gap-6">
+                      <span className="flex items-center gap-1.5 text-purple-400 font-semibold"><span className="w-2 h-2 rounded-full bg-purple-400" /> Expected (Rented):</span>
+                      <span className="font-bold text-purple-600">{item.expectedRented?.toLocaleString() || 0}</span>
                     </div>
                     <div className="flex justify-between items-center gap-6">
                       <span className="flex items-center gap-1.5 text-blue-500 font-semibold"><span className="w-2 h-2 rounded-full bg-blue-500" /> Collected:</span>
                       <span className="font-bold text-blue-600">{item.collected?.toLocaleString() || 0}</span>
                     </div>
                     <div className="flex justify-between items-center gap-6 border-t border-slate-50 pt-1.5 font-bold">
-                      <span className="text-emerald-600">Collection Rate:</span>
+                      <span className="text-emerald-600">Collection Rate (Rented):</span>
                       <span className="text-emerald-600">{item.rate || 0}%</span>
                     </div>
                   </div>
@@ -163,9 +171,9 @@ export function RevenueChart({ data = [] }: { data?: ChartData[] }) {
           <Area 
             type="monotone" 
             dataKey="expected" 
-            name="Expected Revenue" 
+            name="Expected (All Units)" 
             stroke="#64748b" 
-            strokeWidth={2}
+            strokeWidth={1.5}
             strokeDasharray="4 4"
             fillOpacity={1} 
             fill="url(#colorExpected)" 
@@ -173,8 +181,19 @@ export function RevenueChart({ data = [] }: { data?: ChartData[] }) {
           />
           <Area 
             type="monotone" 
+            dataKey="expectedRented" 
+            name="Expected (Rented)" 
+            stroke="#8b5cf6" 
+            strokeWidth={2}
+            strokeDasharray="3 3"
+            fillOpacity={1} 
+            fill="url(#colorExpectedRented)" 
+            animationDuration={1000}
+          />
+          <Area 
+            type="monotone" 
             dataKey="collected" 
-            name="Collected Revenue" 
+            name="Collected" 
             stroke="#3b82f6" 
             strokeWidth={2.5}
             fillOpacity={1} 
@@ -289,19 +308,23 @@ export function EthiopianRevenueChart({ data = [] }: { data?: ChartData[] }) {
                   <div className="bg-white p-3 border border-slate-100 rounded-xl shadow-lg space-y-1.5 text-xs text-slate-600 font-medium">
                     <p className="font-bold text-slate-800 text-sm border-b border-slate-50 pb-1 uppercase tracking-tight">{item.name}</p>
                     <div className="flex justify-between items-center gap-6">
-                      <span className="flex items-center gap-1.5 text-slate-400 font-semibold"><span className="w-2 h-2 rounded-full bg-slate-450" /> Expected:</span>
+                      <span className="flex items-center gap-1.5 text-slate-400 font-semibold"><span className="w-2 h-2 rounded-full bg-slate-400" /> Expected (All Units):</span>
                       <span className="font-bold text-slate-700">{item.expected?.toLocaleString() || 0}</span>
+                    </div>
+                    <div className="flex justify-between items-center gap-6">
+                      <span className="flex items-center gap-1.5 text-purple-400 font-semibold"><span className="w-2 h-2 rounded-full bg-purple-400" /> Expected (Rented):</span>
+                      <span className="font-bold text-purple-600">{item.expectedRented?.toLocaleString() || 0}</span>
                     </div>
                     <div className="flex justify-between items-center gap-6">
                       <span className="flex items-center gap-1.5 text-blue-500 font-semibold"><span className="w-2 h-2 rounded-full bg-blue-500" /> Collected:</span>
                       <span className="font-bold text-blue-600">{item.collected?.toLocaleString() || 0}</span>
                     </div>
                     <div className="flex justify-between items-center gap-6">
-                      <span className="flex items-center gap-1.5 text-red-500 font-semibold"><span className="w-2 h-2 rounded-full bg-red-500" /> Uncollected:</span>
+                      <span className="flex items-center gap-1.5 text-red-500 font-semibold"><span className="w-2 h-2 rounded-full bg-red-500" /> Uncollected (Rented):</span>
                       <span className="font-bold text-red-600">{item.uncollected?.toLocaleString() || 0}</span>
                     </div>
                     <div className="flex justify-between items-center gap-6 border-t border-slate-50 pt-1.5 font-bold">
-                      <span className="text-emerald-600">Collection Rate:</span>
+                      <span className="text-emerald-600">Collection Rate (Rented):</span>
                       <span className="text-emerald-600">{item.rate || 0}%</span>
                     </div>
                   </div>
@@ -318,10 +341,18 @@ export function EthiopianRevenueChart({ data = [] }: { data?: ChartData[] }) {
           />
           <Bar 
             dataKey="expected" 
-            name="Expected"
+            name="Expected (All Units)"
             fill="#64748b" 
             radius={[4, 4, 0, 0]} 
-            barSize={15}
+            barSize={12}
+            animationDuration={1000}
+          />
+          <Bar 
+            dataKey="expectedRented" 
+            name="Expected (Rented)"
+            fill="#8b5cf6" 
+            radius={[4, 4, 0, 0]} 
+            barSize={12}
             animationDuration={1000}
           />
           <Bar 
@@ -329,7 +360,7 @@ export function EthiopianRevenueChart({ data = [] }: { data?: ChartData[] }) {
             name="Collected"
             fill="#3b82f6" 
             radius={[4, 4, 0, 0]} 
-            barSize={15}
+            barSize={12}
             animationDuration={1000}
           />
           <Bar 
@@ -337,7 +368,7 @@ export function EthiopianRevenueChart({ data = [] }: { data?: ChartData[] }) {
             name="Uncollected"
             fill="#ef4444" 
             radius={[4, 4, 0, 0]} 
-            barSize={15}
+            barSize={12}
             animationDuration={1000}
           />
         </BarChart>

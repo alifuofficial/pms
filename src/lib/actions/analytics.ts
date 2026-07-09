@@ -26,6 +26,38 @@ export async function getRevenueAnalytics(months: number = 6, propertyIds?: stri
 
     const expected = allUnits.reduce((sum, u) => sum + u.rentAmount, 0);
 
+    // Expected revenue for all rented units (active/rented leases in this month)
+    const activeLeases = await prisma.lease.findMany({
+      where: {
+        status: { in: ["ACTIVE", "EXPIRED", "SEALED", "TERMINATED", "LOCKED_OUT"] },
+        startDate: { lte: end },
+        endDate: { gte: start },
+        unit: {
+          companyOwned: false,
+          ...(propertyIds && propertyIds.length > 0 ? {
+            propertyId: { in: propertyIds }
+          } : {})
+        }
+      },
+      include: {
+        unit: {
+          select: {
+            rentAmount: true
+          }
+        }
+      }
+    });
+
+    const filteredLeases = activeLeases.filter(lease => {
+      const capDate = lease.terminatedAt || lease.updatedAt;
+      if ((lease.status === "TERMINATED" || lease.status === "LOCKED_OUT") && capDate < start) {
+        return false;
+      }
+      return true;
+    });
+
+    const expectedRented = filteredLeases.reduce((sum, lease) => sum + (lease.unit?.rentAmount || 0), 0);
+
     const collectedRent = await prisma.payment.aggregate({
       where: {
         status: "APPROVED",
@@ -43,11 +75,12 @@ export async function getRevenueAnalytics(months: number = 6, propertyIds?: stri
     });
 
     const collected = collectedRent._sum.amount || 0;
-    const rate = expected > 0 ? Math.round((collected / expected) * 100) : 0;
+    const rate = expectedRented > 0 ? Math.round((collected / expectedRented) * 100) : 0;
 
     result.push({
       name: format(date, "MMM"),
       expected,
+      expectedRented,
       collected,
       revenue: collected, // backwards compatibility
       rate
@@ -260,6 +293,8 @@ export async function getEthiopianRevenueAnalytics(months: number = 6, propertyI
       return true;
     });
 
+    const expectedRented = filteredLeases.reduce((sum, lease) => sum + lease.unit.rentAmount, 0);
+
     let collected = 0;
     for (const lease of filteredLeases) {
       const approvedMonthPayments = lease.payments.filter((p: any) => 
@@ -270,8 +305,8 @@ export async function getEthiopianRevenueAnalytics(months: number = 6, propertyI
       collected += approvedMonthPayments.reduce((sum: number, p: any) => sum + p.amount, 0);
     }
 
-    const uncollected = Math.max(0, expected - collected);
-    const rate = expected > 0 ? Math.round((collected / expected) * 100) : 0;
+    const uncollected = Math.max(0, expectedRented - collected);
+    const rate = expectedRented > 0 ? Math.round((collected / expectedRented) * 100) : 0;
 
     const ET_MONTHS = ["Meskerem", "Tikimt", "Hidar", "Tahsas", "Tir", "Yekatit", "Megabit", "Miazia", "Ginbot", "Sene", "Hamle", "Nehase", "Pagume"];
     const monthName = ET_MONTHS[etMonth - 1];
@@ -279,6 +314,7 @@ export async function getEthiopianRevenueAnalytics(months: number = 6, propertyI
     result.push({
       name: monthName,
       expected,
+      expectedRented,
       collected,
       uncollected,
       rate
