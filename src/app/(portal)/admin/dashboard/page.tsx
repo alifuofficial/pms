@@ -36,7 +36,8 @@ export default async function AdminDashboard() {
     auditLogs,
     ethiopianRevenueData,
     properties,
-    stats
+    stats,
+    vacantUnits
   ] = await Promise.all([
     getRevenueAnalytics(),
     getOccupancyAnalytics(),
@@ -97,7 +98,15 @@ export default async function AdminDashboard() {
         }
         return total;
       })()
-    }))()
+    }))(),
+    prisma.unit.findMany({
+      where: { status: "AVAILABLE" },
+      include: { property: true },
+      orderBy: [
+        { property: { name: "asc" } },
+        { unitNumber: "asc" }
+      ]
+    })
   ]);
 
   const recentUsers = await prisma.user.findMany({
@@ -470,6 +479,57 @@ export default async function AdminDashboard() {
             </Link>
 
           </div>
+
+          {/* Vacant Spaces List */}
+          <Card className="border border-slate-200/80 shadow-sm bg-white rounded-2xl overflow-hidden hover:shadow-md transition-shadow duration-300">
+            <CardHeader className="p-5 flex flex-row items-center justify-between space-y-0 border-b border-slate-50">
+              <div className="space-y-0.5">
+                <CardTitle className="text-sm font-bold text-slate-900">Vacant Spaces</CardTitle>
+                <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">Available units ready for lease</p>
+              </div>
+              <Badge variant="secondary" className="bg-emerald-50 text-emerald-600 border-emerald-100 font-bold text-[9px] uppercase tracking-wider">
+                {vacantUnits.length} Vacant
+              </Badge>
+            </CardHeader>
+            <CardContent className="p-5">
+              {vacantUnits.length === 0 ? (
+                <div className="text-center py-6 text-slate-400 space-y-1.5">
+                  <Building2 size={24} className="mx-auto text-slate-200 animate-bounce" />
+                  <p className="text-xs font-semibold uppercase tracking-wider">All Units Leased</p>
+                  <p className="text-[10px] text-slate-400 font-normal">No vacant spaces available currently.</p>
+                </div>
+              ) : (
+                <div className="space-y-3 max-h-[300px] overflow-y-auto custom-scrollbar pr-1">
+                  {vacantUnits.map((unit) => (
+                    <div 
+                      key={unit.id} 
+                      className="p-3 bg-slate-50 hover:bg-indigo-50/20 border border-slate-100 rounded-xl flex items-center justify-between group transition-all duration-200 animate-in fade-in"
+                    >
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <p className="font-extrabold text-xs text-slate-900 group-hover:text-indigo-600 transition-colors">
+                            Unit {unit.unitNumber}
+                          </p>
+                          <span className="text-[9px] font-bold text-slate-400 uppercase bg-slate-100 border border-slate-200/50 px-1 py-0.2 rounded">
+                            {unit.type}
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-tight mt-0.5 truncate">
+                          {unit.property.name}
+                        </p>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className="text-xs font-black text-slate-900">
+                          {unit.rentAmount.toLocaleString()} {currency}
+                        </p>
+                        <p className="text-[9px] text-slate-400 font-medium">/ month</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
           {/* Pending Penalties List */}
           <div className="bg-white rounded-2xl border border-slate-200/80 p-1 shadow-sm hover:shadow-md transition-shadow duration-300">

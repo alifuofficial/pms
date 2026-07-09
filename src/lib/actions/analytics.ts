@@ -14,37 +14,17 @@ export async function getRevenueAnalytics(months: number = 6, propertyIds?: stri
     const start = startOfMonth(date);
     const end = endOfMonth(date);
 
-    // Calculate expected rent based on active/rented leases in this month (excluding companyOwned)
-    const activeLeases = await prisma.lease.findMany({
+    // Calculate expected rent based on all non-companyOwned units (Expected if all units are rented)
+    const allUnits = await prisma.unit.findMany({
       where: {
-        status: { in: ["ACTIVE", "EXPIRED", "SEALED", "TERMINATED", "LOCKED_OUT"] },
-        startDate: { lte: end },
-        endDate: { gte: start },
-        unit: {
-          companyOwned: false,
-          ...(propertyIds && propertyIds.length > 0 ? {
-            propertyId: { in: propertyIds }
-          } : {})
-        }
-      },
-      include: {
-        unit: {
-          select: {
-            rentAmount: true
-          }
-        }
+        companyOwned: false,
+        ...(propertyIds && propertyIds.length > 0 ? {
+          propertyId: { in: propertyIds }
+        } : {})
       }
     });
 
-    const filteredLeases = activeLeases.filter(lease => {
-      const capDate = lease.terminatedAt || lease.updatedAt;
-      if ((lease.status === "TERMINATED" || lease.status === "LOCKED_OUT") && capDate < start) {
-        return false;
-      }
-      return true;
-    });
-
-    const expected = filteredLeases.reduce((sum, lease) => sum + (lease.unit?.rentAmount || 0), 0);
+    const expected = allUnits.reduce((sum, u) => sum + u.rentAmount, 0);
 
     const collectedRent = await prisma.payment.aggregate({
       where: {
@@ -242,6 +222,18 @@ export async function getEthiopianRevenueAnalytics(months: number = 6, propertyI
     const gregEnd = endEtObj.getGregorian();
     const endDate = new Date(gregEnd.year, gregEnd.month - 1, gregEnd.day, 23, 59, 59);
 
+    // Calculate expected rent based on all non-companyOwned units (Expected if all units are rented)
+    const allUnits = await prisma.unit.findMany({
+      where: {
+        companyOwned: false,
+        ...(propertyIds && propertyIds.length > 0 ? {
+          propertyId: { in: propertyIds }
+        } : {})
+      }
+    });
+
+    const expected = allUnits.reduce((sum, u) => sum + u.rentAmount, 0);
+
     const activeLeases = await prisma.lease.findMany({
       where: {
         status: { in: ["ACTIVE", "EXPIRED", "SEALED", "TERMINATED", "LOCKED_OUT"] },
@@ -267,8 +259,6 @@ export async function getEthiopianRevenueAnalytics(months: number = 6, propertyI
       }
       return true;
     });
-
-    const expected = filteredLeases.reduce((sum, lease) => sum + lease.unit.rentAmount, 0);
 
     let collected = 0;
     for (const lease of filteredLeases) {
