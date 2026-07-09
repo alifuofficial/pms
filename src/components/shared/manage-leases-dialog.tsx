@@ -21,7 +21,7 @@ import {
   Clock
 } from "lucide-react";
 import { updateLeaseDates, terminateLease, updateLeaseUnit, updateLeasePrepaidDate } from "@/lib/actions/users";
-import { getAvailableUnits } from "@/lib/actions/properties";
+import { getUnitsForSwap } from "@/lib/actions/properties";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
@@ -54,16 +54,16 @@ export function ManageLeasesDialog({
   const [confirmTerminateLeaseId, setConfirmTerminateLeaseId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  const [availableUnits, setAvailableUnits] = useState<any[]>([]);
+  const [swapUnits, setSwapUnits] = useState<any[]>([]);
   const [changingLeaseId, setChangingLeaseId] = useState<string | null>(null);
   const [selectedUnitId, setSelectedUnitId] = useState<string>("");
 
   useEffect(() => {
     if (open) {
-      getAvailableUnits().then((units) => {
-        setAvailableUnits(units || []);
+      getUnitsForSwap().then((units) => {
+        setSwapUnits(units || []);
       }).catch(err => {
-        console.error("Failed to fetch available units:", err);
+        console.error("Failed to fetch swap units:", err);
       });
     } else {
       setChangingLeaseId(null);
@@ -433,27 +433,40 @@ export function ManageLeasesDialog({
                     </div>
                   ) : changingLeaseId === lease.id ? (
                     <div className="pt-3 border-t border-slate-200/60 space-y-4">
-                      <div className="space-y-1.5">
-                        <Label className="text-[10px] font-bold text-slate-400 uppercase">Select New Unit</Label>
-                        {availableUnits.length > 0 ? (
+                        <Label className="text-[10px] font-bold text-slate-400 uppercase">Select New Unit or Swap Space</Label>
+                        {swapUnits.length > 0 ? (
                           <select
                             value={selectedUnitId}
                             onChange={(e) => setSelectedUnitId(e.target.value)}
-                            className="w-full rounded-lg border border-slate-200 bg-white h-10 px-3 text-xs outline-none focus:border-blue-500 transition-all font-semibold"
+                            className="w-full rounded-lg border border-slate-200 bg-white h-10 px-3 text-xs outline-none focus:border-blue-500 transition-all font-semibold text-slate-800"
                           >
-                            <option value="">-- Choose Available Unit --</option>
-                            {availableUnits.map((u) => (
-                              <option key={u.id} value={u.id}>
-                                {u.property.name} - Unit {u.unitNumber} ({u.type}, {u.rentAmount.toLocaleString()} ETB)
-                              </option>
-                            ))}
+                            <option value="">-- Choose Unit to Swap or Move to --</option>
+                            
+                            <optgroup label="VACANT UNITS">
+                              {swapUnits.filter(u => u.status === "AVAILABLE" && u.id !== lease.unitId).map((u) => (
+                                <option key={u.id} value={u.id} className="text-slate-900">
+                                  {u.property.name} - Unit {u.unitNumber} ({u.type}, {u.rentAmount.toLocaleString()} ETB) - [VACANT]
+                                </option>
+                              ))}
+                            </optgroup>
+
+                            <optgroup label="SWAP WITH ACTIVE TENANT">
+                              {swapUnits.filter(u => (u.status === "OCCUPIED" || u.status === "MAINTENANCE") && u.id !== lease.unitId).map((u) => {
+                                const activeLease = u.leases?.find((l: any) => l.status === "ACTIVE" || l.status === "PENDING");
+                                const occupantName = activeLease?.tenant?.name || "Unknown Tenant";
+                                return (
+                                  <option key={u.id} value={u.id} className="text-slate-900">
+                                    {u.property.name} - Unit {u.unitNumber} ({u.type}, {u.rentAmount.toLocaleString()} ETB) - [Swapping with: {occupantName}]
+                                  </option>
+                                );
+                              })}
+                            </optgroup>
                           </select>
                         ) : (
                           <div className="p-3 bg-amber-50 border border-amber-100 rounded-xl text-amber-800 text-[11px] font-medium">
-                            No available units are currently configured in the system. Please vacate or create a unit first.
+                            No units are currently configured in the system.
                           </div>
                         )}
-                      </div>
 
                       <div className="flex justify-end gap-2 pt-2">
                         <Button 

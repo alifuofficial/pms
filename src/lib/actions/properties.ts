@@ -401,3 +401,21 @@ export async function getAllUnitsForMerge() {
     ]
   });
 }
+
+export async function getUnitsForSwap() {
+  const session = await auth();
+  if (!session?.user) return [];
+  return await prisma.unit.findMany({
+    include: {
+      property: true,
+      leases: {
+        where: { status: { in: ["ACTIVE", "PENDING"] } },
+        include: { tenant: true }
+      }
+    },
+    orderBy: [
+      { property: { name: "asc" } },
+      { unitNumber: "asc" }
+    ]
+  });
+}

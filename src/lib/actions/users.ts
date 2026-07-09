@@ -650,16 +650,16 @@ export async function updateLeaseUnit(leaseId: string, newUnitId: string) {
   }
 
   try {
-    const lease = await prisma.lease.findUnique({
+    const leaseA = await prisma.lease.findUnique({
       where: { id: leaseId },
       include: { unit: true }
     });
 
-    if (!lease) {
+    if (!leaseA) {
       return { success: false, error: "Lease not found." };
     }
 
-    if (lease.unitId === newUnitId) {
+    if (leaseA.unitId === newUnitId) {
       return { success: true, message: "Unit is already the same." };
     }
 
@@ -671,71 +671,159 @@ export async function updateLeaseUnit(leaseId: string, newUnitId: string) {
       return { success: false, error: "New unit not found." };
     }
 
-    if (newUnit.status !== "AVAILABLE") {
-      return { success: false, error: `New unit ${newUnit.unitNumber} is not available (status: ${newUnit.status}).` };
-    }
+    // Check if there is an active lease on the new unit to swap with
+    const leaseB = await prisma.lease.findFirst({
+      where: {
+        unitId: newUnitId,
+        status: { in: ["ACTIVE", "PENDING"] }
+      },
+      include: { unit: true }
+    });
 
-    await prisma.$transaction(async (tx) => {
-      // 1. Update lease unitId
-      await tx.lease.update({
-        where: { id: leaseId },
-        data: { unitId: newUnitId }
-      });
-
-      // 2. Set old unit to AVAILABLE if no other active/pending leases occupy it
-      const activeLeasesOldUnit = await tx.lease.count({
-        where: {
-          unitId: lease.unitId,
-          status: { in: ["ACTIVE", "PENDING"] },
-          id: { not: leaseId }
-        }
-      });
-
-      if (activeLeasesOldUnit === 0) {
-        const u = await tx.unit.findUnique({ where: { id: lease.unitId } });
-        await tx.unit.update({
-          where: { id: lease.unitId },
-          data: { status: u?.companyOwned ? "COMPANY_OWNED" : "AVAILABLE" }
+    if (leaseB) {
+      // SWAP CASE
+      await prisma.$transaction(async (tx) => {
+        // 1. Swap unitIds on both leases
+        await tx.lease.update({
+          where: { id: leaseId },
+          data: { unitId: newUnitId }
         });
+
+        await tx.lease.update({
+          where: { id: leaseB.id },
+          data: { unitId: leaseA.unitId }
+        });
+
+        // Ensure both units remain OCCUPIED
+        await tx.unit.update({
+          where: { id: newUnitId },
+          data: { status: "OCCUPIED" }
+        });
+        await tx.unit.update({
+          where: { id: leaseA.unitId },
+          data: { status: "OCCUPIED" }
+        });
+
+        // Update pending monthly payments for Lease A (now on newUnit)
+        await tx.payment.updateMany({
+          where: {
+            leaseId: leaseId,
+            status: "PENDING",
+            type: "MONTHLY",
+            amount: leaseA.unit.rentAmount
+          },
+          data: {
+            amount: newUnit.rentAmount
+          }
+        });
+
+        // Update pending monthly payments for Lease B (now on leaseA.unit)
+        await tx.payment.updateMany({
+          where: {
+            leaseId: leaseB.id,
+            status: "PENDING",
+            type: "MONTHLY",
+            amount: leaseB.unit.rentAmount
+          },
+          data: {
+            amount: leaseA.unit.rentAmount
+          }
+        });
+
+        // Create Audit Logs
+        await tx.auditLog.create({
+          data: {
+            userId: sessionUser.id,
+            action: `Swapped units: Lease A (${leaseId}) transferred from unit ${leaseA.unit.unitNumber} to unit ${newUnit.unitNumber}`,
+            actionType: "LEASE_UPDATE",
+            oldValue: JSON.stringify({ unitId: leaseA.unitId, rentAmount: leaseA.unit.rentAmount }),
+            newValue: JSON.stringify({ unitId: newUnitId, rentAmount: newUnit.rentAmount }),
+            metadata: JSON.stringify({ leaseId, oldUnitId: leaseA.unitId, newUnitId })
+          }
+        });
+
+        await tx.auditLog.create({
+          data: {
+            userId: sessionUser.id,
+            action: `Swapped units: Lease B (${leaseB.id}) transferred from unit ${leaseB.unit.unitNumber} to unit ${leaseA.unit.unitNumber}`,
+            actionType: "LEASE_UPDATE",
+            oldValue: JSON.stringify({ unitId: leaseB.unitId, rentAmount: leaseB.unit.rentAmount }),
+            newValue: JSON.stringify({ unitId: leaseA.unitId, rentAmount: leaseA.unit.rentAmount }),
+            metadata: JSON.stringify({ leaseId: leaseB.id, oldUnitId: leaseB.unitId, newUnitId: leaseA.unitId })
+          }
+        });
+      });
+    } else {
+      // MOVE TO VACANT CASE
+      if (newUnit.status !== "AVAILABLE") {
+        return { success: false, error: `New unit ${newUnit.unitNumber} is not available (status: ${newUnit.status}).` };
       }
 
-      // 3. Set new unit to OCCUPIED
-      await tx.unit.update({
-        where: { id: newUnitId },
-        data: { status: "OCCUPIED" }
-      });
+      await prisma.$transaction(async (tx) => {
+        // 1. Update lease unitId
+        await tx.lease.update({
+          where: { id: leaseId },
+          data: { unitId: newUnitId }
+        });
 
-      // 4. Update pending monthly payments' amounts if they matched the old rent amount
-      await tx.payment.updateMany({
-        where: {
-          leaseId,
-          status: "PENDING",
-          type: "MONTHLY",
-          amount: lease.unit.rentAmount
-        },
-        data: {
-          amount: newUnit.rentAmount
-        }
-      });
+        // 2. Set old unit to AVAILABLE if no other active/pending leases occupy it
+        const activeLeasesOldUnit = await tx.lease.count({
+          where: {
+            unitId: leaseA.unitId,
+            status: { in: ["ACTIVE", "PENDING"] },
+            id: { not: leaseId }
+          }
+        });
 
-      // 5. Create Audit Log
-      await tx.auditLog.create({
-        data: {
-          userId: sessionUser.id,
-          action: `Transferred lease ${leaseId} from unit ${lease.unit.unitNumber} to unit ${newUnit.unitNumber}`,
-          actionType: "LEASE_UPDATE",
-          oldValue: JSON.stringify({ unitId: lease.unitId, rentAmount: lease.unit.rentAmount }),
-          newValue: JSON.stringify({ unitId: newUnitId, rentAmount: newUnit.rentAmount }),
-          metadata: JSON.stringify({ leaseId, oldUnitId: lease.unitId, newUnitId })
+        if (activeLeasesOldUnit === 0) {
+          const u = await tx.unit.findUnique({ where: { id: leaseA.unitId } });
+          await tx.unit.update({
+            where: { id: leaseA.unitId },
+            data: { status: u?.companyOwned ? "COMPANY_OWNED" : "AVAILABLE" }
+          });
         }
+
+        // 3. Set new unit to OCCUPIED
+        await tx.unit.update({
+          where: { id: newUnitId },
+          data: { status: "OCCUPIED" }
+        });
+
+        // 4. Update pending monthly payments' amounts if they matched the old rent amount
+        await tx.payment.updateMany({
+          where: {
+            leaseId,
+            status: "PENDING",
+            type: "MONTHLY",
+            amount: leaseA.unit.rentAmount
+          },
+          data: {
+            amount: newUnit.rentAmount
+          }
+        });
+
+        // 5. Create Audit Log
+        await tx.auditLog.create({
+          data: {
+            userId: sessionUser.id,
+            action: `Transferred lease ${leaseId} from unit ${leaseA.unit.unitNumber} to unit ${newUnit.unitNumber}`,
+            actionType: "LEASE_UPDATE",
+            oldValue: JSON.stringify({ unitId: leaseA.unitId, rentAmount: leaseA.unit.rentAmount }),
+            newValue: JSON.stringify({ unitId: newUnitId, rentAmount: newUnit.rentAmount }),
+            metadata: JSON.stringify({ leaseId, oldUnitId: leaseA.unitId, newUnitId })
+          }
+        });
       });
-    });
+    }
 
     revalidatePath("/admin/tenants");
     revalidatePath("/admin/units");
+    revalidatePath("/manager/tenants");
+    revalidatePath("/manager/units");
     revalidatePath("/accountant/payments");
     revalidatePath("/accountant/dashboard");
     revalidatePath("/tenant/leases");
+    return { success: true };
     revalidatePath("/tenant/payments");
     revalidatePath("/manager/tenants");
     revalidatePath("/", "layout");
