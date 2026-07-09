@@ -74,6 +74,10 @@ export async function PaymentsView({
   }));
 
   const combinedRecords = [...allRentPayments, ...mappedUtilities].sort((a, b) => {
+    const aPending = a.status === "PENDING";
+    const bPending = b.status === "PENDING";
+    if (aPending && !bPending) return -1;
+    if (!aPending && bPending) return 1;
     return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
   });
 
