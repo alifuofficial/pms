@@ -17,6 +17,12 @@ model User {
   createdAt            DateTime   @default(now())
   updatedAt            DateTime   @updatedAt
   calendarType         String     @default("GREGORIAN")
+  canManageProperties  Boolean    @default(false)
+  canManageUnits       Boolean    @default(false)
+  canManageTenants     Boolean    @default(false)
+  canManagePayments    Boolean    @default(false)
+  canManageUtilities   Boolean    @default(false)
+  canManageSettings    Boolean    @default(false)
   auditLogs            AuditLog[]
   leases               Lease[]    @relation("TenantLeases")
   approvedPayments     Payment[]  @relation("AccountantApprovals")

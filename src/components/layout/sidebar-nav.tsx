@@ -55,6 +55,7 @@ const navItems: NavItem[] = [
   { title: "My Leases", href: "/leases", icon: Home, roles: ["TENANT"], isShared: true, group: "Marketplace" },
 
   { title: "Staff Management", href: "/users", icon: UserCog, roles: ["ADMIN"], isShared: true, group: "System" },
+  { title: "Access Control", href: "/admin/permission", icon: ShieldAlert, roles: ["ADMIN"], isShared: false, group: "System" },
   { title: "File Archive", href: "/files", icon: FolderOpen, roles: ["ADMIN", "MANAGER"], isShared: true, group: "System" },
   { title: "Notification Templates", href: "/notify", icon: MessageSquareText, roles: ["ADMIN", "MANAGER"], isShared: true, group: "Communications" },
   { title: "Audit Logs", href: "/admin/audit-log", icon: ShieldAlert, roles: ["ADMIN"], isShared: false, group: "System" },
