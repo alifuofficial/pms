@@ -10,7 +10,11 @@ import {
   Activity,
   ChevronRight,
   ArrowRight,
-  TrendingDown
+  TrendingDown,
+  Lock,
+  ShieldAlert,
+  DoorOpen,
+  Package
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -66,7 +70,18 @@ export default async function AdminDashboard() {
       totalProperties: await prisma.property.count(),
       activeTenants: await prisma.user.count({ where: { role: "TENANT" } }),
       pendingApprovals: (await prisma.payment.count({ where: { status: "PENDING" } })) + 
-                        (await prisma.utilityBill.count({ where: { status: "PENDING" } })),
+                        (await prisma.utilityBill.count({ where: { status: "PENDING" } })) +
+                        (await prisma.refund.count({ where: { status: "PENDING" } })),
+      lockedOutCount: await prisma.lease.count({ where: { status: "LOCKED_OUT" } }),
+      sealedCount: await prisma.lease.count({ where: { status: "SEALED" } }),
+      upcomingMoveOuts: await prisma.leaveRequest.count({ 
+        where: { 
+          status: { in: ["PENDING", "APPROVED"] } 
+        } 
+      }),
+      seizedPropertiesCount: await prisma.seizedProperty.count({ 
+        where: { status: "STORED" } 
+      }),
       totalRevenue: await (async () => {
         const rent = await prisma.payment.aggregate({
           where: { status: "APPROVED" },
@@ -480,6 +495,101 @@ export default async function AdminDashboard() {
             </Link>
 
           </div>
+
+          {/* Operational Status Flags */}
+          <Card className="border border-slate-200/80 shadow-sm bg-white rounded-2xl overflow-hidden hover:shadow-md transition-shadow duration-300">
+            <CardHeader className="p-5 border-b border-slate-50">
+              <CardTitle className="text-sm font-bold text-slate-900">Eviction & Clearance Status</CardTitle>
+              <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">Locked out, sealed, and upcoming move-outs</p>
+            </CardHeader>
+            <CardContent className="p-5 divide-y divide-slate-100">
+              {/* Locked Out */}
+              <div className="flex items-center justify-between py-3 first:pt-0 last:pb-0">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-red-50 text-red-500 flex items-center justify-center shrink-0">
+                    <Lock size={16} />
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-slate-900">Locked Out Units</p>
+                    <p className="text-[9.5px] text-slate-400 font-medium">Access disabled due to overdue rent</p>
+                  </div>
+                </div>
+                <Badge variant="outline" className={cn(
+                  "font-black text-xs px-2.5 py-0.5 shadow-none border",
+                  stats.lockedOutCount > 0 
+                    ? "bg-red-50 text-red-600 border-red-200" 
+                    : "bg-slate-50 text-slate-400 border-slate-200"
+                )}>
+                  {stats.lockedOutCount} Units
+                </Badge>
+              </div>
+
+              {/* Sealed Units */}
+              <div className="flex items-center justify-between py-3 first:pt-0 last:pb-0">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-orange-50 text-orange-500 flex items-center justify-center shrink-0">
+                    <ShieldAlert size={16} />
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-slate-900">Sealed Units</p>
+                    <p className="text-[9.5px] text-slate-400 font-medium">Officially sealed under legal lease rules</p>
+                  </div>
+                </div>
+                <Badge variant="outline" className={cn(
+                  "font-black text-xs px-2.5 py-0.5 shadow-none border",
+                  stats.sealedCount > 0 
+                    ? "bg-orange-50 text-orange-600 border-orange-200" 
+                    : "bg-slate-50 text-slate-400 border-slate-200"
+                )}>
+                  {stats.sealedCount} Units
+                </Badge>
+              </div>
+
+              {/* Upcoming Move-Outs */}
+              <div className="flex items-center justify-between py-3 first:pt-0 last:pb-0">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-500 flex items-center justify-center shrink-0">
+                    <DoorOpen size={16} />
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-slate-900">Upcoming Move-Outs</p>
+                    <p className="text-[9.5px] text-slate-400 font-medium">Pending or approved leave clearances</p>
+                  </div>
+                </div>
+                <Link href="/admin/leave-clearance" className="hover:underline">
+                  <Badge variant="outline" className={cn(
+                    "font-black text-xs px-2.5 py-0.5 shadow-none border",
+                    stats.upcomingMoveOuts > 0 
+                      ? "bg-amber-50 text-amber-600 border-amber-200" 
+                      : "bg-slate-50 text-slate-400 border-slate-200"
+                  )}>
+                    {stats.upcomingMoveOuts} Tenants
+                  </Badge>
+                </Link>
+              </div>
+
+              {/* Seized Assets */}
+              <div className="flex items-center justify-between py-3 first:pt-0 last:pb-0">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-500 flex items-center justify-center shrink-0">
+                    <Package size={16} />
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-slate-900">Seized Asset Inventories</p>
+                    <p className="text-[9.5px] text-slate-400 font-medium">Stored belongings from evictions</p>
+                  </div>
+                </div>
+                <Badge variant="outline" className={cn(
+                  "font-black text-xs px-2.5 py-0.5 shadow-none border",
+                  stats.seizedPropertiesCount > 0 
+                    ? "bg-indigo-50 text-indigo-600 border-indigo-200" 
+                    : "bg-slate-50 text-slate-400 border-slate-200"
+                )}>
+                  {stats.seizedPropertiesCount} Records
+                </Badge>
+              </div>
+            </CardContent>
+          </Card>
 
           {/* Vacant Spaces List */}
           <Card className="border border-slate-200/80 shadow-sm bg-white rounded-2xl overflow-hidden hover:shadow-md transition-shadow duration-300">
