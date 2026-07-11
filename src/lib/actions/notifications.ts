@@ -47,15 +47,55 @@ export async function processLateFees() {
       const existingPenalty = await prisma.penalty.findUnique({ where: { id: `penalty-${payment.id}` } });
       const currentPenaltyAmount = existingPenalty?.amount || 0;
 
-      let templateSlug = "";
-      let newPenaltyAmount = currentPenaltyAmount;
+      const penaltyResult = calcMonthPenalty(
+        payment.dueDate,
+        payment.lease.unit.rentAmount,
+        settings,
+        null,
+        payment.lease.unit.penaltyExempt,
+        payment.lease.unit.property
+      );
+      let newPenaltyAmount = penaltyResult.penalty;
 
-      if (diffDays >= 35 && currentPenaltyAmount < payment.lease.unit.rentAmount * ((settings.warningFeePercentage || 10) / 100)) {
-        templateSlug = "late-fee-2";
-        newPenaltyAmount = payment.lease.unit.rentAmount * ((settings.warningFeePercentage || 10) / 100);
-      } else if (diffDays >= 5 && diffDays < 35 && currentPenaltyAmount === 0) {
-        templateSlug = "late-fee-1";
-        newPenaltyAmount = payment.lease.unit.rentAmount * ((settings.lateFeePercentage || 5) / 100);
+      // Decide which template to use (late-fee-1 for base, late-fee-2 for highest warning tier)
+      let templateSlug = "";
+      if (newPenaltyAmount > 0) {
+        let isWarningTier = false;
+        const prop = payment.lease.unit.property;
+        if (prop && prop.lateFeeEnabled && prop.incrementalRules) {
+          try {
+            const rules = JSON.parse(prop.incrementalRules);
+            if (Array.isArray(rules) && rules.length > 0) {
+              const maxDays = Math.max(...rules.map((r: any) => r.days));
+              if (penaltyResult.diffDays >= maxDays) {
+                isWarningTier = true;
+              }
+            }
+          } catch (e) {
+            console.error("Error parsing incremental rules:", e);
+          }
+        } else {
+          // Default global settings: warning tier is day 36 (equivalent to diffDays >= 35 in original code)
+          if (penaltyResult.diffDays >= 36) {
+            isWarningTier = true;
+          }
+        }
+
+        if (isWarningTier) {
+          if (currentPenaltyAmount < newPenaltyAmount) {
+            templateSlug = "late-fee-2";
+          } else {
+            // Already at warning tier, keep the penalty amount as is
+            newPenaltyAmount = currentPenaltyAmount;
+          }
+        } else {
+          if (currentPenaltyAmount === 0) {
+            templateSlug = "late-fee-1";
+          } else {
+            // Already at base tier, keep the penalty amount as is
+            newPenaltyAmount = currentPenaltyAmount;
+          }
+        }
       }
 
       if (templateSlug && payment.tenant.phoneNumber) {
@@ -128,7 +168,7 @@ function calculateLeaseOutstandingDetails(lease: any, settings: any) {
     ...pendingPayments.map((p: any) => {
       const d = new Date(p.dueDate);
       const dbPenalty = dbPenaltyMap.get(`${d.getFullYear()}-${d.getMonth()}`);
-      const { penalty } = calcMonthPenalty(new Date(p.dueDate), unit.rentAmount, settings, dbPenalty, unit.penaltyExempt);
+      const { penalty } = calcMonthPenalty(new Date(p.dueDate), unit.rentAmount, settings, dbPenalty, unit.penaltyExempt, unit.property);
       return {
         dueDate: p.dueDate,
         totalAmount: unit.rentAmount + penalty,
@@ -138,7 +178,7 @@ function calculateLeaseOutstandingDetails(lease: any, settings: any) {
       .filter((gd: Date) => !pendingDueDates.has(`${gd.getFullYear()}-${gd.getMonth()}`))
       .map((gd: Date) => {
         const dbPenalty = dbPenaltyMap.get(`${gd.getFullYear()}-${gd.getMonth()}`);
-        const { penalty } = calcMonthPenalty(gd, unit.rentAmount, settings, dbPenalty, unit.penaltyExempt);
+        const { penalty } = calcMonthPenalty(gd, unit.rentAmount, settings, dbPenalty, unit.penaltyExempt, unit.property);
         return {
           dueDate: gd,
           totalAmount: unit.rentAmount + penalty,

@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 import { resolveSessionUser } from "./auth-helper";
 import { addEthiopianMonths, toEthiopian, getDaysPastEthiopianExpiry, getEthiopianMonthEnd, hasLatePenalty, getDaysInEthiopianMonth } from "@/lib/calendar";
+import { calcMonthPenalty } from "@/lib/arrears";
 import Kenat from "kenat";
 
 function getLeaseArrearMonths(leaseStart: Date, approvedPayments: any[]): Date[] {
@@ -117,7 +118,9 @@ export async function approvePayment(
       include: { 
         lease: { 
           include: { 
-            unit: true,
+            unit: {
+              include: { property: true }
+            },
             penalties: { orderBy: { dueDate: "asc" } }
           } 
         } 
@@ -321,8 +324,18 @@ export async function approvePayment(
       const gdEt = toEthiopian(gd);
       const isStartMonth = gdEt.year === startEt.year && gdEt.month === startEt.month;
       
-      const hasPenalty = !currentPayment.lease.unit.penaltyExempt && hasLatePenalty(gd, settings) && !(isStartMonth && approvedPayments.length === 0);
-      const penaltyAmount = hasPenalty ? (monthlyRent * ((settings?.lateFeePercentage || 5) / 100)) : 0;
+      let penaltyAmount = 0;
+      if (!(isStartMonth && approvedPayments.length === 0)) {
+        const penaltyResult = calcMonthPenalty(
+          gd,
+          monthlyRent,
+          settings,
+          null,
+          currentPayment.lease.unit.penaltyExempt,
+          currentPayment.lease.unit.property
+        );
+        penaltyAmount = penaltyResult.penalty;
+      }
       
       if (penaltyAmount <= 0) continue;
 
@@ -681,7 +694,9 @@ export async function approvePaymentSystem(
       include: { 
         lease: { 
           include: { 
-            unit: true,
+            unit: {
+              include: { property: true }
+            },
             penalties: { orderBy: { dueDate: "asc" } }
           } 
         } 
@@ -883,8 +898,18 @@ export async function approvePaymentSystem(
       const gdEt = toEthiopian(gd);
       const isStartMonth = gdEt.year === startEt.year && gdEt.month === startEt.month;
       
-      const hasPenalty = !currentPayment.lease.unit.penaltyExempt && hasLatePenalty(gd, settings) && !(isStartMonth && approvedPayments.length === 0);
-      const penaltyAmount = hasPenalty ? (monthlyRent * ((settings?.lateFeePercentage || 5) / 100)) : 0;
+      let penaltyAmount = 0;
+      if (!(isStartMonth && approvedPayments.length === 0)) {
+        const penaltyResult = calcMonthPenalty(
+          gd,
+          monthlyRent,
+          settings,
+          null,
+          currentPayment.lease.unit.penaltyExempt,
+          currentPayment.lease.unit.property
+        );
+        penaltyAmount = penaltyResult.penalty;
+      }
       
       if (penaltyAmount <= 0) continue;
 
@@ -1156,7 +1181,11 @@ export async function recalculateLeaseStateInternal(leaseId: string, tx: any) {
   // 3. Simulate sequential approval
   const lease = await tx.lease.findUnique({
     where: { id: leaseId },
-    include: { unit: true }
+    include: {
+      unit: {
+        include: { property: true }
+      }
+    }
   });
   if (!lease) throw new Error("Lease not found");
 
@@ -1211,8 +1240,18 @@ export async function recalculateLeaseStateInternal(leaseId: string, tx: any) {
       const startEt = toEthiopian(leaseStartDate);
       const isStartMonth = gdEt.year === startEt.year && gdEt.month === startEt.month;
       
-      const hasPenalty = !lease.unit.penaltyExempt && hasLatePenalty(gd, settings) && !(isStartMonth && processedPayments.length === 0);
-      const penaltyAmount = hasPenalty ? (monthlyRent * ((settings?.lateFeePercentage || 5) / 100)) : 0;
+      let penaltyAmount = 0;
+      if (!(isStartMonth && processedPayments.length === 0)) {
+        const penaltyResult = calcMonthPenalty(
+          gd,
+          monthlyRent,
+          settings,
+          null,
+          lease.unit.penaltyExempt,
+          lease.unit.property
+        );
+        penaltyAmount = penaltyResult.penalty;
+      }
       
       if (penaltyAmount <= 0) continue;
 

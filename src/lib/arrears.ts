@@ -2,7 +2,14 @@ import { getDaysPastEthiopianExpiry, toEthiopian, hasLatePenalty, getDaysInEthio
 import Kenat from "kenat";
 
 /** Calculates penalty amount and tier for a given due date based on Ethiopian calendar, checking against existing database record if provided. */
-export function calcMonthPenalty(dueDate: Date, rentAmount: number, settings: any, dbPenalty?: any, penaltyExempt: boolean = false) {
+export function calcMonthPenalty(
+  dueDate: Date, 
+  rentAmount: number, 
+  settings: any, 
+  dbPenalty?: any, 
+  penaltyExempt: boolean = false,
+  property?: any
+) {
   const diffDays = getDaysPastEthiopianExpiry(dueDate);
   
   if (penaltyExempt) {
@@ -20,12 +27,59 @@ export function calcMonthPenalty(dueDate: Date, rentAmount: number, settings: an
       diffDays
     };
   }
-  
-  const hasPenalty = hasLatePenalty(dueDate, settings);
-  if (!hasPenalty) return { penalty: 0, penaltyTier: 0, diffDays };
-  
-  // Rule: Flat 5% penalty fee. Non-compounding.
-  const penaltyAmount = rentAmount * ((settings.lateFeePercentage || 5) / 100);
+
+  // Resolve properties late fee configurations
+  let enabled = settings?.lateFeeEnabled;
+  let graceDays = 5;
+  let percentage = settings?.lateFeePercentage || 5.0;
+  let incrementalRulesStr = null;
+
+  if (property) {
+    if (property.lateFeeEnabled !== undefined && property.lateFeeEnabled !== null) {
+      enabled = property.lateFeeEnabled;
+    }
+    if (property.lateFeeGraceDays !== undefined && property.lateFeeGraceDays !== null) {
+      graceDays = property.lateFeeGraceDays;
+    }
+    if (property.lateFeePercentage !== undefined && property.lateFeePercentage !== null) {
+      percentage = property.lateFeePercentage;
+    }
+    if (property.incrementalRules) {
+      incrementalRulesStr = property.incrementalRules;
+    }
+  }
+
+  if (!enabled) return { penalty: 0, penaltyTier: 0, diffDays };
+
+  // Penalty starts after graceDays. Standard system starts on Day 6 (when graceDays is 5).
+  if (diffDays < graceDays + 1) {
+    return { penalty: 0, penaltyTier: 0, diffDays };
+  }
+
+  let finalPercentage = percentage;
+
+  // Apply property-specific incremental rules or default settings warning fee
+  if (incrementalRulesStr) {
+    try {
+      const rules = JSON.parse(incrementalRulesStr);
+      if (Array.isArray(rules)) {
+        const sortedRules = [...rules].sort((a, b) => b.days - a.days);
+        for (const rule of sortedRules) {
+          if (diffDays >= rule.days) {
+            finalPercentage = rule.percentage;
+            break;
+          }
+        }
+      }
+    } catch (e) {
+      console.error("Error parsing incremental rules:", e);
+    }
+  } else if (!property && settings?.warningFeePercentage !== undefined && diffDays >= 36) {
+    // If no property override is active, use the default settings warning fee starting day 36 (i.e. Hamle 6 if due Ginbot 30)
+    finalPercentage = settings.warningFeePercentage || 10.0;
+  }
+
+  const penaltyAmount = rentAmount * (finalPercentage / 100);
   return { penalty: penaltyAmount, penaltyTier: 1, diffDays };
 }
 
@@ -200,7 +254,7 @@ export function getLeaseUncollectedBalance(lease: any, settings: any, endDate?: 
     ...pendingPayments.map((p: any) => {
       const d = new Date(p.dueDate);
       const dbPenalty = dbPenaltyMap.get(`${d.getFullYear()}-${d.getMonth()}`);
-      const { penalty } = calcMonthPenalty(new Date(p.dueDate), lease.unit.rentAmount, settings, dbPenalty, lease.unit.penaltyExempt);
+      const { penalty } = calcMonthPenalty(new Date(p.dueDate), lease.unit.rentAmount, settings, dbPenalty, lease.unit.penaltyExempt, lease.unit.property);
       return {
         dueDate: p.dueDate,
         baseAmount: lease.unit.rentAmount,
@@ -210,7 +264,7 @@ export function getLeaseUncollectedBalance(lease: any, settings: any, endDate?: 
     }),
     ...gapMonthDates.filter(gd => !pendingDueDates.has(`${gd.getFullYear()}-${gd.getMonth()}`)).map(gd => {
       const dbPenalty = dbPenaltyMap.get(`${gd.getFullYear()}-${gd.getMonth()}`);
-      const { penalty } = calcMonthPenalty(gd, lease.unit.rentAmount, settings, dbPenalty, lease.unit.penaltyExempt);
+      const { penalty } = calcMonthPenalty(gd, lease.unit.rentAmount, settings, dbPenalty, lease.unit.penaltyExempt, lease.unit.property);
       return {
         dueDate: gd,
         baseAmount: lease.unit.rentAmount,

@@ -56,7 +56,7 @@ export async function getPendingPenalties(options?: { propertyIds?: string[]; ta
       for (const p of pendingPayments) {
         const d = new Date(p.dueDate);
         const dbPenalty = dbPenaltyMap.get(`${d.getFullYear()}-${d.getMonth()}`);
-        const { penalty } = calcMonthPenalty(new Date(p.dueDate), unit.rentAmount, settings, dbPenalty, unit.penaltyExempt);
+        const { penalty } = calcMonthPenalty(new Date(p.dueDate), unit.rentAmount, settings, dbPenalty, unit.penaltyExempt, unit.property);
         
         if (penalty > 0) {
           pendingPenaltiesList.push({
@@ -83,7 +83,7 @@ export async function getPendingPenalties(options?: { propertyIds?: string[]; ta
         if (pendingDueDates.has(monthKey)) continue;
 
         const dbPenalty = dbPenaltyMap.get(monthKey);
-        const { penalty } = calcMonthPenalty(gd, unit.rentAmount, settings, dbPenalty, unit.penaltyExempt);
+        const { penalty } = calcMonthPenalty(gd, unit.rentAmount, settings, dbPenalty, unit.penaltyExempt, unit.property);
         
         if (penalty > 0) {
           pendingPenaltiesList.push({

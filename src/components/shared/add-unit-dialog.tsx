@@ -40,6 +40,7 @@ export function AddUnitDialog({
     companyOwned: false,
     hasElectricityMeter: true,
     hasWaterMeter: true,
+    excludeFromStrictRules: false,
   });
 
   useEffect(() => {
@@ -74,6 +75,7 @@ export function AddUnitDialog({
       companyOwned: formData.companyOwned,
       hasElectricityMeter: formData.hasElectricityMeter,
       hasWaterMeter: formData.hasWaterMeter,
+      excludeFromStrictRules: formData.excludeFromStrictRules,
     });
     setIsLoading(false);
     
@@ -91,6 +93,7 @@ export function AddUnitDialog({
         companyOwned: false,
         hasElectricityMeter: true,
         hasWaterMeter: true,
+        excludeFromStrictRules: false,
       });
     } else {
       toast.error(result.error || "Failed to add unit.");
@@ -227,6 +230,19 @@ export function AddUnitDialog({
                 />
                 <Label htmlFor="companyOwned" className="text-xs font-semibold text-slate-700 cursor-pointer select-none">
                   Company-Owned Unit (No rent paid, exclude from reports)
+                </Label>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <input 
+                  type="checkbox"
+                  id="excludeFromStrictRules"
+                  checked={formData.excludeFromStrictRules}
+                  onChange={(e) => setFormData({ ...formData, excludeFromStrictRules: e.target.checked })}
+                  className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900 cursor-pointer"
+                />
+                <Label htmlFor="excludeFromStrictRules" className="text-xs font-semibold text-red-600 cursor-pointer select-none">
+                  Exclude from Strict Lease Rules (Sealing & Lockout constraints)
                 </Label>
               </div>
 

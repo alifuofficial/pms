@@ -81,6 +81,7 @@ export async function createUnit(propertyId: string, data: {
   hasMeter?: boolean;
   hasElectricityMeter?: boolean;
   hasWaterMeter?: boolean;
+  excludeFromStrictRules?: boolean;
   mergedIntoId?: string | null;
 }) {
   const session = await auth();
@@ -145,6 +146,7 @@ export async function updateUnit(id: string, data: {
   hasMeter?: boolean;
   hasElectricityMeter?: boolean;
   hasWaterMeter?: boolean;
+  excludeFromStrictRules?: boolean;
   mergedIntoId?: string | null;
 }) {
   const session = await auth();
@@ -207,6 +209,7 @@ export async function bulkUpdateUnits(ids: string[], data: {
   hasMeter?: boolean;
   hasElectricityMeter?: boolean;
   hasWaterMeter?: boolean;
+  excludeFromStrictRules?: boolean;
   mergedIntoId?: string | null;
 }) {
   const session = await auth();

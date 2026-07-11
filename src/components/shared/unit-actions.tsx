@@ -71,9 +71,9 @@ export function UnitActions({ unit }: { unit: any }) {
 
   useEffect(() => {
     getSystemSettings().then((settings) => {
-      setStrictLeaseRules(!!settings?.strictLeaseRules);
+      setStrictLeaseRules(!!settings?.strictLeaseRules && !unit.excludeFromStrictRules);
     });
-  }, []);
+  }, [unit.excludeFromStrictRules]);
 
   useEffect(() => {
     if (isEditing && unit.propertyId) {
@@ -103,6 +103,7 @@ export function UnitActions({ unit }: { unit: any }) {
     companyOwned: unit.companyOwned || false,
     hasElectricityMeter: unit.hasElectricityMeter !== false,
     hasWaterMeter: unit.hasWaterMeter !== false,
+    excludeFromStrictRules: unit.excludeFromStrictRules || false,
     mergedIntoId: unit.mergedIntoId || "",
   });
 
@@ -517,6 +518,19 @@ export function UnitActions({ unit }: { unit: any }) {
                 />
                 <Label htmlFor={`edit-companyOwned-${unit.id}`} className="text-xs font-semibold text-slate-700 cursor-pointer select-none">
                   Company-Owned Unit (No rent paid, exclude from reports)
+                </Label>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <input 
+                  type="checkbox"
+                  id={`edit-excludeFromStrictRules-${unit.id}`}
+                  checked={editData.excludeFromStrictRules}
+                  onChange={(e) => setEditData({ ...editData, excludeFromStrictRules: e.target.checked })}
+                  className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900 cursor-pointer"
+                />
+                <Label htmlFor={`edit-excludeFromStrictRules-${unit.id}`} className="text-xs font-semibold text-red-600 cursor-pointer select-none">
+                  Exclude from Strict Lease Rules (Sealing & Lockout constraints)
                 </Label>
               </div>
 
