@@ -18,12 +18,16 @@ import {
   Droplet,
   TrendingDown,
   FileSpreadsheet,
-  Printer
+  Printer,
+  Receipt,
+  AlertCircle,
+  Sparkles
 } from "lucide-react";
 import { formatSystemDate, formatEthiopianMonthYear } from "@/lib/calendar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import Kenat from "kenat";
 import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 import { RevenueChart } from "./dashboard-charts";
 
 interface ReportsViewProps {
@@ -55,6 +59,7 @@ export function ReportsView({ metrics, currency, calendarType, startDate, endDat
   const router = useRouter();
   const searchParams = useSearchParams();
   const currentPeriod = searchParams.get("period") || "30days";
+  const [activeReportTab, setActiveReportTab] = useState<"overview" | "transactions" | "advances" | "arrears">("overview");
 
   const handlePeriodChange = (value: string) => {
     const params = new URLSearchParams(searchParams.toString());
@@ -234,7 +239,85 @@ export function ReportsView({ metrics, currency, calendarType, startDate, endDat
         </Card>
       </div>
 
-      {/* Utility Revenue Breakdown Section */}
+      {/* Report Tabs Selector */}
+      <div className="flex border-b border-slate-100 overflow-x-auto pb-1.5 gap-2 print:hidden scrollbar-none">
+        <button
+          type="button"
+          onClick={() => setActiveReportTab("overview")}
+          className={cn(
+            "px-4 py-2.5 text-xs font-bold uppercase tracking-wider rounded-xl transition-all duration-200 flex items-center gap-2 border border-transparent select-none shrink-0",
+            activeReportTab === "overview"
+              ? "bg-slate-900 text-white shadow-sm"
+              : "bg-slate-50 text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+          )}
+        >
+          <BarChart3 size={15} />
+          Financial Overview
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveReportTab("transactions")}
+          className={cn(
+            "px-4 py-2.5 text-xs font-bold uppercase tracking-wider rounded-xl transition-all duration-200 flex items-center gap-2 border border-transparent select-none shrink-0",
+            activeReportTab === "transactions"
+              ? "bg-slate-900 text-white shadow-sm"
+              : "bg-slate-50 text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+          )}
+        >
+          <Receipt size={15} />
+          Period Transactions
+          <Badge variant="outline" className={cn(
+            "font-bold text-[8.5px] px-1.5 py-0.5 border-none shadow-none leading-none rounded-full",
+            activeReportTab === "transactions" ? "bg-white/20 text-white" : "bg-slate-200/60 text-slate-600"
+          )}>
+            {metrics.recentPayments.length}
+          </Badge>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveReportTab("advances")}
+          className={cn(
+            "px-4 py-2.5 text-xs font-bold uppercase tracking-wider rounded-xl transition-all duration-200 flex items-center gap-2 border border-transparent select-none shrink-0",
+            activeReportTab === "advances"
+              ? "bg-slate-900 text-white shadow-sm"
+              : "bg-slate-50 text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+          )}
+        >
+          <Sparkles size={15} />
+          Advance Collections
+          <Badge variant="outline" className={cn(
+            "font-bold text-[8.5px] px-1.5 py-0.5 border-none shadow-none leading-none rounded-full",
+            activeReportTab === "advances" ? "bg-white/20 text-white" : "bg-slate-200/60 text-slate-600"
+          )}>
+            {metrics.advancePayments.length}
+          </Badge>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveReportTab("arrears")}
+          className={cn(
+            "px-4 py-2.5 text-xs font-bold uppercase tracking-wider rounded-xl transition-all duration-200 flex items-center gap-2 border border-transparent select-none shrink-0",
+            activeReportTab === "arrears"
+              ? "bg-slate-900 text-white shadow-sm"
+              : "bg-slate-50 text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+          )}
+        >
+          <AlertCircle size={15} />
+          Outstanding Arrears
+          <Badge variant="outline" className={cn(
+            "font-bold text-[8.5px] px-1.5 py-0.5 border-none shadow-none leading-none rounded-full",
+            activeReportTab === "arrears" ? "bg-white/20 text-white" : "bg-slate-200/60 text-slate-600"
+          )}>
+            {metrics.uncollectedTenants.length}
+          </Badge>
+        </button>
+      </div>
+
+      <div className={cn(activeReportTab === "overview" ? "block space-y-6" : "hidden print:block print:space-y-8")}>
+        {/* Utility Revenue Breakdown Section */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <Card className="border-slate-200 shadow-none bg-white rounded-xl">
           <CardHeader className="p-5 flex flex-row items-center justify-between space-y-0 border-b border-slate-50">
@@ -360,9 +443,11 @@ export function ReportsView({ metrics, currency, calendarType, startDate, endDat
           </CardContent>
         </Card>
       )}
+      </div>
 
       {/* Transactions / Activity Table */}
-      <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-none print:border-none print:shadow-none">
+      <div className={cn(activeReportTab === "transactions" ? "block" : "hidden print:block print:mt-8")}>
+        <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-none print:border-none print:shadow-none">
         <div className="p-5 border-b border-slate-100 flex items-center justify-between">
           <div>
             <h2 className="text-sm font-bold text-slate-900">Period Transactions</h2>
@@ -424,8 +509,11 @@ export function ReportsView({ metrics, currency, calendarType, startDate, endDat
           </tbody>
         </table>
       </div>
+      </div>
+
       {/* Advance Collections Section */}
-      <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-none print:mt-8">
+      <div className={cn(activeReportTab === "advances" ? "block" : "hidden print:block print:mt-8")}>
+        <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-none print:mt-8">
         <div className="p-5 border-b border-slate-100 flex items-center justify-between">
           <div>
             <div className="flex items-center gap-2">
@@ -498,9 +586,11 @@ export function ReportsView({ metrics, currency, calendarType, startDate, endDat
           </tbody>
         </table>
       </div>
+      </div>
 
       {/* Tenants with Outstanding Balances Section */}
-      <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-none print:mt-8">
+      <div className={cn(activeReportTab === "arrears" ? "block" : "hidden print:block print:mt-8")}>
+        <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-none print:mt-8">
         <div className="p-5 border-b border-slate-100 flex items-center justify-between print:border-b-2">
           <div>
             <h2 className="text-sm font-bold text-red-600 uppercase tracking-tight">Tenants with Outstanding Balances</h2>
@@ -588,6 +678,7 @@ export function ReportsView({ metrics, currency, calendarType, startDate, endDat
             )}
           </tbody>
         </table>
+      </div>
       </div>
     </div>
   );
