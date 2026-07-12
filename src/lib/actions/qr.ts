@@ -197,21 +197,6 @@ export async function getPublicUnitStatus(slug: string) {
     const daysLeft = coverageUntil ? getDaysUntilEthiopianExpiry(coverageUntil) : 0;
 
     // ── STEP 2: Calculate Arrears (Gap Months) ─────────────────────────────
-    const pendingPayments = payments
-      .filter(p => p.status === "PENDING" || p.status === "REJECTED")
-      .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
-
-    const pendingDueDates = new Set(
-      pendingPayments.map(p => {
-        const d = new Date(p.dueDate);
-        return `${d.getFullYear()}-${d.getMonth()}`;
-      })
-    );
-
-    const gapMonthDates = activeLease?.startDate 
-      ? getArrearMonths(new Date(activeLease.startDate), payments) 
-      : [];
-
     // Helper function to calculate combined group penalty for a given month/dueDate
     const getCombinedPenaltyForDate = (d: Date) => {
       let totalPenalty = 0;
@@ -251,43 +236,148 @@ export async function getPublicUnitStatus(slug: string) {
       return { penalty: totalPenalty, penaltyTier: maxTier, diffDays: maxDays };
     };
 
-    const rawArrearsMonths = [
-      ...pendingPayments.map(p => {
+    // ── STEP 2: Calculate Arrears (Gap Months) per Lease ───────────────────
+    const allLeaseArrears: Array<{
+      dueDate: Date;
+      baseAmount: number;
+      penalty: number;
+      penaltyTier: number;
+      daysFromDue: number;
+      status: string;
+      receiptUrl: string | null;
+      isGap: boolean;
+      id: string;
+    }> = [];
+
+    for (const l of groupLeases) {
+      const u: any = l.unitId === unit.id 
+        ? unit 
+        : (unit.mergedUnits || []).find((mu: any) => mu.id === l.unitId);
+
+      if (!u) continue;
+
+      const leasePayments = l.payments || [];
+      const leasePenalties = l.penalties || [];
+      const rent = u.rentAmount || 0;
+      const penaltyExempt = u.penaltyExempt || false;
+
+      const leasePendingPayments = leasePayments.filter(
+        p => p.status === "PENDING" || p.status === "REJECTED"
+      );
+      const leasePendingDueDates = new Set(
+        leasePendingPayments.map(p => {
+          const d = new Date(p.dueDate);
+          return `${d.getFullYear()}-${d.getMonth()}`;
+        })
+      );
+
+      const leaseGapDates = getArrearMonths(new Date(l.startDate), leasePayments, l.terminatedAt);
+
+      // Add pending payments
+      for (const p of leasePendingPayments) {
         const d = new Date(p.dueDate);
-        const { penalty, penaltyTier, diffDays } = getCombinedPenaltyForDate(d);
-        return {
-          id: p.id,
+        const dbPenalty = leasePenalties.find((pen: any) => {
+          const pd = new Date(pen.dueDate);
+          return pd.getFullYear() === d.getFullYear() && pd.getMonth() === d.getMonth();
+        });
+        const { penalty, penaltyTier, diffDays } = calcMonthPenalty(
+          d,
+          rent,
+          settings,
+          dbPenalty,
+          penaltyExempt
+        );
+        allLeaseArrears.push({
           dueDate: p.dueDate,
-          ethiopianDueDate: getEthiopianMonthEnd(new Date(p.dueDate)),
-          daysFromDue: diffDays,
-          baseAmount: unit.rentAmount,
+          baseAmount: rent,
           penalty,
           penaltyTier,
-          totalAmount: unit.rentAmount + penalty,
-          status: p.status as string,
+          daysFromDue: diffDays,
+          status: p.status,
           receiptUrl: p.receiptUrl || null,
           isGap: false,
-          advanceDeduction: 0,
-        };
-      }),
-      ...gapMonthDates.filter(gd => !pendingDueDates.has(`${gd.getFullYear()}-${gd.getMonth()}`)).map(gd => {
-        const { penalty, penaltyTier, diffDays } = getCombinedPenaltyForDate(gd);
-        return {
-          id: `gap-${gd.getFullYear()}-${gd.getMonth()}`,
+          id: p.id,
+        });
+      }
+
+      // Add gap months
+      for (const gd of leaseGapDates) {
+        if (leasePendingDueDates.has(`${gd.getFullYear()}-${gd.getMonth()}`)) continue;
+        const dbPenalty = leasePenalties.find((pen: any) => {
+          const pd = new Date(pen.dueDate);
+          return pd.getFullYear() === gd.getFullYear() && pd.getMonth() === gd.getMonth();
+        });
+        const { penalty, penaltyTier, diffDays } = calcMonthPenalty(
+          gd,
+          rent,
+          settings,
+          dbPenalty,
+          penaltyExempt
+        );
+        allLeaseArrears.push({
           dueDate: gd,
-          ethiopianDueDate: getEthiopianMonthEnd(gd),
-          daysFromDue: diffDays,
-          baseAmount: unit.rentAmount,
+          baseAmount: rent,
           penalty,
           penaltyTier,
-          totalAmount: unit.rentAmount + penalty,
+          daysFromDue: diffDays,
           status: "UNRECORDED",
           receiptUrl: null,
           isGap: true,
-          advanceDeduction: 0,
-        };
-      })
-    ].sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
+          id: `gap-${l.id}-${gd.getFullYear()}-${gd.getMonth()}`,
+        });
+      }
+    }
+
+    // Group allLeaseArrears by year and month
+    const groupedArrearsMap = new Map<string, typeof allLeaseArrears>();
+    for (const item of allLeaseArrears) {
+      const d = new Date(item.dueDate);
+      const key = `${d.getFullYear()}-${d.getMonth()}`;
+      const existing = groupedArrearsMap.get(key) || [];
+      existing.push(item);
+      groupedArrearsMap.set(key, existing);
+    }
+
+    // Convert grouped map to combined monthly objects
+    const rawArrearsMonths = Array.from(groupedArrearsMap.entries()).map(([key, items]) => {
+      // Sort items by status priority
+      items.sort((a, b) => {
+        const order: { [key: string]: number } = { PENDING: 0, REJECTED: 1, UNRECORDED: 2 };
+        return (order[a.status] ?? 3) - (order[b.status] ?? 3);
+      });
+
+      const firstItem = items[0];
+      const combinedBaseAmount = items.reduce((sum, item) => sum + item.baseAmount, 0);
+      const combinedPenalty = items.reduce((sum, item) => sum + item.penalty, 0);
+      const maxPenaltyTier = items.reduce((max, item) => Math.max(max, item.penaltyTier), 0);
+      const maxDaysFromDue = items.reduce((max, item) => Math.max(max, item.daysFromDue), 0);
+
+      const paymentItem = items.find(item => !item.isGap);
+      const id = paymentItem ? paymentItem.id : `gap-${key}`;
+      const receiptUrl = items.map(item => item.receiptUrl).find(url => url !== null) || null;
+
+      let status = "UNRECORDED";
+      if (items.some(item => item.status === "PENDING")) {
+        status = "PENDING";
+      } else if (items.some(item => item.status === "REJECTED")) {
+        status = "REJECTED";
+      }
+
+      return {
+        id,
+        dueDate: firstItem.dueDate,
+        ethiopianDueDate: getEthiopianMonthEnd(new Date(firstItem.dueDate)),
+        daysFromDue: maxDaysFromDue,
+        baseAmount: combinedBaseAmount,
+        penalty: combinedPenalty,
+        penaltyTier: maxPenaltyTier,
+        totalAmount: combinedBaseAmount + combinedPenalty,
+        status,
+        receiptUrl,
+        isGap: items.every(item => item.isGap),
+        advanceDeduction: 0,
+      };
+    }).sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
 
     // Deduct advanceBalance chronologically from rawArrearsMonths
     let remainingAdvance = advanceBalance;
