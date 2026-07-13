@@ -168,7 +168,8 @@ export function getDaysUntilEthiopianExpiry(expiryDate: Date): number {
  */
 export function getDaysPastEthiopianExpiry(expiryDate: Date): number {
   const now = getNowInAddisAbaba();
-  const monthEnd = getEthiopianMonthEnd(expiryDate);
+  const prevMonthDate = addEthiopianMonths(new Date(expiryDate), -1);
+  const monthEnd = getEthiopianMonthEnd(prevMonthDate);
   
   const nowDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const endDay = new Date(monthEnd.getFullYear(), monthEnd.getMonth(), monthEnd.getDate());
