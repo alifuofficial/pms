@@ -3,7 +3,7 @@
 import { prisma } from "@/lib/prisma";
 import { sendSMS } from "@/lib/sms";
 import { revalidatePath } from "next/cache";
-import { getDaysIntoEthiopianMonth, getDaysUntilEthiopianExpiry, getNowInAddisAbaba, toEthiopian, getEthiopianMonths, addEthiopianMonths } from "@/lib/calendar";
+import { getDaysIntoEthiopianMonth, getDaysPastEthiopianExpiry, getDaysUntilEthiopianExpiry, getNowInAddisAbaba, toEthiopian, getEthiopianMonths, addEthiopianMonths } from "@/lib/calendar";
 import { runDailyQrBackup } from "@/lib/actions/import-export";
 import { getArrearMonths, calcMonthPenalty } from "@/lib/arrears";
 
@@ -12,120 +12,161 @@ export async function processLateFees() {
     const settings = await prisma.systemSettings.findUnique({ where: { id: "global" } });
     if (!settings?.lateFeeEnabled) return { success: true, message: "Late fees are disabled." };
 
-    const pendingPayments = await prisma.payment.findMany({
-      where: { 
-        status: "PENDING"
-      },
+    const activeLeases = await prisma.lease.findMany({
+      where: { status: "ACTIVE" },
       include: {
         tenant: {
-          select: { name: true, phoneNumber: true }
+          select: { id: true, name: true, phoneNumber: true }
         },
-        lease: {
-          include: {
-            unit: {
-              include: { property: true }
-            }
-          }
-        }
+        unit: {
+          include: { property: true }
+        },
+        payments: true,
+        penalties: true
       }
     });
 
     let processedCount = 0;
-    const now = new Date();
 
-    for (const payment of pendingPayments) {
-      if (payment.lease.unit.penaltyExempt) {
+    for (const lease of activeLeases) {
+      if (lease.unit.penaltyExempt) {
         continue;
       }
 
-      const diffDays = getDaysIntoEthiopianMonth(new Date(payment.dueDate));
+      const leasePayments = lease.payments || [];
+      const leasePenalties = lease.penalties || [];
 
-      // Ethiopian Legal Context: 
-      // Deadline is usually end of month. Grace period is Day 1 to Day 5.
-      // Penalty starts on Day 6 (diffDays >= 5).
-      
-      const existingPenalty = await prisma.penalty.findUnique({ where: { id: `penalty-${payment.id}` } });
-      const currentPenaltyAmount = existingPenalty?.amount || 0;
-
-      const penaltyResult = calcMonthPenalty(
-        payment.dueDate,
-        payment.lease.unit.rentAmount,
-        settings,
-        null,
-        payment.lease.unit.penaltyExempt,
-        payment.lease.unit.property
+      // Unpaid pending payments
+      const leasePendingPayments = leasePayments.filter(
+        p => p.status === "PENDING" || p.status === "REJECTED"
       );
-      let newPenaltyAmount = penaltyResult.penalty;
+      const pendingDueDates = new Set(
+        leasePendingPayments.map(p => {
+          const d = new Date(p.dueDate);
+          return `${d.getFullYear()}-${d.getMonth()}`;
+        })
+      );
 
-      // Decide which template to use (late-fee-1 for base, late-fee-2 for highest warning tier)
-      let templateSlug = "";
-      if (newPenaltyAmount > 0) {
-        let isWarningTier = false;
-        const prop = payment.lease.unit.property;
-        if (prop && prop.lateFeeEnabled && prop.incrementalRules) {
-          try {
-            const rules = JSON.parse(prop.incrementalRules);
-            if (Array.isArray(rules) && rules.length > 0) {
-              const maxDays = Math.max(...rules.map((r: any) => r.days));
-              if (penaltyResult.diffDays >= maxDays) {
-                isWarningTier = true;
+      // Unpaid gap months
+      const leaseGapDates = getArrearMonths(new Date(lease.startDate), leasePayments, lease.terminatedAt);
+
+      // Combine unpaid months
+      const unpaidItems: Array<{ dueDate: Date; isPending: boolean; paymentId?: string }> = [
+        ...leasePendingPayments.map(p => ({ dueDate: p.dueDate, isPending: true, paymentId: p.id })),
+        ...leaseGapDates
+          .filter(gd => !pendingDueDates.has(`${gd.getFullYear()}-${gd.getMonth()}`))
+          .map(gd => ({ dueDate: gd, isPending: false }))
+      ];
+
+      for (const item of unpaidItems) {
+        const d = item.dueDate;
+        const diffDays = getDaysPastEthiopianExpiry(d);
+
+        // Resolve grace days
+        let graceDays = 5;
+        const prop = lease.unit.property;
+        if (prop && prop.lateFeeGraceDays !== undefined && prop.lateFeeGraceDays !== null) {
+          graceDays = prop.lateFeeGraceDays;
+        }
+
+        // Penalty starts after graceDays. Standard system starts on Day 6 (when graceDays is 5).
+        if (diffDays < graceDays + 1) {
+          continue;
+        }
+
+        // Find existing penalty in-memory for this month/due-date
+        const existingPenalty = leasePenalties.find(
+          p => p.dueDate.getFullYear() === d.getFullYear() && p.dueDate.getMonth() === d.getMonth()
+        ) || null;
+
+        const currentPenaltyAmount = existingPenalty?.amount || 0;
+
+        const penaltyResult = calcMonthPenalty(
+          d,
+          lease.unit.rentAmount,
+          settings,
+          existingPenalty,
+          lease.unit.penaltyExempt,
+          lease.unit.property
+        );
+        let newPenaltyAmount = penaltyResult.penalty;
+
+        // Decide which template to use (late-fee-1 for base, late-fee-2 for highest warning tier)
+        let templateSlug = "";
+        if (newPenaltyAmount > 0) {
+          let isWarningTier = false;
+          if (prop && prop.lateFeeEnabled && prop.incrementalRules) {
+            try {
+              const rules = JSON.parse(prop.incrementalRules);
+              if (Array.isArray(rules) && rules.length > 0) {
+                const maxDays = Math.max(...rules.map((r: any) => r.days));
+                if (penaltyResult.diffDays >= maxDays) {
+                  isWarningTier = true;
+                }
               }
+            } catch (e) {
+              console.error("Error parsing incremental rules:", e);
             }
-          } catch (e) {
-            console.error("Error parsing incremental rules:", e);
+          } else {
+            // Default global settings warning tier (equivalent to diffDays >= 36)
+            if (penaltyResult.diffDays >= 36) {
+              isWarningTier = true;
+            }
           }
-        } else {
-          // Default global settings: warning tier is day 36 (equivalent to diffDays >= 35 in original code)
-          if (penaltyResult.diffDays >= 36) {
-            isWarningTier = true;
+
+          if (isWarningTier) {
+            if (currentPenaltyAmount < newPenaltyAmount) {
+              templateSlug = "late-fee-2";
+            } else {
+              // Already at warning tier, keep the penalty amount as is
+              newPenaltyAmount = currentPenaltyAmount;
+            }
+          } else {
+            if (currentPenaltyAmount === 0) {
+              templateSlug = "late-fee-1";
+            } else {
+              // Already at base tier, keep the penalty amount as is
+              newPenaltyAmount = currentPenaltyAmount;
+            }
           }
         }
 
-        if (isWarningTier) {
-          if (currentPenaltyAmount < newPenaltyAmount) {
-            templateSlug = "late-fee-2";
-          } else {
-            // Already at warning tier, keep the penalty amount as is
-            newPenaltyAmount = currentPenaltyAmount;
+        if (templateSlug) {
+          // Deterministic ID for this penalty
+          const penaltyId = item.isPending 
+            ? `penalty-${item.paymentId}` 
+            : `penalty-gap-${lease.id}-${d.getFullYear()}-${d.getMonth()}`;
+
+          // Save to database
+          await prisma.penalty.upsert({
+            where: { id: penaltyId },
+            create: {
+              id: penaltyId,
+              leaseId: lease.id,
+              tenantId: lease.tenantId,
+              amount: newPenaltyAmount,
+              dueDate: d,
+              status: "UNPAID"
+            },
+            update: {
+              amount: newPenaltyAmount
+            }
+          });
+
+          if (lease.tenant.phoneNumber) {
+            const totalAmount = lease.unit.rentAmount + newPenaltyAmount;
+
+            await sendSMS(lease.tenant.phoneNumber, templateSlug, {
+              tenant_name: lease.tenant.name || "Tenant",
+              property_name: lease.unit.property.name || "Property",
+              unit_number: lease.unit.unitNumber || "N/A",
+              amount: totalAmount.toLocaleString(),
+              due_date: d.toLocaleDateString()
+            });
           }
-        } else {
-          if (currentPenaltyAmount === 0) {
-            templateSlug = "late-fee-1";
-          } else {
-            // Already at base tier, keep the penalty amount as is
-            newPenaltyAmount = currentPenaltyAmount;
-          }
+
+          processedCount++;
         }
-      }
-
-      if (templateSlug && payment.tenant.phoneNumber) {
-        const totalAmount = payment.amount + newPenaltyAmount;
-
-        await sendSMS(payment.tenant.phoneNumber, templateSlug, {
-          tenant_name: payment.tenant.name || "Tenant",
-          property_name: payment.lease.unit.property.name || "Property",
-          unit_number: payment.lease.unit.unitNumber || "N/A",
-          amount: totalAmount.toLocaleString(),
-          due_date: payment.dueDate.toLocaleDateString()
-        });
-
-        // Save to Penalty table
-        await prisma.penalty.upsert({
-          where: { id: `penalty-${payment.id}` }, // Deterministic ID for this payment's penalty
-          create: {
-            id: `penalty-${payment.id}`,
-            leaseId: payment.leaseId,
-            tenantId: payment.tenantId,
-            amount: newPenaltyAmount,
-            dueDate: payment.dueDate,
-            status: "UNPAID"
-          },
-          update: {
-            amount: newPenaltyAmount
-          }
-        });
-        
-        processedCount++;
       }
     }
 
