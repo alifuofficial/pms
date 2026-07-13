@@ -104,6 +104,8 @@ export async function getPublicUnitStatus(slug: string) {
       }
     }
 
+    const parentOriginalRent = unit.rentAmount;
+
     // Now combine details across all merged units
     if (unit.mergedUnits && unit.mergedUnits.length > 0) {
       const childNumbers = unit.mergedUnits.map(u => u.unitNumber).join(" + ");
@@ -209,7 +211,7 @@ export async function getPublicUnitStatus(slug: string) {
           ? unit 
           : (unit.mergedUnits || []).find((mu: any) => mu.id === l.unitId);
 
-        const rent = u?.rentAmount || 0;
+        const rent = l.unitId === unit.id ? parentOriginalRent : (u?.rentAmount || 0);
         const penaltyExempt = u?.penaltyExempt || false;
 
         // Find if this lease has a penalty record in the DB for this month
@@ -258,7 +260,7 @@ export async function getPublicUnitStatus(slug: string) {
 
       const leasePayments = l.payments || [];
       const leasePenalties = l.penalties || [];
-      const rent = u.rentAmount || 0;
+      const rent = l.unitId === unit.id ? parentOriginalRent : (u.rentAmount || 0);
       const penaltyExempt = u.penaltyExempt || false;
 
       const leasePendingPayments = leasePayments.filter(
