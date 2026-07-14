@@ -296,7 +296,7 @@ export async function getPublicUnitStatus(slug: string) {
           penaltyTier,
           daysFromDue: diffDays,
           status: p.status,
-          receiptUrl: p.receiptUrl || null,
+          receiptUrl: p.status === "PENDING" ? (p.receiptUrl || null) : null,
           isGap: false,
           id: p.id,
         });
