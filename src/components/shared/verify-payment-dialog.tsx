@@ -27,16 +27,17 @@ import {
   DollarSign,
   Upload
 } from "lucide-react";
-import { approvePayment, rejectPayment, togglePenaltyPaid, changePaymentAttachment, updateApprovedPaymentAmount } from "@/lib/actions/payments";
+import { approvePayment, rejectPayment, revokePaymentApproval, togglePenaltyPaid, changePaymentAttachment, updateApprovedPaymentAmount } from "@/lib/actions/payments";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
 interface VerifyPaymentDialogProps {
   payment: any;
   currency: string;
+  isAdmin?: boolean;
 }
 
-export function VerifyPaymentDialog({ payment, currency }: VerifyPaymentDialogProps) {
+export function VerifyPaymentDialog({ payment, currency, isAdmin = false }: VerifyPaymentDialogProps) {
   const [open, setOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [actualAmount, setActualAmount] = useState(payment.amount);
@@ -98,6 +99,19 @@ export function VerifyPaymentDialog({ payment, currency }: VerifyPaymentDialogPr
       setOpen(false);
     } else {
       toast.error(result.error || "Failed to reject payment.");
+    }
+  };
+
+  const handleRevoke = async () => {
+    if (!confirm("Are you sure you want to REVOKE this approved payment? This will reverse all coverage, advance balances, and penalties for this tenant.")) return;
+    setIsLoading(true);
+    const result = await revokePaymentApproval(payment.id);
+    setIsLoading(false);
+    if (result.success) {
+      toast.success("Payment approval revoked. Lease state has been recalculated.");
+      setOpen(false);
+    } else {
+      toast.error(result.error || "Failed to revoke payment approval.");
     }
   };
 
@@ -345,17 +359,33 @@ export function VerifyPaymentDialog({ payment, currency }: VerifyPaymentDialogPr
 
         <DialogFooter className="p-6 bg-slate-50 border-t border-slate-100 gap-3 sticky bottom-0 z-10">
           {payment.status === "APPROVED" ? (
-            <Button 
-              disabled={isLoading || actualAmount === payment.amount}
-              onClick={handleUpdateAmount}
-              className="w-full h-12 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold transition-all shadow-lg shadow-blue-600/20"
-            >
-              {isLoading ? <Loader2 className="animate-spin" /> : (
-                <div className="flex items-center gap-2">
-                  <CheckCircle2 size={18} /> Update Approved Amount
-                </div>
+            <div className="flex flex-col gap-2 w-full">
+              <Button 
+                disabled={isLoading || actualAmount === payment.amount}
+                onClick={handleUpdateAmount}
+                className="w-full h-12 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold transition-all shadow-lg shadow-blue-600/20"
+              >
+                {isLoading ? <Loader2 className="animate-spin" /> : (
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 size={18} /> Update Approved Amount
+                  </div>
+                )}
+              </Button>
+              {isAdmin && (
+                <Button
+                  variant="outline"
+                  disabled={isLoading}
+                  onClick={handleRevoke}
+                  className="w-full h-11 rounded-xl border-red-200 text-red-600 font-bold hover:bg-red-50 hover:border-red-300 transition-all"
+                >
+                  {isLoading ? <Loader2 className="animate-spin" /> : (
+                    <div className="flex items-center gap-2">
+                      <XCircle size={16} /> Revoke Approval & Reset Lease
+                    </div>
+                  )}
+                </Button>
               )}
-            </Button>
+            </div>
           ) : (
             <>
               <Button 

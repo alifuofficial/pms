@@ -207,7 +207,7 @@ export async function PaymentsView({
                     ) : p.isUtility ? (
                       <VerifyUtilityPaymentDialog bill={p} currency={settings.currency} />
                     ) : (
-                      <VerifyPaymentDialog payment={p} currency={settings.currency} />
+                      <VerifyPaymentDialog payment={p} currency={settings.currency} isAdmin={role === "ADMIN"} />
                     )}
                   </td>
                 </tr>

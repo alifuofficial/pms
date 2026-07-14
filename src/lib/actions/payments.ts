@@ -595,6 +595,100 @@ export async function rejectPayment(paymentId: string) {
   }
 }
 
+/**
+ * Revoke an ALREADY-APPROVED payment back to REJECTED.
+ * Unlike rejectPayment (which only flips status), this also recalculates
+ * lease state for every lease in the merged group so that advanceBalance,
+ * advanceUntil, and penalty records are correctly reverted.
+ * Admin-only action.
+ */
+export async function revokePaymentApproval(paymentId: string) {
+  try {
+    const sessionUser = await resolveSessionUser();
+    if (!sessionUser || sessionUser.role !== "ADMIN") {
+      return { success: false, error: "Unauthorized – Admin only" };
+    }
+
+    const payment = await prisma.payment.findUnique({
+      where: { id: paymentId },
+      include: {
+        tenant: true,
+        lease: { include: { unit: true } }
+      }
+    });
+    if (!payment) return { success: false, error: "Payment not found" };
+    if (payment.status !== "APPROVED") {
+      return { success: false, error: "Only APPROVED payments can be revoked" };
+    }
+
+    // Resolve primary payment id in case a child was passed
+    let primaryPaymentId = paymentId;
+    if (payment.transactionId) {
+      const match = payment.transactionId.match(/(?:_ref_|ref_)([a-z0-9]+)$/i);
+      if (match) primaryPaymentId = match[1];
+    }
+
+    // Collect all related payment ids (primary + child split payments)
+    const childPayments = await prisma.payment.findMany({
+      where: {
+        OR: [
+          { transactionId: { endsWith: `_ref_${primaryPaymentId}` } },
+          { transactionId: `ref_${primaryPaymentId}` }
+        ]
+      }
+    });
+
+    const paymentIdsToRevoke = [primaryPaymentId, ...childPayments.map(p => p.id)];
+
+    // Collect all unique lease ids affected
+    const allAffectedPayments = await prisma.payment.findMany({
+      where: { id: { in: paymentIdsToRevoke } },
+      select: { leaseId: true }
+    });
+    const affectedLeaseIds = [...new Set(allAffectedPayments.map(p => p.leaseId))];
+
+    await prisma.$transaction(async (tx) => {
+      // 1. Mark all related payments as REJECTED
+      await tx.payment.updateMany({
+        where: { id: { in: paymentIdsToRevoke } },
+        data: { status: "REJECTED", approvedBy: null, paidAt: null }
+      });
+
+      // 2. Recalculate lease state for every affected lease so advance
+      //    balances, coverage dates and penalties are correctly reverted
+      for (const leaseId of affectedLeaseIds) {
+        await recalculateLeaseStateInternal(leaseId, tx);
+      }
+
+      // 3. Audit log
+      for (const pid of paymentIdsToRevoke) {
+        await tx.auditLog.create({
+          data: {
+            userId: sessionUser.id,
+            action: `Revoked approved payment ${pid} (primary: ${primaryPaymentId}) – lease state recalculated`,
+            actionType: "PAYMENT_REJECTION",
+            oldValue: JSON.stringify({ status: "APPROVED" }),
+            newValue: JSON.stringify({ status: "REJECTED" }),
+            metadata: JSON.stringify({ paymentId: pid, revokedBy: sessionUser.id })
+          }
+        });
+      }
+    });
+
+    revalidatePath("/admin/payments");
+    revalidatePath("/accountant/payments");
+    revalidatePath("/accountant/dashboard");
+    revalidatePath("/tenant/payments");
+    revalidatePath("/admin/dashboard");
+    revalidatePath("/", "layout");
+
+    return { success: true };
+  } catch (error) {
+    console.error("Revoke Payment Approval Error:", error);
+    return { success: false, error: "Failed to revoke payment approval" };
+  }
+}
+
 export async function submitPaymentReceipt(paymentId: string, receiptUrl: string) {
   try {
     const sessionUser = await resolveSessionUser();
