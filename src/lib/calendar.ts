@@ -85,9 +85,16 @@ export function addEthiopianMonths(date: Date, monthsToAdd: number): Date {
   let newYear = etDate.year;
   let newMonth = etDate.month + monthsToAdd;
 
+  // Handle overflow above month 13 (Pagume)
   while (newMonth > 13) {
     newMonth -= 13;
     newYear++;
+  }
+
+  // Handle underflow below month 1 (Meskerem)
+  while (newMonth <= 0) {
+    newMonth += 13;
+    newYear--;
   }
   
   // Cap the day to the max days in the new month
